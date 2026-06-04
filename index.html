@@ -163,6 +163,501 @@ window.agpLoadData = function(prest) {
 
 
 </style>
+<script>
+
+window._AGP_MODE  = false;
+window._AGP_READY = false;
+window._agpCurrentPrest = null;
+window._agpLastCode = null;
+window.AGP_DEV_PWD = 'AGPDev2026#';
+
+// ===== NAVIGATION =====
+function agpShowLanding(){
+  window._agpLastCode = null;
+  var ci=document.getElementById('agp-code-input');if(ci)ci.value='';
+  var ce=document.getElementById('agp-code-err');if(ce)ce.style.display='none';
+  agpSections('agp-landing');
+}
+function agpShowRegister(){ agpSections('agp-register'); }
+
+function agpSections(active){
+  ['agp-landing','agp-register','agp-login','loginPage','app'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(!el) return;
+    if(id===active){
+      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
+      el.style.removeProperty('display');
+      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
+    } else {
+      el.style.display='none';
+    }
+  });
+}
+
+// ===== ACCÉDER À UNE PRESTATION =====
+function agpGoTo(){
+  var code=(document.getElementById('agp-code-input').value||'').trim().toUpperCase();
+  var err=document.getElementById('agp-code-err');
+  if(!code){err.textContent='Entrez votre code prestation';err.style.display='block';return;}
+  err.style.display='none';
+  // Cache localStorage
+  try{
+    var cached=JSON.parse(localStorage.getItem('agp_p_'+code)||'null');
+    if(cached&&!cached.blocked){window._agpLastCode=code;agpShowLogin(cached);return;}
+  }catch(e){}
+  // Firebase via index
+  var db=window._agpDb,r=window._agpRef,g=window._agpGet;
+  if(!db){err.textContent='Connexion impossible';err.style.display='block';return;}
+  g(r(db,'agp_codes/'+code)).then(function(snap){
+    var uid=snap.val();
+    if(!uid){err.textContent='Code introuvable';err.style.display='block';return;}
+    return g(r(db,'agp_prest/'+uid+'/info')).then(function(s){
+      var p=s.val();
+      if(!p){err.textContent='Prestation introuvable';err.style.display='block';return;}
+      if(p.blocked){err.textContent='⛔ Accès suspendu. Contactez le concepteur.';err.style.display='block';return;}
+      try{localStorage.setItem('agp_p_'+code,JSON.stringify(p));}catch(e){}
+      window._agpLastCode=code;
+      agpShowLogin(p);
+    });
+  }).catch(function(e){err.textContent='Erreur: '+e.message;err.style.display='block';});
+}
+
+// ===== PAGE CONNEXION =====
+function agpShowLogin(prest){
+  window._agpPendingPrest=prest;
+  var container=document.getElementById('agp-login');
+  agpSections('agp-login');
+  container.innerHTML=[
+    '<div style="min-height:100vh;background:linear-gradient(180deg,#060d24 0%,#0a1628 100%);display:flex;flex-direction:column">',
+    '<div style="padding:28px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.06)">',
+    prest.logo?'<img src="'+prest.logo+'" style="height:68px;width:68px;object-fit:contain;border-radius:16px;margin-bottom:12px;box-shadow:0 0 30px rgba(37,99,235,0.3)">':'<div style="font-size:56px;margin-bottom:12px">🏢</div>',
+    '<h1 style="font-size:20px;font-weight:800;color:#fff;margin-bottom:3px">'+prest.centreNom+'</h1>',
+    prest.ville?'<div style="font-size:12px;color:#475569">'+prest.ville+'</div>':'',
+    '</div>',
+    '<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">',
+    '<div style="width:100%;max-width:380px">',
+    '<h2 style="font-size:14px;font-weight:700;color:#64748b;text-align:center;margin-bottom:20px;text-transform:uppercase;letter-spacing:.1em">Connexion</h2>',
+    '<div id="agp-login-msg" style="display:none;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>',
+    // Fondateur
+    '<div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:14px;padding:18px;margin-bottom:14px">',
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
+    '<div style="width:38px;height:38px;background:rgba(251,191,36,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">👑</div>',
+    '<div><div style="font-weight:700;color:#fbbf24;font-size:14px">Fondateur</div><div style="font-size:11px;color:#78716c">Accès complet</div></div>',
+    '</div>',
+    '<input id="agp-l-fond" type="password" placeholder="Code fondateur" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(251,191,36,0.2);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box">',
+    '<button id="agp-l-fond-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter — Fondateur</button>',
+    '</div>',
+    // Agent
+    '<div style="background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);border-radius:14px;padding:18px">',
+    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
+    '<div style="width:38px;height:38px;background:rgba(37,99,235,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">🧑‍💼</div>',
+    '<div><div style="font-weight:700;color:#60a5fa;font-size:14px">Agent / Gérant</div><div style="font-size:11px;color:#475569">Accès limité</div></div>',
+    '</div>',
+    '<select id="agp-l-agent-sel" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:10px;cursor:pointer;box-sizing:border-box"><option value="">-- Sélectionner un agent --</option></select>',
+    '<input id="agp-l-agent-code" type="password" placeholder="Code agent" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box">',
+    '<button id="agp-l-agent-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter — Agent</button>',
+    '</div>',
+    '</div></div>',
+    '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center">',
+    '<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP · Neindig</p>',
+    '<button id="agp-l-change" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#475569;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;padding:5px 12px">↩ Changer de prestation</button>',
+    '</div>',
+    '</div>'
+  ].join('');
+
+  // Handlers
+  setTimeout(function(){
+    var bf=document.getElementById('agp-l-fond-btn');
+    var ba=document.getElementById('agp-l-agent-btn');
+    var bc=document.getElementById('agp-l-change');
+    var fi=document.getElementById('agp-l-fond');
+    var ai=document.getElementById('agp-l-agent-code');
+    if(fi) fi.addEventListener('keydown',function(e){if(e.key==='Enter')agpLoginFond();});
+    if(ai) ai.addEventListener('keydown',function(e){if(e.key==='Enter')agpLoginAgent();});
+    if(bf) bf.addEventListener('click',agpLoginFond);
+    if(ba) ba.addEventListener('click',agpLoginAgent);
+    if(bc) bc.addEventListener('click',function(){window._agpLastCode=null;agpShowLanding();});
+    // Charger agents
+    var db=window._agpDb,r=window._agpRef,g=window._agpGet;
+    if(db&&prest.uid){
+      g(r(db,'agp_prest/'+prest.uid+'/data/users')).then(function(snap){
+        var sel=document.getElementById('agp-l-agent-sel');
+        if(!sel) return;
+        var u=snap.val();
+        if(u){var arr=Array.isArray(u)?u:Object.values(u);
+          arr.forEach(function(ag){
+            if(ag.role!=='FONDATEUR'){
+              var o=document.createElement('option');
+              o.value=ag.code||'';o.textContent=ag.nom+' ('+ag.role+')';o.dataset.code=ag.code||'';
+              sel.appendChild(o);
+            }
+          });
+        }
+      }).catch(function(){});
+    }
+  },200);
+}
+
+function agpLoginMsg(t,ok){
+  var m=document.getElementById('agp-login-msg');if(!m)return;
+  m.textContent=t;m.style.cssText='display:block;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px;'+
+    (ok?'background:rgba(34,197,94,0.1);color:#22c55e':'background:rgba(239,68,68,0.1);color:#ef4444');
+}
+
+function agpLoginFond(){
+  var p=window._agpPendingPrest;if(!p)return;
+  var pwd=(document.getElementById('agp-l-fond')||{}).value||'';
+  if(!pwd.trim()){agpLoginMsg('Entrez votre code fondateur',false);return;}
+  if(pwd.trim()!==p.codeFondateur){agpLoginMsg('Code fondateur incorrect',false);return;}
+  agpLoginMsg('Connexion réussie !',true);
+  setTimeout(function(){agpLaunch(p,'FONDATEUR',null);},500);
+}
+
+function agpLoginAgent(){
+  var p=window._agpPendingPrest;if(!p)return;
+  var sel=document.getElementById('agp-l-agent-sel');
+  var pwd=(document.getElementById('agp-l-agent-code')||{}).value||'';
+  if(!sel||!sel.value){agpLoginMsg('Sélectionnez un agent',false);return;}
+  if(!pwd.trim()){agpLoginMsg('Entrez le code agent',false);return;}
+  if(pwd.trim()!==sel.value){agpLoginMsg('Code agent incorrect',false);return;}
+  agpLoginMsg('Connexion réussie !',true);
+  setTimeout(function(){agpLaunch(p,'GERANT',sel.options[sel.selectedIndex].textContent);},500);
+}
+
+// ===== LANCER L'APP =====
+function agpLaunch(prest, role, agentName){
+  window._AGP_MODE = true;
+  window._agpCurrentPrest = prest;
+
+  // Mettre à jour interface du moteur
+  var hl=document.getElementById('headerLogo');if(hl&&prest.logo)hl.src=prest.logo;
+  var hn=document.getElementById('headerNom');if(hn)hn.textContent=prest.centreNom||'Ma Prestation';
+  var ll=document.getElementById('loginLogo');if(ll&&prest.logo)ll.src=prest.logo;
+  var lln=document.getElementById('loginNom');if(lln)lln.textContent=prest.centreNom||'Ma Prestation';
+  var cu=document.getElementById('connectedUser');if(cu)cu.innerText=(agentName||'Fondateur')+' ('+role+')';
+  var rt=document.getElementById('roleText');if(rt)rt.innerText=role;
+
+  // Afficher l'app
+  agpSections('app');
+  document.getElementById('agpSyncIndicator').style.display='block';
+
+  // Logout => retour page login
+  window._agpLogoutCb=function(){
+    window._AGP_MODE=false;
+    window._AGP_READY=false;
+    window._agpCurrentPrest=null;
+    var lf=document.getElementById('agp-l-fond');if(lf)lf.value='';
+    var lm=document.getElementById('agp-login-msg');if(lm)lm.style.display='none';
+    agpSections('agp-login');
+  };
+
+  // Charger données Firebase
+  window.agpLoadData(prest);
+
+  // Rôle
+  if(typeof currentRole!=='undefined') currentRole=role;
+  if(typeof currentUser!=='undefined') currentUser=agentName||(role==='FONDATEUR'?'Fondateur':'Agent');
+  if(typeof currentUserIndex!=='undefined') currentUserIndex=role==='FONDATEUR'?0:-1;
+}
+
+// ===== INSCRIPTION =====
+function agpPreviewLogo(input){
+  if(input.files&&input.files[0]){
+    var rd=new FileReader();rd.onload=function(e){
+      var img=document.getElementById('agp-r-logo-preview');
+      var ph=document.getElementById('agp-r-logo-ph');
+      if(img){img.src=e.target.result;img.style.display='block';}if(ph)ph.style.display='none';
+    };rd.readAsDataURL(input.files[0]);
+  }
+}
+
+function agpRegMsg(t,ok){
+  var el=document.getElementById('agp-reg-msg');if(!el)return;
+  el.textContent=t;el.style.display='block';
+  el.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;'+
+    (ok?'background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)':
+        'background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.3)');
+}
+
+function agpGenCode(){
+  var c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',r='AGP-';
+  for(var i=0;i<4;i++)r+=c[Math.floor(Math.random()*c.length)];
+  r+='-';
+  for(var i=0;i<4;i++)r+=c[Math.floor(Math.random()*c.length)];
+  return r;
+}
+
+function agpRegister(){
+  var prenom=(document.getElementById('agp-r-prenom')||{}).value||'';
+  var nom=(document.getElementById('agp-r-nom')||{}).value||'';
+  var centreNomV=(document.getElementById('agp-r-nom-prest')||{}).value||'';
+  var email=(document.getElementById('agp-r-email')||{}).value||'';
+  var tel=(document.getElementById('agp-r-tel')||{}).value||'';
+  var ville=(document.getElementById('agp-r-ville')||{}).value||'';
+  var adresse=(document.getElementById('agp-r-adresse')||{}).value||'';
+  var fondCode=(document.getElementById('agp-r-fond-code')||{}).value||'';
+  prenom=prenom.trim();nom=nom.trim();centreNomV=centreNomV.trim();email=email.trim();tel=tel.trim();fondCode=fondCode.trim();
+  if(!prenom||!nom||!centreNomV||!email||!tel||!fondCode){agpRegMsg('Remplissez tous les champs *',false);return;}
+  if(email.indexOf('@')<0){agpRegMsg('Email invalide',false);return;}
+  if(fondCode.length<3){agpRegMsg('Code fondateur min 3 caractères',false);return;}
+  var btn=document.getElementById('agp-r-btn');
+  if(btn){btn.disabled=true;btn.textContent='Création...';}
+  var db=window._agpDb,r=window._agpRef,s=window._agpSet,g=window._agpGet;
+  if(!db){agpRegMsg('Firebase non disponible',false);if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}return;}
+  var code=agpGenCode();
+  var uid='agp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+  var logoInput=document.getElementById('agp-r-logo-file');
+  function save(logo){
+    var prest={uid:uid,nom:prenom+' '+nom,prenom:prenom,nomFamille:nom,
+      centreNom:centreNomV,email:email,tel:tel,ville:ville,adresse:adresse,
+      logo:logo||'',codeAcces:code,codeFondateur:fondCode,
+      dateCreation:new Date().toISOString()};
+    s(r(db,'agp_prest/'+uid+'/info'),prest).then(function(){
+      s(r(db,'agp_codes/'+code),uid);
+      try{localStorage.setItem('agp_p_'+code,JSON.stringify(prest));}catch(e){}
+      if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}
+      window._agpLastCreated=prest;
+      agpShowSuccess(prest,code);
+    }).catch(function(e){agpRegMsg('Erreur: '+e.message,false);if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}});
+  }
+  if(logoInput&&logoInput.files&&logoInput.files[0]){
+    var rd=new FileReader();rd.onload=function(e){save(e.target.result);};rd.readAsDataURL(logoInput.files[0]);
+  }else{save('');}
+}
+
+function agpShowSuccess(prest,code){
+  var reg=document.getElementById('agp-register');
+  if(!reg) return;
+  reg.innerHTML=[
+    '<div style="background:#0a1628;border:1px solid rgba(34,197,94,0.3);border-radius:18px;width:100%;max-width:480px;overflow:hidden;margin:28px auto;box-shadow:0 24px 80px rgba(0,0,0,0.5)">',
+    '<div style="padding:22px;text-align:center;border-bottom:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04)">',
+    prest.logo?'<img src="'+prest.logo+'" style="height:54px;width:54px;object-fit:contain;border-radius:12px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto">':'<div style="font-size:46px;margin-bottom:10px">✅</div>',
+    '<h2 style="font-size:17px;font-weight:800;color:#22c55e;margin-bottom:3px">Prestation créée !</h2>',
+    '<p style="font-size:12px;color:#64748b">'+prest.centreNom+'</p>',
+    '</div>',
+    '<div style="padding:20px 22px">',
+    '<div style="background:rgba(37,99,235,0.1);border:2px solid rgba(37,99,235,0.4);border-radius:12px;padding:16px;text-align:center;margin-bottom:12px">',
+    '<div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px">Code d'accès</div>',
+    '<div id="agp-success-code" style="font-family:monospace;font-size:24px;font-weight:800;color:#60a5fa;letter-spacing:.18em;margin-bottom:9px">'+code+'</div>',
+    '<button id="agp-copy-btn" style="padding:6px 16px;border:none;border-radius:7px;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Copier le code</button>',
+    '</div>',
+    '<div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:12px;margin-bottom:12px">',
+    '<div style="font-size:10px;color:#a16207;text-transform:uppercase;margin-bottom:5px">👑 Code Fondateur</div>',
+    '<div style="font-family:monospace;font-size:17px;font-weight:800;color:#fbbf24;letter-spacing:.12em">'+prest.codeFondateur+'</div>',
+    '</div>',
+    '<div style="background:#060d24;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">',
+    '<div><span style="color:#475569">Prestation: </span><strong style="color:#e2e8f0">'+prest.centreNom+'</strong></div>',
+    '<div><span style="color:#475569">Responsable: </span><strong style="color:#e2e8f0">'+prest.nom+'</strong></div>',
+    '<div><span style="color:#475569">Email: </span><strong style="color:#e2e8f0">'+prest.email+'</strong></div>',
+    '<div><span style="color:#475569">Tél: </span><strong style="color:#e2e8f0">'+prest.tel+'</strong></div>',
+    '</div>',
+    '<button onclick="agpGoToLogin()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:9px">Accéder à ma prestation →</button>',
+    '<a href="https://wa.me/224623030403?text='+encodeURIComponent('Bonjour ! Je viens de créer ma prestation AGP. Code: '+code)+'" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:11px;border-radius:10px;background:#25D366;color:#fff;font-size:14px;font-weight:700;text-decoration:none;box-sizing:border-box">📱 WhatsApp Support</a>',
+    '</div>',
+    '</div>'
+  ].join('');
+  setTimeout(function(){
+    var cb=document.getElementById('agp-copy-btn');
+    if(cb){cb.onclick=function(){if(navigator.clipboard)navigator.clipboard.writeText(code).then(function(){cb.textContent='Copié ✓';cb.style.background='#22c55e';setTimeout(function(){cb.textContent='Copier le code';cb.style.background='#2563eb';},2000);});};}
+  },100);
+}
+
+function agpGoToLogin(){
+  var p=window._agpLastCreated;
+  if(p){window._agpLastCode=p.codeAcces;agpShowLogin(p);}
+  else agpShowLanding();
+}
+
+// ===== CONCEPTEUR =====
+function agpConcepteur(){
+  var ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.3);border-radius:16px;padding:28px;max-width:400px;width:90%">'+
+    '<h3 style="color:#fff;font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">⚙ Espace Concepteur</h3>'+
+    '<label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Mot de passe</label>'+
+    '<input id="agp-dev-pwd" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">'+
+    '<div style="display:flex;gap:8px">'+
+    '<button id="agp-dev-cancel" style="flex:1;padding:12px;border:1px solid rgba(255,255,255,0.1);border-radius:9px;background:transparent;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'+
+    '<button id="agp-dev-ok" style="flex:1;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Accéder</button>'+
+    '</div>'+
+    '<div id="agp-dev-msg" style="display:none;margin-top:10px;padding:9px;border-radius:7px;font-size:12px;color:#ef4444;background:rgba(239,68,68,0.08)"></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov)ov.remove();};
+  window._agpDevOv=ov;
+  setTimeout(function(){
+    var pw=document.getElementById('agp-dev-pwd');
+    document.getElementById('agp-dev-cancel').onclick=function(){ov.remove();};
+    document.getElementById('agp-dev-ok').onclick=agpDevCheck;
+    if(pw){pw.addEventListener('keydown',function(e){if(e.key==='Enter')agpDevCheck();});pw.focus();}
+  },100);
+}
+
+function agpDevCheck(){
+  var pw=document.getElementById('agp-dev-pwd');
+  var msg=document.getElementById('agp-dev-msg');
+  if(!pw||!msg) return;
+  if(pw.value!==window.AGP_DEV_PWD){msg.style.display='block';msg.textContent='Mot de passe incorrect.';pw.value='';return;}
+  pw.value='';
+  var ov=window._agpDevOv;
+  if(ov) ov.remove();
+  agpDevPanel();
+}
+
+function agpDevPanel(){
+  var ov=document.createElement('div');
+  ov.id='agp-dev-panel';
+  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
+  ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,0.6)"><div style="text-align:center;color:#475569;padding:30px">⏳ Chargement...</div></div>';
+  document.body.appendChild(ov);
+  ov.onclick=function(e){if(e.target===ov)ov.remove();};
+  // Charger depuis cache d'abord
+  var cached=window._agpDevCache;
+  if(!cached){try{cached=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');}catch(e){}}
+  if(cached){window._agpDevCache=cached;agpDevRender(cached);return;}
+  // Firebase
+  var db=window._agpDb,r=window._agpRef,g=window._agpGet;
+  g(r(db,'agp_prest')).then(function(snap){
+    var list=[];
+    snap.forEach(function(c){var info=c.val()&&c.val().info;if(info)list.push(info);});
+    list.sort(function(a,b){return new Date(b.dateCreation)-new Date(a.dateCreation);});
+    window._agpDevCache=list;
+    try{localStorage.setItem('agp_dev_cache',JSON.stringify(list));}catch(e){}
+    agpDevRender(list);
+  }).catch(function(e){
+    var d=document.querySelector('#agp-dev-panel div');
+    if(d) d.innerHTML='<p style="color:#ef4444;text-align:center;padding:20px">Erreur: '+e.message+'</p>';
+  });
+}
+
+function agpDevRender(list){
+  var ov=document.getElementById('agp-dev-panel');
+  if(!ov) return;
+  var h=[
+    '<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto">',
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">',
+    '<div><h3 style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px">Toutes les préstations ('+list.length+')</h3>',
+    '<p style="font-size:11px;color:#475569;margin:0">Gérez les accès</p></div>',
+    '<div style="display:flex;gap:6px">',
+    '<button onclick="agpDevChangePwd()" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.3);border-radius:7px;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🔒 Mot de passe</button>',
+    '<button onclick="window._agpDevCache=null;document.getElementById('agp-dev-panel').remove();agpDevPanel();" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit">↻</button>',
+    '<button onclick="document.getElementById('agp-dev-panel').remove()" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>',
+    '</div></div>',
+    '<input oninput="agpDevFilter(this.value)" placeholder="Rechercher..." style="width:100%;padding:10px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">',
+    '<div id="agp-dev-list">'
+  ];
+  if(list.length===0) h.push('<div style="text-align:center;color:#334155;padding:40px">Aucune préstation.</div>');
+  list.forEach(function(p){
+    var bl=p.blocked===true;
+    h.push(
+      '<div class="agp-dev-item" data-search="'+(p.centreNom+' '+p.email+' '+p.nom).toLowerCase()+'" style="background:#060d24;border:1px solid '+(bl?'rgba(239,68,68,0.3)':'rgba(37,99,235,0.15)')+';border-radius:11px;padding:14px;margin-bottom:10px">',
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">',
+      '<div style="flex:1;min-width:0">',
+      p.logo?'<img src="'+p.logo+'" style="height:28px;object-fit:contain;margin-bottom:7px;display:block;border-radius:4px">':'',
+      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">',
+      '<span style="font-weight:700;color:#e2e8f0;font-size:14px">'+p.centreNom+'</span>',
+      '<span style="font-size:11px;font-weight:700;color:'+(bl?'#ef4444':'#22c55e')+'">'+(bl?'🔴 Bloqué':'🟢 Actif')+'</span>',
+      '</div>',
+      '<div style="font-size:12px;color:#64748b;margin-bottom:3px">'+p.nom+' · '+p.email+'</div>',
+      p.tel?'<div style="font-size:11px;color:#475569">'+p.tel+(p.ville?' · '+p.ville:'')+'</div>':'',
+      '<div style="font-size:10px;color:#334155;margin-top:3px">'+new Date(p.dateCreation).toLocaleDateString('fr-FR')+'</div>',
+      '</div>',
+      '<div style="flex-shrink:0;display:flex;flex-direction:column;gap:5px;align-items:flex-end">',
+      '<div style="text-align:right"><div style="font-size:9px;color:#475569;margin-bottom:2px">CODE ACCÈS</div>',
+      '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#60a5fa;background:rgba(37,99,235,0.12);padding:3px 9px;border-radius:5px">'+p.codeAcces+'</div></div>',
+      '<div style="text-align:right"><div style="font-size:9px;color:#a16207;margin-bottom:2px">CODE FONDATEUR</div>',
+      '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#fbbf24;background:rgba(251,191,36,0.1);padding:3px 9px;border-radius:5px">'+(p.codeFondateur||'—')+'</div></div>',
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">',
+      '<button data-code="'+p.codeAcces+'" onclick="agpDevCopy(this)" style="padding:4px 9px;border:none;border-radius:5px;background:#2563eb;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Copier</button>',
+      '<button data-uid="'+p.uid+'" data-bl="'+(bl?'1':'0')+'" onclick="agpDevToggle(this)" style="padding:4px 9px;border:none;border-radius:5px;background:'+(bl?'#22c55e':'#ef4444')+';color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">'+(bl?'Débloquer':'Bloquer')+'</button>',
+      '<button data-uid="'+p.uid+'" data-name="'+p.centreNom+'" onclick="agpDevDel(this)" style="padding:4px 9px;border:1px solid rgba(239,68,68,0.4);border-radius:5px;background:transparent;color:#ef4444;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">🗑</button>',
+      '</div></div></div></div>'
+    );
+  });
+  h.push('</div></div>');
+  ov.innerHTML=h.join('');
+  ov.onclick=function(e){if(e.target===ov)ov.remove();};
+}
+
+function agpDevFilter(q){
+  document.querySelectorAll('.agp-dev-item').forEach(function(el){
+    el.style.display=(!q||el.dataset.search.indexOf(q.toLowerCase())>=0)?'block':'none';
+  });
+}
+function agpDevCopy(btn){
+  var c=btn.getAttribute('data-code');
+  if(navigator.clipboard)navigator.clipboard.writeText(c).then(function(){btn.textContent='✓';btn.style.background='#22c55e';setTimeout(function(){btn.textContent='Copier';btn.style.background='#2563eb';},1500);});
+}
+function agpDevToggle(btn){
+  var uid=btn.getAttribute('data-uid'),bl=btn.getAttribute('data-bl')==='1';
+  var db=window._agpDb,r=window._agpRef,s=window._agpSet;
+  btn.disabled=true;btn.textContent='...';
+  s(r(db,'agp_prest/'+uid+'/info/blocked'),!bl).then(function(){
+    if(window._agpDevCache) window._agpDevCache.forEach(function(p){if(p.uid===uid)p.blocked=!bl;});
+    try{localStorage.setItem('agp_dev_cache',JSON.stringify(window._agpDevCache||[]));}catch(e){}
+    document.getElementById('agp-dev-panel').remove();
+    agpDevPanel();
+  });
+}
+function agpDevDel(btn){
+  var uid=btn.getAttribute('data-uid'),name=btn.getAttribute('data-name');
+  if(!confirm('Supprimer définitivement "'+name+'" ?')) return;
+  var db=window._agpDb,r=window._agpRef,rm=window._agpRemove;
+  rm(r(db,'agp_prest/'+uid)).then(function(){
+    if(window._agpDevCache) window._agpDevCache=window._agpDevCache.filter(function(p){return p.uid!==uid;});
+    try{localStorage.setItem('agp_dev_cache',JSON.stringify(window._agpDevCache||[]));}catch(e){}
+    document.getElementById('agp-dev-panel').remove();
+    agpDevPanel();
+  });
+}
+function agpDevChangePwd(){
+  var ov2=document.createElement('div');
+  ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;display:flex;align-items:center;justify-content:center';
+  var d=document.createElement('div');
+  d.style.cssText='background:#0a1628;border:1px solid rgba(37,99,235,0.3);border-radius:14px;padding:24px;max-width:360px;width:90%';
+  d.innerHTML='<h3 style="color:#fff;font-size:15px;font-weight:700;margin-bottom:16px">🔒 Changer mot de passe</h3>'+
+    '<input id="cp-old" type="password" placeholder="Ancien mot de passe" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:8px;box-sizing:border-box">'+
+    '<input id="cp-new" type="password" placeholder="Nouveau mot de passe" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:8px;box-sizing:border-box">'+
+    '<input id="cp-con" type="password" placeholder="Confirmer" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box">'+
+    '<div id="cp-msg" style="display:none;font-size:12px;padding:8px;border-radius:6px;margin-bottom:10px"></div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button id="cp-no" style="flex:1;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:transparent;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'+
+    '<button id="cp-yes" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Enregistrer</button></div>';
+  ov2.appendChild(d);document.body.appendChild(ov2);
+  ov2.onclick=function(e){if(e.target===ov2)ov2.remove();};
+  document.getElementById('cp-no').onclick=function(){ov2.remove();};
+  document.getElementById('cp-yes').onclick=function(){
+    var o=document.getElementById('cp-old').value,n=document.getElementById('cp-new').value,c=document.getElementById('cp-con').value;
+    var m=document.getElementById('cp-msg');
+    function sm(t,ok){m.style.display='block';m.textContent=t;m.style.cssText='display:block;font-size:12px;padding:8px;border-radius:6px;margin-bottom:10px;'+(ok?'background:rgba(34,197,94,0.1);color:#22c55e':'background:rgba(239,68,68,0.1);color:#ef4444');}
+    if(!o||!n||!c){sm('Remplissez tous les champs',false);return;}
+    if(o!==window.AGP_DEV_PWD){sm('Ancien mot de passe incorrect',false);return;}
+    if(n!==c){sm('Mots de passe différents',false);return;}
+    if(n.length<4){sm('Minimum 4 caractères',false);return;}
+    window.AGP_DEV_PWD=n;sm('Modifié avec succès !',true);
+    setTimeout(function(){ov2.remove();},1000);
+  };
+}
+
+// ===== DÉMARRAGE =====
+document.addEventListener('DOMContentLoaded', function(){
+  // Forcer le masquage du moteur
+  ['loginPage','app'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.display='none';
+  });
+  // Vider localStorage neindi
+  var keys=[];
+  for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('neindi_')===0)keys.push(k);}
+  keys.forEach(function(k){localStorage.removeItem(k);});
+  // Afficher la landing AGP
+  document.getElementById('agp-landing').style.display='flex';
+  // Précharger le cache dev
+  try{var c=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');if(c)window._agpDevCache=c;}catch(e){}
+});
+
+</script>
+
+
 </head>
 <body style="background:#060d24;font-family:'DM Sans',sans-serif">
 
@@ -774,497 +1269,8 @@ window.agpLoadData = function(prest) {
 <!-- ================================================================
      AGP JS
      ================================================================ -->
-<script>
-window._AGP_MODE  = false;
-window._AGP_READY = false;
-window._agpCurrentPrest = null;
-window._agpLastCode = null;
-window.AGP_DEV_PWD = 'AGPDev2026#';
+<!-- AGP JS déplacé dans head -->
 
-// ===== NAVIGATION =====
-function agpShowLanding(){
-  window._agpLastCode = null;
-  var ci=document.getElementById('agp-code-input');if(ci)ci.value='';
-  var ce=document.getElementById('agp-code-err');if(ce)ce.style.display='none';
-  agpSections('agp-landing');
-}
-function agpShowRegister(){ agpSections('agp-register'); }
-
-function agpSections(active){
-  ['agp-landing','agp-register','agp-login','loginPage','app'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(!el) return;
-    if(id===active){
-      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
-      el.style.removeProperty('display');
-      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
-    } else {
-      el.style.display='none';
-    }
-  });
-}
-
-// ===== ACCÉDER À UNE PRESTATION =====
-function agpGoTo(){
-  var code=(document.getElementById('agp-code-input').value||'').trim().toUpperCase();
-  var err=document.getElementById('agp-code-err');
-  if(!code){err.textContent='Entrez votre code prestation';err.style.display='block';return;}
-  err.style.display='none';
-  // Cache localStorage
-  try{
-    var cached=JSON.parse(localStorage.getItem('agp_p_'+code)||'null');
-    if(cached&&!cached.blocked){window._agpLastCode=code;agpShowLogin(cached);return;}
-  }catch(e){}
-  // Firebase via index
-  var db=window._agpDb,r=window._agpRef,g=window._agpGet;
-  if(!db){err.textContent='Connexion impossible';err.style.display='block';return;}
-  g(r(db,'agp_codes/'+code)).then(function(snap){
-    var uid=snap.val();
-    if(!uid){err.textContent='Code introuvable';err.style.display='block';return;}
-    return g(r(db,'agp_prest/'+uid+'/info')).then(function(s){
-      var p=s.val();
-      if(!p){err.textContent='Prestation introuvable';err.style.display='block';return;}
-      if(p.blocked){err.textContent='⛔ Accès suspendu. Contactez le concepteur.';err.style.display='block';return;}
-      try{localStorage.setItem('agp_p_'+code,JSON.stringify(p));}catch(e){}
-      window._agpLastCode=code;
-      agpShowLogin(p);
-    });
-  }).catch(function(e){err.textContent='Erreur: '+e.message;err.style.display='block';});
-}
-
-// ===== PAGE CONNEXION =====
-function agpShowLogin(prest){
-  window._agpPendingPrest=prest;
-  var container=document.getElementById('agp-login');
-  agpSections('agp-login');
-  container.innerHTML=[
-    '<div style="min-height:100vh;background:linear-gradient(180deg,#060d24 0%,#0a1628 100%);display:flex;flex-direction:column">',
-    '<div style="padding:28px;text-align:center;border-bottom:1px solid rgba(255,255,255,0.06)">',
-    prest.logo?'<img src="'+prest.logo+'" style="height:68px;width:68px;object-fit:contain;border-radius:16px;margin-bottom:12px;box-shadow:0 0 30px rgba(37,99,235,0.3)">':'<div style="font-size:56px;margin-bottom:12px">🏢</div>',
-    '<h1 style="font-size:20px;font-weight:800;color:#fff;margin-bottom:3px">'+prest.centreNom+'</h1>',
-    prest.ville?'<div style="font-size:12px;color:#475569">'+prest.ville+'</div>':'',
-    '</div>',
-    '<div style="flex:1;display:flex;align-items:center;justify-content:center;padding:24px">',
-    '<div style="width:100%;max-width:380px">',
-    '<h2 style="font-size:14px;font-weight:700;color:#64748b;text-align:center;margin-bottom:20px;text-transform:uppercase;letter-spacing:.1em">Connexion</h2>',
-    '<div id="agp-login-msg" style="display:none;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px"></div>',
-    // Fondateur
-    '<div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:14px;padding:18px;margin-bottom:14px">',
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
-    '<div style="width:38px;height:38px;background:rgba(251,191,36,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">👑</div>',
-    '<div><div style="font-weight:700;color:#fbbf24;font-size:14px">Fondateur</div><div style="font-size:11px;color:#78716c">Accès complet</div></div>',
-    '</div>',
-    '<input id="agp-l-fond" type="password" placeholder="Code fondateur" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(251,191,36,0.2);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box">',
-    '<button id="agp-l-fond-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#f59e0b,#d97706);color:#000;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter — Fondateur</button>',
-    '</div>',
-    // Agent
-    '<div style="background:rgba(37,99,235,0.07);border:1px solid rgba(37,99,235,0.2);border-radius:14px;padding:18px">',
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">',
-    '<div style="width:38px;height:38px;background:rgba(37,99,235,0.15);border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px">🧑‍💼</div>',
-    '<div><div style="font-weight:700;color:#60a5fa;font-size:14px">Agent / Gérant</div><div style="font-size:11px;color:#475569">Accès limité</div></div>',
-    '</div>',
-    '<select id="agp-l-agent-sel" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:10px;cursor:pointer;box-sizing:border-box"><option value="">-- Sélectionner un agent --</option></select>',
-    '<input id="agp-l-agent-code" type="password" placeholder="Code agent" style="width:100%;padding:11px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:10px;box-sizing:border-box">',
-    '<button id="agp-l-agent-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter — Agent</button>',
-    '</div>',
-    '</div></div>',
-    '<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center">',
-    '<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP · Neindig</p>',
-    '<button id="agp-l-change" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#475569;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;padding:5px 12px">↩ Changer de prestation</button>',
-    '</div>',
-    '</div>'
-  ].join('');
-
-  // Handlers
-  setTimeout(function(){
-    var bf=document.getElementById('agp-l-fond-btn');
-    var ba=document.getElementById('agp-l-agent-btn');
-    var bc=document.getElementById('agp-l-change');
-    var fi=document.getElementById('agp-l-fond');
-    var ai=document.getElementById('agp-l-agent-code');
-    if(fi) fi.addEventListener('keydown',function(e){if(e.key==='Enter')agpLoginFond();});
-    if(ai) ai.addEventListener('keydown',function(e){if(e.key==='Enter')agpLoginAgent();});
-    if(bf) bf.addEventListener('click',agpLoginFond);
-    if(ba) ba.addEventListener('click',agpLoginAgent);
-    if(bc) bc.addEventListener('click',function(){window._agpLastCode=null;agpShowLanding();});
-    // Charger agents
-    var db=window._agpDb,r=window._agpRef,g=window._agpGet;
-    if(db&&prest.uid){
-      g(r(db,'agp_prest/'+prest.uid+'/data/users')).then(function(snap){
-        var sel=document.getElementById('agp-l-agent-sel');
-        if(!sel) return;
-        var u=snap.val();
-        if(u){var arr=Array.isArray(u)?u:Object.values(u);
-          arr.forEach(function(ag){
-            if(ag.role!=='FONDATEUR'){
-              var o=document.createElement('option');
-              o.value=ag.code||'';o.textContent=ag.nom+' ('+ag.role+')';o.dataset.code=ag.code||'';
-              sel.appendChild(o);
-            }
-          });
-        }
-      }).catch(function(){});
-    }
-  },200);
-}
-
-function agpLoginMsg(t,ok){
-  var m=document.getElementById('agp-login-msg');if(!m)return;
-  m.textContent=t;m.style.cssText='display:block;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px;'+
-    (ok?'background:rgba(34,197,94,0.1);color:#22c55e':'background:rgba(239,68,68,0.1);color:#ef4444');
-}
-
-function agpLoginFond(){
-  var p=window._agpPendingPrest;if(!p)return;
-  var pwd=(document.getElementById('agp-l-fond')||{}).value||'';
-  if(!pwd.trim()){agpLoginMsg('Entrez votre code fondateur',false);return;}
-  if(pwd.trim()!==p.codeFondateur){agpLoginMsg('Code fondateur incorrect',false);return;}
-  agpLoginMsg('Connexion réussie !',true);
-  setTimeout(function(){agpLaunch(p,'FONDATEUR',null);},500);
-}
-
-function agpLoginAgent(){
-  var p=window._agpPendingPrest;if(!p)return;
-  var sel=document.getElementById('agp-l-agent-sel');
-  var pwd=(document.getElementById('agp-l-agent-code')||{}).value||'';
-  if(!sel||!sel.value){agpLoginMsg('Sélectionnez un agent',false);return;}
-  if(!pwd.trim()){agpLoginMsg('Entrez le code agent',false);return;}
-  if(pwd.trim()!==sel.value){agpLoginMsg('Code agent incorrect',false);return;}
-  agpLoginMsg('Connexion réussie !',true);
-  setTimeout(function(){agpLaunch(p,'GERANT',sel.options[sel.selectedIndex].textContent);},500);
-}
-
-// ===== LANCER L'APP =====
-function agpLaunch(prest, role, agentName){
-  window._AGP_MODE = true;
-  window._agpCurrentPrest = prest;
-
-  // Mettre à jour interface du moteur
-  var hl=document.getElementById('headerLogo');if(hl&&prest.logo)hl.src=prest.logo;
-  var hn=document.getElementById('headerNom');if(hn)hn.textContent=prest.centreNom||'Ma Prestation';
-  var ll=document.getElementById('loginLogo');if(ll&&prest.logo)ll.src=prest.logo;
-  var lln=document.getElementById('loginNom');if(lln)lln.textContent=prest.centreNom||'Ma Prestation';
-  var cu=document.getElementById('connectedUser');if(cu)cu.innerText=(agentName||'Fondateur')+' ('+role+')';
-  var rt=document.getElementById('roleText');if(rt)rt.innerText=role;
-
-  // Afficher l'app
-  agpSections('app');
-  document.getElementById('agpSyncIndicator').style.display='block';
-
-  // Logout => retour page login
-  window._agpLogoutCb=function(){
-    window._AGP_MODE=false;
-    window._AGP_READY=false;
-    window._agpCurrentPrest=null;
-    var lf=document.getElementById('agp-l-fond');if(lf)lf.value='';
-    var lm=document.getElementById('agp-login-msg');if(lm)lm.style.display='none';
-    agpSections('agp-login');
-  };
-
-  // Charger données Firebase
-  window.agpLoadData(prest);
-
-  // Rôle
-  if(typeof currentRole!=='undefined') currentRole=role;
-  if(typeof currentUser!=='undefined') currentUser=agentName||(role==='FONDATEUR'?'Fondateur':'Agent');
-  if(typeof currentUserIndex!=='undefined') currentUserIndex=role==='FONDATEUR'?0:-1;
-}
-
-// ===== INSCRIPTION =====
-function agpPreviewLogo(input){
-  if(input.files&&input.files[0]){
-    var rd=new FileReader();rd.onload=function(e){
-      var img=document.getElementById('agp-r-logo-preview');
-      var ph=document.getElementById('agp-r-logo-ph');
-      if(img){img.src=e.target.result;img.style.display='block';}if(ph)ph.style.display='none';
-    };rd.readAsDataURL(input.files[0]);
-  }
-}
-
-function agpRegMsg(t,ok){
-  var el=document.getElementById('agp-reg-msg');if(!el)return;
-  el.textContent=t;el.style.display='block';
-  el.style.cssText='display:block;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px;'+
-    (ok?'background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.3)':
-        'background:rgba(239,68,68,0.12);color:#ef4444;border:1px solid rgba(239,68,68,0.3)');
-}
-
-function agpGenCode(){
-  var c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',r='AGP-';
-  for(var i=0;i<4;i++)r+=c[Math.floor(Math.random()*c.length)];
-  r+='-';
-  for(var i=0;i<4;i++)r+=c[Math.floor(Math.random()*c.length)];
-  return r;
-}
-
-function agpRegister(){
-  var prenom=(document.getElementById('agp-r-prenom')||{}).value||'';
-  var nom=(document.getElementById('agp-r-nom')||{}).value||'';
-  var centreNomV=(document.getElementById('agp-r-nom-prest')||{}).value||'';
-  var email=(document.getElementById('agp-r-email')||{}).value||'';
-  var tel=(document.getElementById('agp-r-tel')||{}).value||'';
-  var ville=(document.getElementById('agp-r-ville')||{}).value||'';
-  var adresse=(document.getElementById('agp-r-adresse')||{}).value||'';
-  var fondCode=(document.getElementById('agp-r-fond-code')||{}).value||'';
-  prenom=prenom.trim();nom=nom.trim();centreNomV=centreNomV.trim();email=email.trim();tel=tel.trim();fondCode=fondCode.trim();
-  if(!prenom||!nom||!centreNomV||!email||!tel||!fondCode){agpRegMsg('Remplissez tous les champs *',false);return;}
-  if(email.indexOf('@')<0){agpRegMsg('Email invalide',false);return;}
-  if(fondCode.length<3){agpRegMsg('Code fondateur min 3 caractères',false);return;}
-  var btn=document.getElementById('agp-r-btn');
-  if(btn){btn.disabled=true;btn.textContent='Création...';}
-  var db=window._agpDb,r=window._agpRef,s=window._agpSet,g=window._agpGet;
-  if(!db){agpRegMsg('Firebase non disponible',false);if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}return;}
-  var code=agpGenCode();
-  var uid='agp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
-  var logoInput=document.getElementById('agp-r-logo-file');
-  function save(logo){
-    var prest={uid:uid,nom:prenom+' '+nom,prenom:prenom,nomFamille:nom,
-      centreNom:centreNomV,email:email,tel:tel,ville:ville,adresse:adresse,
-      logo:logo||'',codeAcces:code,codeFondateur:fondCode,
-      dateCreation:new Date().toISOString()};
-    s(r(db,'agp_prest/'+uid+'/info'),prest).then(function(){
-      s(r(db,'agp_codes/'+code),uid);
-      try{localStorage.setItem('agp_p_'+code,JSON.stringify(prest));}catch(e){}
-      if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}
-      window._agpLastCreated=prest;
-      agpShowSuccess(prest,code);
-    }).catch(function(e){agpRegMsg('Erreur: '+e.message,false);if(btn){btn.disabled=false;btn.textContent='Créer ma prestation';}});
-  }
-  if(logoInput&&logoInput.files&&logoInput.files[0]){
-    var rd=new FileReader();rd.onload=function(e){save(e.target.result);};rd.readAsDataURL(logoInput.files[0]);
-  }else{save('');}
-}
-
-function agpShowSuccess(prest,code){
-  var reg=document.getElementById('agp-register');
-  if(!reg) return;
-  reg.innerHTML=[
-    '<div style="background:#0a1628;border:1px solid rgba(34,197,94,0.3);border-radius:18px;width:100%;max-width:480px;overflow:hidden;margin:28px auto;box-shadow:0 24px 80px rgba(0,0,0,0.5)">',
-    '<div style="padding:22px;text-align:center;border-bottom:1px solid rgba(34,197,94,0.2);background:rgba(34,197,94,0.04)">',
-    prest.logo?'<img src="'+prest.logo+'" style="height:54px;width:54px;object-fit:contain;border-radius:12px;margin-bottom:10px;display:block;margin-left:auto;margin-right:auto">':'<div style="font-size:46px;margin-bottom:10px">✅</div>',
-    '<h2 style="font-size:17px;font-weight:800;color:#22c55e;margin-bottom:3px">Prestation créée !</h2>',
-    '<p style="font-size:12px;color:#64748b">'+prest.centreNom+'</p>',
-    '</div>',
-    '<div style="padding:20px 22px">',
-    '<div style="background:rgba(37,99,235,0.1);border:2px solid rgba(37,99,235,0.4);border-radius:12px;padding:16px;text-align:center;margin-bottom:12px">',
-    '<div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px">Code d'accès</div>',
-    '<div id="agp-success-code" style="font-family:monospace;font-size:24px;font-weight:800;color:#60a5fa;letter-spacing:.18em;margin-bottom:9px">'+code+'</div>',
-    '<button id="agp-copy-btn" style="padding:6px 16px;border:none;border-radius:7px;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Copier le code</button>',
-    '</div>',
-    '<div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:12px;margin-bottom:12px">',
-    '<div style="font-size:10px;color:#a16207;text-transform:uppercase;margin-bottom:5px">👑 Code Fondateur</div>',
-    '<div style="font-family:monospace;font-size:17px;font-weight:800;color:#fbbf24;letter-spacing:.12em">'+prest.codeFondateur+'</div>',
-    '</div>',
-    '<div style="background:#060d24;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.8">',
-    '<div><span style="color:#475569">Prestation: </span><strong style="color:#e2e8f0">'+prest.centreNom+'</strong></div>',
-    '<div><span style="color:#475569">Responsable: </span><strong style="color:#e2e8f0">'+prest.nom+'</strong></div>',
-    '<div><span style="color:#475569">Email: </span><strong style="color:#e2e8f0">'+prest.email+'</strong></div>',
-    '<div><span style="color:#475569">Tél: </span><strong style="color:#e2e8f0">'+prest.tel+'</strong></div>',
-    '</div>',
-    '<button onclick="agpGoToLogin()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:9px">Accéder à ma prestation →</button>',
-    '<a href="https://wa.me/224623030403?text='+encodeURIComponent('Bonjour ! Je viens de créer ma prestation AGP. Code: '+code)+'" target="_blank" style="display:flex;align-items:center;justify-content:center;gap:7px;width:100%;padding:11px;border-radius:10px;background:#25D366;color:#fff;font-size:14px;font-weight:700;text-decoration:none;box-sizing:border-box">📱 WhatsApp Support</a>',
-    '</div>',
-    '</div>'
-  ].join('');
-  setTimeout(function(){
-    var cb=document.getElementById('agp-copy-btn');
-    if(cb){cb.onclick=function(){if(navigator.clipboard)navigator.clipboard.writeText(code).then(function(){cb.textContent='Copié ✓';cb.style.background='#22c55e';setTimeout(function(){cb.textContent='Copier le code';cb.style.background='#2563eb';},2000);});};}
-  },100);
-}
-
-function agpGoToLogin(){
-  var p=window._agpLastCreated;
-  if(p){window._agpLastCode=p.codeAcces;agpShowLogin(p);}
-  else agpShowLanding();
-}
-
-// ===== CONCEPTEUR =====
-function agpConcepteur(){
-  var ov=document.createElement('div');
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
-  ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.3);border-radius:16px;padding:28px;max-width:400px;width:90%">'+
-    '<h3 style="color:#fff;font-size:16px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px">⚙ Espace Concepteur</h3>'+
-    '<label style="display:block;font-size:11px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">Mot de passe</label>'+
-    '<input id="agp-dev-pwd" type="password" placeholder="••••••••" style="width:100%;padding:12px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:9px;color:#e2e8f0;font-size:14px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">'+
-    '<div style="display:flex;gap:8px">'+
-    '<button id="agp-dev-cancel" style="flex:1;padding:12px;border:1px solid rgba(255,255,255,0.1);border-radius:9px;background:transparent;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'+
-    '<button id="agp-dev-ok" style="flex:1;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Accéder</button>'+
-    '</div>'+
-    '<div id="agp-dev-msg" style="display:none;margin-top:10px;padding:9px;border-radius:7px;font-size:12px;color:#ef4444;background:rgba(239,68,68,0.08)"></div>';
-  document.body.appendChild(ov);
-  ov.onclick=function(e){if(e.target===ov)ov.remove();};
-  window._agpDevOv=ov;
-  setTimeout(function(){
-    var pw=document.getElementById('agp-dev-pwd');
-    document.getElementById('agp-dev-cancel').onclick=function(){ov.remove();};
-    document.getElementById('agp-dev-ok').onclick=agpDevCheck;
-    if(pw){pw.addEventListener('keydown',function(e){if(e.key==='Enter')agpDevCheck();});pw.focus();}
-  },100);
-}
-
-function agpDevCheck(){
-  var pw=document.getElementById('agp-dev-pwd');
-  var msg=document.getElementById('agp-dev-msg');
-  if(!pw||!msg) return;
-  if(pw.value!==window.AGP_DEV_PWD){msg.style.display='block';msg.textContent='Mot de passe incorrect.';pw.value='';return;}
-  pw.value='';
-  var ov=window._agpDevOv;
-  if(ov) ov.remove();
-  agpDevPanel();
-}
-
-function agpDevPanel(){
-  var ov=document.createElement('div');
-  ov.id='agp-dev-panel';
-  ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)';
-  ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,0.6)"><div style="text-align:center;color:#475569;padding:30px">⏳ Chargement...</div></div>';
-  document.body.appendChild(ov);
-  ov.onclick=function(e){if(e.target===ov)ov.remove();};
-  // Charger depuis cache d'abord
-  var cached=window._agpDevCache;
-  if(!cached){try{cached=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');}catch(e){}}
-  if(cached){window._agpDevCache=cached;agpDevRender(cached);return;}
-  // Firebase
-  var db=window._agpDb,r=window._agpRef,g=window._agpGet;
-  g(r(db,'agp_prest')).then(function(snap){
-    var list=[];
-    snap.forEach(function(c){var info=c.val()&&c.val().info;if(info)list.push(info);});
-    list.sort(function(a,b){return new Date(b.dateCreation)-new Date(a.dateCreation);});
-    window._agpDevCache=list;
-    try{localStorage.setItem('agp_dev_cache',JSON.stringify(list));}catch(e){}
-    agpDevRender(list);
-  }).catch(function(e){
-    var d=document.querySelector('#agp-dev-panel div');
-    if(d) d.innerHTML='<p style="color:#ef4444;text-align:center;padding:20px">Erreur: '+e.message+'</p>';
-  });
-}
-
-function agpDevRender(list){
-  var ov=document.getElementById('agp-dev-panel');
-  if(!ov) return;
-  var h=[
-    '<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto">',
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">',
-    '<div><h3 style="color:#fff;font-size:16px;font-weight:700;margin-bottom:2px">Toutes les préstations ('+list.length+')</h3>',
-    '<p style="font-size:11px;color:#475569;margin:0">Gérez les accès</p></div>',
-    '<div style="display:flex;gap:6px">',
-    '<button onclick="agpDevChangePwd()" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.3);border-radius:7px;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">🔒 Mot de passe</button>',
-    '<button onclick="window._agpDevCache=null;document.getElementById('agp-dev-panel').remove();agpDevPanel();" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit">↻</button>',
-    '<button onclick="document.getElementById('agp-dev-panel').remove()" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">✕</button>',
-    '</div></div>',
-    '<input oninput="agpDevFilter(this.value)" placeholder="Rechercher..." style="width:100%;padding:10px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">',
-    '<div id="agp-dev-list">'
-  ];
-  if(list.length===0) h.push('<div style="text-align:center;color:#334155;padding:40px">Aucune préstation.</div>');
-  list.forEach(function(p){
-    var bl=p.blocked===true;
-    h.push(
-      '<div class="agp-dev-item" data-search="'+(p.centreNom+' '+p.email+' '+p.nom).toLowerCase()+'" style="background:#060d24;border:1px solid '+(bl?'rgba(239,68,68,0.3)':'rgba(37,99,235,0.15)')+';border-radius:11px;padding:14px;margin-bottom:10px">',
-      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px">',
-      '<div style="flex:1;min-width:0">',
-      p.logo?'<img src="'+p.logo+'" style="height:28px;object-fit:contain;margin-bottom:7px;display:block;border-radius:4px">':'',
-      '<div style="display:flex;align-items:center;gap:7px;margin-bottom:3px">',
-      '<span style="font-weight:700;color:#e2e8f0;font-size:14px">'+p.centreNom+'</span>',
-      '<span style="font-size:11px;font-weight:700;color:'+(bl?'#ef4444':'#22c55e')+'">'+(bl?'🔴 Bloqué':'🟢 Actif')+'</span>',
-      '</div>',
-      '<div style="font-size:12px;color:#64748b;margin-bottom:3px">'+p.nom+' · '+p.email+'</div>',
-      p.tel?'<div style="font-size:11px;color:#475569">'+p.tel+(p.ville?' · '+p.ville:'')+'</div>':'',
-      '<div style="font-size:10px;color:#334155;margin-top:3px">'+new Date(p.dateCreation).toLocaleDateString('fr-FR')+'</div>',
-      '</div>',
-      '<div style="flex-shrink:0;display:flex;flex-direction:column;gap:5px;align-items:flex-end">',
-      '<div style="text-align:right"><div style="font-size:9px;color:#475569;margin-bottom:2px">CODE ACCÈS</div>',
-      '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#60a5fa;background:rgba(37,99,235,0.12);padding:3px 9px;border-radius:5px">'+p.codeAcces+'</div></div>',
-      '<div style="text-align:right"><div style="font-size:9px;color:#a16207;margin-bottom:2px">CODE FONDATEUR</div>',
-      '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#fbbf24;background:rgba(251,191,36,0.1);padding:3px 9px;border-radius:5px">'+(p.codeFondateur||'—')+'</div></div>',
-      '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">',
-      '<button data-code="'+p.codeAcces+'" onclick="agpDevCopy(this)" style="padding:4px 9px;border:none;border-radius:5px;background:#2563eb;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Copier</button>',
-      '<button data-uid="'+p.uid+'" data-bl="'+(bl?'1':'0')+'" onclick="agpDevToggle(this)" style="padding:4px 9px;border:none;border-radius:5px;background:'+(bl?'#22c55e':'#ef4444')+';color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">'+(bl?'Débloquer':'Bloquer')+'</button>',
-      '<button data-uid="'+p.uid+'" data-name="'+p.centreNom+'" onclick="agpDevDel(this)" style="padding:4px 9px;border:1px solid rgba(239,68,68,0.4);border-radius:5px;background:transparent;color:#ef4444;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">🗑</button>',
-      '</div></div></div></div>'
-    );
-  });
-  h.push('</div></div>');
-  ov.innerHTML=h.join('');
-  ov.onclick=function(e){if(e.target===ov)ov.remove();};
-}
-
-function agpDevFilter(q){
-  document.querySelectorAll('.agp-dev-item').forEach(function(el){
-    el.style.display=(!q||el.dataset.search.indexOf(q.toLowerCase())>=0)?'block':'none';
-  });
-}
-function agpDevCopy(btn){
-  var c=btn.getAttribute('data-code');
-  if(navigator.clipboard)navigator.clipboard.writeText(c).then(function(){btn.textContent='✓';btn.style.background='#22c55e';setTimeout(function(){btn.textContent='Copier';btn.style.background='#2563eb';},1500);});
-}
-function agpDevToggle(btn){
-  var uid=btn.getAttribute('data-uid'),bl=btn.getAttribute('data-bl')==='1';
-  var db=window._agpDb,r=window._agpRef,s=window._agpSet;
-  btn.disabled=true;btn.textContent='...';
-  s(r(db,'agp_prest/'+uid+'/info/blocked'),!bl).then(function(){
-    if(window._agpDevCache) window._agpDevCache.forEach(function(p){if(p.uid===uid)p.blocked=!bl;});
-    try{localStorage.setItem('agp_dev_cache',JSON.stringify(window._agpDevCache||[]));}catch(e){}
-    document.getElementById('agp-dev-panel').remove();
-    agpDevPanel();
-  });
-}
-function agpDevDel(btn){
-  var uid=btn.getAttribute('data-uid'),name=btn.getAttribute('data-name');
-  if(!confirm('Supprimer définitivement "'+name+'" ?')) return;
-  var db=window._agpDb,r=window._agpRef,rm=window._agpRemove;
-  rm(r(db,'agp_prest/'+uid)).then(function(){
-    if(window._agpDevCache) window._agpDevCache=window._agpDevCache.filter(function(p){return p.uid!==uid;});
-    try{localStorage.setItem('agp_dev_cache',JSON.stringify(window._agpDevCache||[]));}catch(e){}
-    document.getElementById('agp-dev-panel').remove();
-    agpDevPanel();
-  });
-}
-function agpDevChangePwd(){
-  var ov2=document.createElement('div');
-  ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:999999;display:flex;align-items:center;justify-content:center';
-  var d=document.createElement('div');
-  d.style.cssText='background:#0a1628;border:1px solid rgba(37,99,235,0.3);border-radius:14px;padding:24px;max-width:360px;width:90%';
-  d.innerHTML='<h3 style="color:#fff;font-size:15px;font-weight:700;margin-bottom:16px">🔒 Changer mot de passe</h3>'+
-    '<input id="cp-old" type="password" placeholder="Ancien mot de passe" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:8px;box-sizing:border-box">'+
-    '<input id="cp-new" type="password" placeholder="Nouveau mot de passe" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:8px;box-sizing:border-box">'+
-    '<input id="cp-con" type="password" placeholder="Confirmer" style="width:100%;padding:10px 12px;background:#060d24;border:1px solid rgba(37,99,235,0.3);border-radius:8px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:12px;box-sizing:border-box">'+
-    '<div id="cp-msg" style="display:none;font-size:12px;padding:8px;border-radius:6px;margin-bottom:10px"></div>'+
-    '<div style="display:flex;gap:8px">'+
-    '<button id="cp-no" style="flex:1;padding:10px;border:1px solid rgba(255,255,255,0.1);border-radius:8px;background:transparent;color:#64748b;font-size:13px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>'+
-    '<button id="cp-yes" style="flex:1;padding:10px;border:none;border-radius:8px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Enregistrer</button></div>';
-  ov2.appendChild(d);document.body.appendChild(ov2);
-  ov2.onclick=function(e){if(e.target===ov2)ov2.remove();};
-  document.getElementById('cp-no').onclick=function(){ov2.remove();};
-  document.getElementById('cp-yes').onclick=function(){
-    var o=document.getElementById('cp-old').value,n=document.getElementById('cp-new').value,c=document.getElementById('cp-con').value;
-    var m=document.getElementById('cp-msg');
-    function sm(t,ok){m.style.display='block';m.textContent=t;m.style.cssText='display:block;font-size:12px;padding:8px;border-radius:6px;margin-bottom:10px;'+(ok?'background:rgba(34,197,94,0.1);color:#22c55e':'background:rgba(239,68,68,0.1);color:#ef4444');}
-    if(!o||!n||!c){sm('Remplissez tous les champs',false);return;}
-    if(o!==window.AGP_DEV_PWD){sm('Ancien mot de passe incorrect',false);return;}
-    if(n!==c){sm('Mots de passe différents',false);return;}
-    if(n.length<4){sm('Minimum 4 caractères',false);return;}
-    window.AGP_DEV_PWD=n;sm('Modifié avec succès !',true);
-    setTimeout(function(){ov2.remove();},1000);
-  };
-}
-
-// ===== DÉMARRAGE =====
-document.addEventListener('DOMContentLoaded', function(){
-  // Forcer le masquage du moteur
-  ['loginPage','app'].forEach(function(id){
-    var el=document.getElementById(id);
-    if(el) el.style.display='none';
-  });
-  // Vider localStorage neindi
-  var keys=[];
-  for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('neindi_')===0)keys.push(k);}
-  keys.forEach(function(k){localStorage.removeItem(k);});
-  // Afficher la landing AGP
-  document.getElementById('agp-landing').style.display='flex';
-  // Précharger le cache dev
-  try{var c=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');if(c)window._agpDevCache=c;}catch(e){}
-});
-</script>
 
 <!-- MOTEUR JS -->
 <script>
