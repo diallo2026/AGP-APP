@@ -1447,14 +1447,24 @@ function login(){
 function logout(){
   sauvegarder();
   currentUser=''; currentRole=''; currentUserIndex=-1;
-  document.getElementById('app').style.display='none';
-  document.getElementById('loginPage').style.display='flex';
-  document.getElementById('accessCode').value='';
+  document.getElementById('app').style.setProperty('display','none','important');
   document.getElementById('gerantBtn').style.display='none';
   document.getElementById('salaireBtn').style.display='none';
   document.getElementById('btnReinit').style.display='none';
   document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
   document.getElementById('dashboard').classList.add('active');
+  // Mode AGP: retourner à la page de connexion de la prestation
+  if(window._AGP_MODE && window._agpLogoutCb){
+    window._AGP_MODE=false;
+    window._AGP_READY=false;
+    var cb=window._agpLogoutCb;
+    window._agpLogoutCb=null;
+    cb();
+    return;
+  }
+  // Mode standalone
+  document.getElementById('loginPage').style.display='flex';
+  document.getElementById('accessCode').value='';
   loadUsers();
 }
 
