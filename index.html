@@ -127,10 +127,8 @@ window.agpLoadData = function(prest) {
   display: none !important;
 }
 
-/* Sections AGP */
-#agp-landing { display:none; }
-#agp-register { display:none; }
-#agp-login { display:none; }
+/* Sections AGP - contrôlées par JS inline style */
+#agp-landing,#agp-register,#agp-login { display:none; }
 
 /* Sync indicator */
 #agpSyncIndicator {
@@ -185,11 +183,10 @@ function agpSections(active){
     var el=document.getElementById(id);
     if(!el) return;
     if(id===active){
-      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
-      el.style.removeProperty('display');
-      el.style.display=id==='agp-landing'?'flex':id==='app'?'block':'flex';
+      var disp = id==='app'?'block':'flex';
+      el.style.setProperty('display', disp, 'important');
     } else {
-      el.style.display='none';
+      el.style.setProperty('display', 'none', 'important');
     }
   });
 }
@@ -339,6 +336,7 @@ function agpLaunch(prest, role, agentName){
 
   // Afficher l'app
   agpSections('app');
+  document.getElementById('app').style.setProperty('display','block','important');
   document.getElementById('agpSyncIndicator').style.display='block';
 
   // Logout => retour page login
@@ -650,7 +648,7 @@ document.addEventListener('DOMContentLoaded', function(){
   for(var i=0;i<localStorage.length;i++){var k=localStorage.key(i);if(k&&k.indexOf('neindi_')===0)keys.push(k);}
   keys.forEach(function(k){localStorage.removeItem(k);});
   // Afficher la landing AGP
-  document.getElementById('agp-landing').style.display='flex';
+  document.getElementById('agp-landing').style.setProperty('display','flex','important');
   // Précharger le cache dev
   try{var c=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');if(c)window._agpDevCache=c;}catch(e){}
 });
@@ -1510,7 +1508,7 @@ function logout(){
   sauvegarder();
   currentUser=''; currentRole=''; currentUserIndex=-1;
   document.getElementById('app').style.display='none';
-  document.getElementById('loginPage').style.display='flex';
+  document.getElementById('loginPage').style.setProperty('display','flex','important');
   document.getElementById('accessCode').value='';
   document.getElementById('gerantBtn').style.display='none';
   document.getElementById('salaireBtn').style.display='none';
