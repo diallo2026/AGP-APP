@@ -1,7 +1,7 @@
 {
   "name": "App AGP",
   "short_name": "AGP",
-  "description": "Application de Gestions de Préstations",
+  "description": "Application de Gestions de Prestations",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#060d24",
