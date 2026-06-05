@@ -174,9 +174,21 @@ function agpShowLanding(){
   window._agpLastCode = null;
   var ci=document.getElementById('agp-code-input');if(ci)ci.value='';
   var ce=document.getElementById('agp-code-err');if(ce)ce.style.display='none';
-  agpSections('agp-landing');
+  ['agp-register','agp-login','loginPage','app'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.setProperty('display','none','important');
+  });
+  var land=document.getElementById('agp-landing');
+  if(land) land.style.setProperty('display','flex','important');
 }
-function agpShowRegister(){ agpSections('agp-register'); }
+function agpShowRegister(){
+  ['agp-landing','agp-login','loginPage','app'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.setProperty('display','none','important');
+  });
+  var reg=document.getElementById('agp-register');
+  if(reg) reg.style.setProperty('display','flex','important');
+}
 
 function agpSections(active){
   ['agp-landing','agp-register','agp-login','loginPage','app'].forEach(function(id){
