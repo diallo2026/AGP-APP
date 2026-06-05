@@ -321,7 +321,7 @@ function agpLoginAgent(){
   setTimeout(function(){agpLaunch(p,'GERANT',sel.options[sel.selectedIndex].textContent);},500);
 }
 
-// ===== LANCER L'APP =====
+// ===== LANCER LAPP =====
 function agpLaunch(prest, role, agentName){
   window._AGP_MODE = true;
   window._agpCurrentPrest = prest;
@@ -435,7 +435,7 @@ function agpShowSuccess(prest,code){
     '</div>',
     '<div style="padding:20px 22px">',
     '<div style="background:rgba(37,99,235,0.1);border:2px solid rgba(37,99,235,0.4);border-radius:12px;padding:16px;text-align:center;margin-bottom:12px">',
-    '<div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px">Code d'acces</div>',
+    '<div style="font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px">Code dacces</div>',
     '<div id="agp-success-code" style="font-family:monospace;font-size:24px;font-weight:800;color:#60a5fa;letter-spacing:.18em;margin-bottom:9px">'+code+'</div>',
     '<button id="agp-copy-btn" style="padding:6px 16px;border:none;border-radius:7px;background:#2563eb;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Copier le code</button>',
     '</div>',
@@ -508,7 +508,7 @@ function agpDevPanel(){
   ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto;box-shadow:0 32px 80px rgba(0,0,0,0.6)"><div style="text-align:center;color:#475569;padding:30px"> Chargement...</div></div>';
   document.body.appendChild(ov);
   ov.onclick=function(e){if(e.target===ov)ov.remove();};
-  // Charger depuis cache d'abord
+  // Charger depuis cache dabord
   var cached=window._agpDevCache;
   if(!cached){try{cached=JSON.parse(localStorage.getItem('agp_dev_cache')||'null');}catch(e){}}
   if(cached){window._agpDevCache=cached;agpDevRender(cached);return;}
@@ -537,8 +537,8 @@ function agpDevRender(list){
     '<p style="font-size:11px;color:#475569;margin:0">Gerez les acces</p></div>',
     '<div style="display:flex;gap:6px">',
     '<button onclick="agpDevChangePwd()" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.3);border-radius:7px;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit"> Mot de passe</button>',
-    '<button onclick="window._agpDevCache=null;document.getElementById('agp-dev-panel').remove();agpDevPanel();" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit"></button>',
-    '<button onclick="document.getElementById('agp-dev-panel').remove()" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px"></button>',
+    '<button id="agp-reload-dev" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit">Actualiser</button>',
+    '<button id="agp-close-dev" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">&#x2715;</button>',
     '</div></div>',
     '<input oninput="agpDevFilter(this.value)" placeholder="Rechercher..." style="width:100%;padding:10px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">',
     '<div id="agp-dev-list">'
@@ -574,6 +574,12 @@ function agpDevRender(list){
   h.push('</div></div>');
   ov.innerHTML=h.join('');
   ov.onclick=function(e){if(e.target===ov)ov.remove();};
+  setTimeout(function(){
+    var rb=document.getElementById('agp-reload-dev');
+    var cb=document.getElementById('agp-close-dev');
+    if(rb) rb.onclick=function(){window._agpDevCache=null;var p=document.getElementById('agp-dev-panel');if(p)p.remove();agpDevPanel();};
+    if(cb) cb.onclick=function(){var p=document.getElementById('agp-dev-panel');if(p)p.remove();};
+  },100);
 }
 
 function agpDevFilter(q){
