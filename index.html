@@ -107,25 +107,24 @@ window.agpLoadData = function(prest) {
     }
     window._AGP_READY = true;
     if(typeof loadUsers==='function') loadUsers();
-    // Initialiser immediatement
-    if(typeof loadUsers==='function') loadUsers();
-    if(typeof updateDashboard==='function') updateDashboard();
-    if(typeof verifierEcheances==='function') verifierEcheances();
+    // Initialiser immediatement - appel direct aux fonctions globales du moteur
+    try{ loadUsers(); } catch(e){}
+    try{ updateDashboard(); } catch(e){}
     // Initialiser les selects apres court delai
     setTimeout(function(){
-      if(typeof buildJoursSection==='function') buildJoursSection();
-      if(typeof renderServiceSelect==='function') renderServiceSelect();
-      if(typeof renderFormationSelect==='function') renderFormationSelect();
-      if(typeof renderCatalogueFormations==='function') renderCatalogueFormations();
-      if(typeof renderHoraireTable==='function') renderHoraireTable();
-      if(typeof renderDureeTable==='function') renderDureeTable();
-      if(typeof renderStock==='function') renderStock();
-      if(typeof renderStockSelect==='function') renderStockSelect();
-      if(typeof renderSalaires==='function') renderSalaires();
-      if(typeof renderManagerList==='function') renderManagerList();
-      if(typeof renderInscrits==='function') renderInscrits();
-      if(typeof renderHistorique==='function') renderHistorique();
-      if(typeof renderDepenses==='function') renderDepenses();
+      try{ buildJoursSection(); }catch(e){}
+      try{ renderServiceSelect(); }catch(e){}
+      try{ renderFormationSelect(); }catch(e){}
+      try{ renderCatalogueFormations(); }catch(e){}
+      try{ renderHoraireTable(); }catch(e){}
+      try{ renderDureeTable(); }catch(e){}
+      try{ renderStock(); }catch(e){}
+      try{ renderStockSelect(); }catch(e){}
+      try{ renderSalaires(); }catch(e){}
+      try{ renderManagerList(); }catch(e){}
+      try{ renderInscrits(); }catch(e){}
+      try{ renderHistorique(); }catch(e){}
+      try{ renderDepenses(); }catch(e){}
       var dt=document.getElementById('dateText');
       if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     }, 300);
@@ -1406,12 +1405,8 @@ window._neindi = {
   get centreAdresse(){return centreAdresse;}, set centreAdresse(v){centreAdresse=v;}
 };
 // Expose fonctions UI pour Firebase
-window.updateDashboard = function(){ if(typeof updateDashboard==='function') updateDashboard(); };
-window.loadUsers       = function(){ if(typeof loadUsers==='function') loadUsers(); };
-window.renderStock     = function(){ if(typeof renderStock==='function') renderStock(); };
-window.renderDepenses  = function(){ if(typeof renderDepenses==='function') renderDepenses(); };
-window.renderInscriptions = function(){ if(typeof renderInscriptions==='function') renderInscriptions(); };
-window.verifierEcheances  = function(){ if(typeof verifierEcheances==='function') verifierEcheances(); };
+// updateDashboard handled directly
+// AGP: fonctions directes du moteur utilisées directement (pas de redefinition)
 
 // Initialiser stocks avec articles par defaut
 ARTICLES_DEFAULT.forEach(function(a){ stocks[a] = 0; });
