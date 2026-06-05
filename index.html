@@ -107,10 +107,28 @@ window.agpLoadData = function(prest) {
     }
     window._AGP_READY = true;
     if(typeof loadUsers==='function') loadUsers();
-    if(typeof renderStock==='function') renderStock();
+    // Initialiser immediatement
+    if(typeof loadUsers==='function') loadUsers();
     if(typeof updateDashboard==='function') updateDashboard();
-    if(typeof buildJoursSection==='function') buildJoursSection();
-    if(typeof renderServiceSelect==='function') renderServiceSelect();
+    if(typeof verifierEcheances==='function') verifierEcheances();
+    // Initialiser les selects apres court delai
+    setTimeout(function(){
+      if(typeof buildJoursSection==='function') buildJoursSection();
+      if(typeof renderServiceSelect==='function') renderServiceSelect();
+      if(typeof renderFormationSelect==='function') renderFormationSelect();
+      if(typeof renderCatalogueFormations==='function') renderCatalogueFormations();
+      if(typeof renderHoraireTable==='function') renderHoraireTable();
+      if(typeof renderDureeTable==='function') renderDureeTable();
+      if(typeof renderStock==='function') renderStock();
+      if(typeof renderStockSelect==='function') renderStockSelect();
+      if(typeof renderSalaires==='function') renderSalaires();
+      if(typeof renderManagerList==='function') renderManagerList();
+      if(typeof renderInscrits==='function') renderInscrits();
+      if(typeof renderHistorique==='function') renderHistorique();
+      if(typeof renderDepenses==='function') renderDepenses();
+      var dt=document.getElementById('dateText');
+      if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    }, 300);
   });
   window._agpListener = unsubscribe;
 };
@@ -121,11 +139,10 @@ window.agpLoadData = function(prest) {
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 
 /* FORCER le masquage du moteur au démarrage */
-#loginPage,
-#app,
-.min-h-screen.flex.flex-col.items-center.justify-center {
+#loginPage {
   display: none !important;
 }
+/* app est controle par Tailwind + JS */
 
 /* Sections AGP - contrôlées par JS inline style */
 #agp-landing,#agp-register,#agp-login { display:none; }
@@ -345,10 +362,23 @@ function agpLaunch(prest, role, agentName){
   var lln=document.getElementById('loginNom');if(lln)lln.textContent=prest.centreNom||'Ma Prestation';
   var cu=document.getElementById('connectedUser');if(cu)cu.innerText=(agentName||'Fondateur')+' ('+role+')';
   var rt=document.getElementById('roleText');if(rt)rt.innerText=role;
+  // Sync le fondateur dans la liste users si vide
+  if(typeof users!=='undefined' && users.length===0){
+    users=[{nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0}];
+  }
 
   // Afficher l'app
-  agpSections('app');
-  document.getElementById('app').style.setProperty('display','block','important');
+  // Cacher toutes les sections AGP
+  ['agp-landing','agp-register','agp-login'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el) el.style.setProperty('display','none','important');
+  });
+  // Cacher loginPage
+  var lp=document.getElementById('loginPage');
+  if(lp) lp.style.setProperty('display','none','important');
+  // Afficher l'app (laisser Tailwind gerer le display)
+  var appEl=document.getElementById('app');
+  if(appEl){ appEl.style.setProperty('display','block','important'); }
   document.getElementById('agpSyncIndicator').style.display='block';
 
   // Logout => retour page login
@@ -361,13 +391,29 @@ function agpLaunch(prest, role, agentName){
     agpSections('agp-login');
   };
 
+  // Role - defini AVANT le chargement des donnees
+  if(typeof currentRole!=='undefined') currentRole=role;
+  if(typeof currentUser!=='undefined') currentUser=agentName||(role==='FONDATEUR'?'Fondateur':agentName||'Agent');
+  // Trouver l'index du gerant dans users pour renderSalaires
+  if(typeof currentUserIndex!=='undefined'){
+    if(role==='FONDATEUR'){
+      currentUserIndex=0;
+    } else {
+      // Chercher le gerant par son nom dans users
+      var agIdx=-1;
+      if(typeof users!=='undefined' && agentName){
+        for(var ui=0;ui<users.length;ui++){
+          if(users[ui].nom===agentName||(agentName&&agentName.indexOf(users[ui].nom)>=0)){
+            agIdx=ui;break;
+          }
+        }
+      }
+      currentUserIndex=agIdx;
+    }
+  }
+
   // Charger donnees Firebase
   window.agpLoadData(prest);
-
-  // Role
-  if(typeof currentRole!=='undefined') currentRole=role;
-  if(typeof currentUser!=='undefined') currentUser=agentName||(role==='FONDATEUR'?'Fondateur':'Agent');
-  if(typeof currentUserIndex!=='undefined') currentUserIndex=role==='FONDATEUR'?0:-1;
 }
 
 // ===== INSCRIPTION =====
