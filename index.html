@@ -1475,7 +1475,7 @@ function showSection(id){
   if(id==='stock'){renderStock();renderStockSelect();}
   if(id==='historique') renderHistorique();
   if(id==='depenses') renderDepenses();
-  if(id==='inscrits'){ renderInscrits(); try{buildJoursSection();}catch(e){} }
+  if(id==='inscrits'){ renderInscrits(); try{buildJoursSection();}catch(e){} try{renderFormationSelect();}catch(e){} try{renderServiceSelect();}catch(e){} }
   if(id==='formations'){ renderFormationSelect(); renderDureeSelect(); renderCatalogueFormations(); renderHoraireTable(); renderDureeTable(); }
   if(id==='services'){renderServiceTable();afficherBanniereAuth();}
 }
