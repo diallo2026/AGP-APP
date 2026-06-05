@@ -1658,8 +1658,12 @@ function buildJoursSection(){
   const c=document.getElementById('joursContainer');
   if(!c) return;
   c.innerHTML='';
-  // Utiliser HEURES (constante) pour les tranches horaires
-  const listeHeures=typeof HEURES!=='undefined'?HEURES:['08H-10H','10H-12H','12H-14H','14H-16H','16H-18H','18H-20H','20H-22H'];
+  // Utiliser les horaires saisis par la prestation (pas les horaires fixes)
+  const listeHeures=Array.isArray(horaires)&&horaires.length>0?horaires:[];
+  if(listeHeures.length===0){
+    var _m=document.createElement('p');_m.style.cssText='color:#f97316;font-size:13px;font-weight:700;padding:8px';_m.textContent='Ajoutez vos horaires dans: Formations > Catalogue des Horaires';c.appendChild(_m)
+    return;
+  }
   JOURS.forEach(function(j){
     const d=document.createElement('div');
     d.className='flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl';
