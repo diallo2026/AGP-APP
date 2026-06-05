@@ -55,7 +55,7 @@ window.agpSaveFirebase = function() {
     historique:         typeof historique!=='undefined'?historique:[],
     servicesTypes:      typeof servicesTypes!=='undefined'?servicesTypes:[],
     formations:         typeof formations!=='undefined'?formations:[],
-    horaires:           typeof horaires!=='undefined'?horaires:{},
+    horaires:           typeof horaires!=='undefined'?horaires:[],
     durees:             typeof durees!=='undefined'?durees:[],
     inscrits:           typeof inscrits!=='undefined'?inscrits:[],
     servicesList:       typeof servicesList!=='undefined'?servicesList:[]
@@ -80,7 +80,7 @@ window.agpLoadData = function(prest) {
     if(typeof inscrits!=='undefined') inscrits=[];
     if(typeof servicesList!=='undefined') servicesList=[];
     if(typeof formations!=='undefined') formations=[];
-    if(typeof horaires!=='undefined') horaires={};
+    if(typeof horaires!=='undefined') horaires=[];
     if(typeof durees!=='undefined') durees=[];
     if(typeof servicesTypes!=='undefined') servicesTypes=['Saisie','Impression','Photocopie','Prestation'];
     if(typeof permissionsGerants!=='undefined') permissionsGerants={};
@@ -98,7 +98,7 @@ window.agpLoadData = function(prest) {
       if(data.inscrits) inscrits=toA(data.inscrits);
       if(data.servicesList) servicesList=toA(data.servicesList);
       if(data.formations) formations=toA(data.formations);
-      if(data.horaires) horaires=data.horaires||{};
+      if(data.horaires){ var h=data.horaires; horaires=Array.isArray(h)?h:(typeof h==='object'?Object.values(h):[]); }
       if(data.durees) durees=toA(data.durees);
       if(data.servicesTypes) servicesTypes=toA(data.servicesTypes);
       if(data.permissionsGerants) permissionsGerants=data.permissionsGerants||{};
@@ -1475,7 +1475,17 @@ function showSection(id){
   if(id==='stock'){renderStock();renderStockSelect();}
   if(id==='historique') renderHistorique();
   if(id==='depenses') renderDepenses();
-  if(id==='inscrits'){ renderInscrits(); try{buildJoursSection();}catch(e){} try{renderFormationSelect();}catch(e){} try{renderServiceSelect();}catch(e){} }
+  if(id==='inscrits'){
+    renderInscrits();
+    try{buildJoursSection();}catch(e){}
+    try{renderFormationSelect();}catch(e){}
+    try{renderServiceSelect();}catch(e){}
+    // Relancer apres delai pour s'assurer que Firebase a charge les formations
+    setTimeout(function(){
+      try{renderFormationSelect();}catch(e){}
+      try{buildJoursSection();}catch(e){}
+    },500);
+  }
   if(id==='formations'){ renderFormationSelect(); renderDureeSelect(); renderCatalogueFormations(); renderHoraireTable(); renderDureeTable(); }
   if(id==='services'){renderServiceTable();afficherBanniereAuth();}
 }
@@ -2841,6 +2851,14 @@ function renderFormationSelect(){
   if(!sel) return;
   const curVal=sel.value;
   sel.innerHTML='';
+  // Si aucune formation n'existe, afficher option indicative
+  if(!formations||formations.length===0){
+    const o=document.createElement('option');
+    o.value='';
+    o.textContent='-- Aucune formation (creer dans onglet Formations) --';
+    sel.appendChild(o);
+    return;
+  }
   // Regrouper par module
   const modules={};
   formations.forEach(function(f,i){
@@ -2863,7 +2881,7 @@ function renderFormationSelect(){
   });
   // Restaurer la valeur si possible
   if(curVal) sel.value=curVal;
-  mettreAJourBrochureLabel();
+  try{mettreAJourBrochureLabel();}catch(e){}
 }
 
 function renderCatalogueFormations(){
