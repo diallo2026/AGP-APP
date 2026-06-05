@@ -1475,7 +1475,7 @@ function showSection(id){
   if(id==='stock'){renderStock();renderStockSelect();}
   if(id==='historique') renderHistorique();
   if(id==='depenses') renderDepenses();
-  if(id==='inscrits') renderInscrits();
+  if(id==='inscrits'){ renderInscrits(); try{buildJoursSection();}catch(e){} }
   if(id==='formations'){ renderFormationSelect(); renderDureeSelect(); renderCatalogueFormations(); renderHoraireTable(); renderDureeTable(); }
   if(id==='services'){renderServiceTable();afficherBanniereAuth();}
 }
@@ -1646,10 +1646,16 @@ function buildJoursSection(){
   const c=document.getElementById('joursContainer');
   if(!c) return;
   c.innerHTML='';
+  // Utiliser HEURES (constante) pour les tranches horaires
+  const listeHeures=typeof HEURES!=='undefined'?HEURES:['08H-10H','10H-12H','12H-14H','14H-16H','16H-18H','18H-20H','20H-22H'];
   JOURS.forEach(function(j){
     const d=document.createElement('div');
     d.className='flex items-center gap-2 bg-slate-100 px-3 py-2 rounded-xl';
-    d.innerHTML='<input type="checkbox" class="jourCase w-5 h-5" value="'+j+'" id="jour_'+j+'"><label for="jour_'+j+'" class="font-bold cursor-pointer w-24 text-sm">'+j+'</label><select class="heureCase border rounded-lg px-2 py-1 text-xs flex-1" data-jour="'+j+'">'+horaires.map(function(h){return '<option>'+h+'</option>';}).join('')+'</select>';
+    d.innerHTML='<input type="checkbox" class="jourCase w-5 h-5" value="'+j+'" id="jour_'+j+'">'
+      +'<label for="jour_'+j+'" class="font-bold cursor-pointer w-24 text-sm">'+j+'</label>'
+      +'<select class="heureCase border rounded-lg px-2 py-1 text-xs flex-1" data-jour="'+j+'">'
+      +listeHeures.map(function(h){return '<option value="'+h+'">'+h+'</option>';}).join('')
+      +'</select>';
     c.appendChild(d);
   });
 }
