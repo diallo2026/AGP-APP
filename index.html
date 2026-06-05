@@ -1589,6 +1589,8 @@ function renderHoraireTable(){
   const tbody=document.getElementById('horaireTable');
   if(!tbody) return;
   tbody.innerHTML='';
+  // S'assurer que horaires est un tableau
+  if(!Array.isArray(horaires)) horaires=[];
   if(!horaires.length){
     tbody.innerHTML='<tr><td colspan="2" class="p-4 text-center text-gray-400 italic">Aucun horaire.</td></tr>';
     return;
@@ -1615,13 +1617,13 @@ function renderHoraireTable(){
 function ajouterHoraire(){
   const val=document.getElementById('newHoraire').value.trim();
   if(!val){alert('Entrez un horaire');return;}
+  if(!Array.isArray(horaires)) horaires=[];
   if(horaires.includes(val)){alert('Cet horaire existe deja');return;}
   horaires.push(val);
   document.getElementById('newHoraire').value='';
   renderHoraireTable();
   buildJoursSection();
   sauvegarder();
-  alert('Horaire "'+val+'" ajoute!');
 }
 
 function modifierHoraire(idx){
