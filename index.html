@@ -557,6 +557,7 @@ function agpDevRender(list){
     '<div style="display:flex;gap:6px">',
     '<button onclick="agpDevChangePwd()" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.3);border-radius:7px;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Mot de passe</button>',
     '<button id="agp-reload-dev" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit">Actualiser</button>',
+    '<button onclick="agpInitLicencesExistantes()" style="padding:6px 11px;border:1px solid rgba(249,115,22,0.4);border-radius:7px;background:rgba(249,115,22,0.08);color:#fb923c;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Init licences</button>',
     '<button id="agp-close-dev" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">&#x2715;</button>',
     '</div></div>',
     '<input oninput="agpDevFilter(this.value)" placeholder="Rechercher..." style="width:100%;padding:10px 14px;background:#060d24;border:1px solid rgba(37,99,235,0.2);border-radius:9px;color:#e2e8f0;font-size:13px;font-family:inherit;outline:none;margin-bottom:14px;box-sizing:border-box">',
@@ -672,6 +673,46 @@ function agpDevChangePwd(){
 }
 
 /* ===== DEMARRAGE ===== */
+
+
+// ===== INITIALISER LICENCES PRESTATIONS EXISTANTES =====
+// Pour les prestations créées avant la fonctionnalité licence
+function agpInitLicencesExistantes(){
+  if(!confirm('Initialiser les licences pour toutes les prestations sans date expiration ?\nCela donnera 60 jours a partir de leur date de creation.')) return;
+  var db=window._agpDb,r=window._agpRef,g=window._agpGet,s=window._agpSet;
+  if(!db){alert('Firebase non disponible');return;}
+  g(r(db,'agp_prest')).then(function(snap){
+    var count=0,updated=0;
+    var promises=[];
+    snap.forEach(function(child){
+      var info=child.val()&&child.val().info;
+      if(!info) return;
+      count++;
+      // UNIQUEMENT si dateExpiration est absent - ne rien toucher aux autres
+      if(!info.dateExpiration){
+        var dateCreation=info.dateCreation?new Date(info.dateCreation):new Date();
+        var dateExp=new Date(dateCreation.getTime()+60*24*60*60*1000);
+        var uid=info.uid||child.key;
+        // Ajouter SEULEMENT les champs de licence manquants
+        promises.push(
+          s(r(db,'agp_prest/'+uid+'/info/dateExpiration'),dateExp.toISOString()).then(function(){
+            return s(r(db,'agp_prest/'+uid+'/info/licenceStatut'),'essai');
+          }).then(function(){
+            return s(r(db,'agp_prest/'+uid+'/info/licencePeriode'),'essai_60j');
+          }).then(function(){
+            updated++;
+          })
+        );
+      }
+    });
+    Promise.all(promises).then(function(){
+      alert('Initialisation terminee !\n'+count+' prestation(s) trouvee(s)\n'+updated+' prestation(s) mise(s) a jour avec 60 jours dessai\n(Les prestations avec licence existante non modifiees)');
+      var p=document.getElementById('agp-dev-panel');if(p)p.remove();agpDevPanel();
+    }).catch(function(e){
+      alert('Erreur: '+e.message);
+    });
+  }).catch(function(e){alert('Erreur Firebase: '+e.message);});
+}
 
 function agpModifierLogo(){
   var prest=window._agpCurrentPrest;
