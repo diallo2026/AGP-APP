@@ -193,7 +193,30 @@ function agpGoTo(){
     return g(r(db,'agp_prest/'+uid+'/info')).then(function(s){
       var p=s.val();
       if(!p){err.textContent='Prestation introuvable';err.style.color='#ef4444';return;}
-      if(p.blocked){err.textContent='Acces suspendu. Contactez le concepteur.';err.style.color='#ef4444';return;}
+      if(p.blocked){
+        err.style.color='#ef4444';
+        var _bm=document.createElement('div');
+        _bm.style.fontSize='12px';_bm.style.lineHeight='1.6';
+        _bm.innerHTML='<strong>Acces suspendu.</strong><br>Votre prestation a ete bloquee suite au non-paiement de votre licence dutilisation.<br>Veuillez contacter le service de gestion au <strong>+224 623 030 403</strong> ou effectuer votre paiement et envoyer une capture decran a <strong>neindimultiservice@gmail.com</strong> ou WhatsApp <strong>623 030 403</strong> pour retablir votre connexion.';
+        err.textContent='';err.appendChild(_bm);err.style.display='block';
+        return;
+      }
+      // Verification expiration licence
+      if(p.dateExpiration && p.licenceStatut!=='actif'){
+        var _expD2=new Date(p.dateExpiration);
+        var _nowD2=new Date();
+        if(_nowD2>_expD2){
+          var db2=window._agpDb,r2=window._agpRef,s2=window._agpSet;
+          s2(r2(db2,'agp_prest/'+p.uid+'/info/blocked'),true);
+          s2(r2(db2,'agp_prest/'+p.uid+'/info/licenceStatut'),'expire');
+          err.style.color='#ef4444';err.style.display='block';
+          var _em=document.createElement('div');
+          _em.style.fontSize='12px';_em.style.lineHeight='1.6';
+          _em.innerHTML='<strong>Licence expiree - Acces suspendu.</strong><br>Votre prestation a ete bloquee suite au non-paiement de votre licence dutilisation. Veuillez contacter le service de gestion des paiements au <strong>+224 623 030 403</strong> ou effectuer votre paiement et envoyer une capture decran a <strong>neindimultiservice@gmail.com</strong> ou par WhatsApp au <strong>623 030 403</strong> pour retablir votre connexion.';
+          err.textContent='';err.appendChild(_em);
+          return;
+        }
+      }
       try{localStorage.setItem('agp_p_'+code,JSON.stringify(p));}catch(e){}
       window._agpLastCode=code;
       err.style.display='none';
@@ -340,6 +363,7 @@ function agpLaunch(prest, role, agentName, agIdx){
   // Afficher l'app
   agpSections('app');
   var si=document.getElementById('agpSyncIndicator');if(si)si.style.display='block';
+  agpAfficherChrono(prest);
 
   // Logout = retour page login
   window._agpLogoutCb=function(){
@@ -407,10 +431,15 @@ function agpRegister(){
     if(snap.val()) code=agpGenCode(); // regenerer si collision
     var logoInput=document.getElementById('agp-r-logo-file');
     function save(logo){
+      var _now=new Date();
+      var _exp=new Date(_now.getTime()+60*24*60*60*1000);
       var prest={uid:uid,nom:prenom+' '+nom,prenom:prenom,nomFamille:nom,
         centreNom:centreNomV,email:email,tel:tel,ville:ville,adresse:adresse,
         logo:logo||'',codeAcces:code,codeFondateur:fondCode,
-        dateCreation:new Date().toISOString(),blocked:false};
+        dateCreation:new Date().toISOString(),blocked:false,
+        dateExpiration:_exp.toISOString(),
+        licenceStatut:'essai',
+        licencePeriode:'essai_60j'};
       s(r(db,'agp_prest/'+uid+'/info'),prest).then(function(){
         s(r(db,'agp_codes/'+code),uid);
         try{localStorage.setItem('agp_p_'+code,JSON.stringify(prest));}catch(e){}
@@ -439,6 +468,7 @@ function agpShowSuccess(prest,code){
     +'<div style="background:rgba(251,191,36,0.07);border:1px solid rgba(251,191,36,0.2);border-radius:10px;padding:12px;margin-bottom:12px">'
     +'<div style="font-size:10px;color:#a16207;text-transform:uppercase;margin-bottom:5px">Code Fondateur</div>'
     +'<div style="font-family:monospace;font-size:17px;font-weight:800;color:#fbbf24;letter-spacing:.12em">'+prest.codeFondateur+'</div></div>'
+    +'<div style="background:rgba(249,115,22,0.08);border:1px solid rgba(249,115,22,0.25);border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;line-height:1.7"><strong style="color:#fb923c">Periode dessai gratuite - 60 jours</strong><br>Votre prestation beneficie de 60 jours dessai gratuit. Apres ce delai, une licence annuelle est requise pour continuer. Contactez avant expiration: <strong style="color:#fb923c">+224 623 030 403</strong></div>'
     +'<button onclick="agpGoToLogin()" style="width:100%;padding:13px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit">Acceder a ma prestation</button>'
     +'</div></div>';
   setTimeout(function(){
@@ -498,6 +528,18 @@ function agpDevPanel(){
     var list=[];
     snap.forEach(function(c){var info=c.val()&&c.val().info;if(info)list.push(info);});
     list.sort(function(a,b){return new Date(b.dateCreation)-new Date(a.dateCreation);});
+    // Verification auto: bloquer les prestations expirees
+    var _now3=new Date();
+    list.forEach(function(pp){
+      if(!pp.uid||!pp.dateExpiration||pp.licenceStatut==='actif') return;
+      var _e3=new Date(pp.dateExpiration);
+      if(_now3>_e3&&!pp.blocked){
+        var db3=window._agpDb,r3=window._agpRef,s3=window._agpSet;
+        s3(r3(db3,'agp_prest/'+pp.uid+'/info/blocked'),true);
+        s3(r3(db3,'agp_prest/'+pp.uid+'/info/licenceStatut'),'expire');
+        pp.blocked=true;pp.licenceStatut='expire';
+      }
+    });
     agpDevRender(list);
   }).catch(function(e){
     var d=ov.querySelector('div');if(d)d.innerHTML='<p style="color:#ef4444;text-align:center">Erreur: '+e.message+'</p>';
@@ -535,7 +577,28 @@ function agpDevRender(list){
       '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#60a5fa;background:rgba(37,99,235,0.12);padding:3px 9px;border-radius:5px">'+p.codeAcces+'</div></div>',
       '<div style="text-align:right"><div style="font-size:9px;color:#a16207;margin-bottom:2px">FONDATEUR</div>',
       '<div style="font-family:monospace;font-size:12px;font-weight:800;color:#fbbf24;background:rgba(251,191,36,0.1);padding:3px 9px;border-radius:5px">'+(p.codeFondateur||'--')+'</div></div>',
-      '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end">',
+    );
+      // Licence info
+      (function(pp){
+        var _e=pp.dateExpiration?new Date(pp.dateExpiration):null;
+        var _n=new Date();
+        var _ok=pp.licenceStatut==='actif';
+        var _j=_e?Math.max(0,Math.ceil((_e-_n)/(1000*60*60*24))):null;
+        var _c=_j===null?'#64748b':_ok?'#22c55e':_j>30?'#22c55e':_j>10?'#f59e0b':'#ef4444';
+        var _t=_j===null?'Pas de licence':_ok?('Active - '+_j+' j restants'):(_j<=0?'Expiree':_j+' j essai restants');
+        var _d=pp.dateDernierPaiement?('Paiement: '+new Date(pp.dateDernierPaiement).toLocaleDateString('fr-FR')):'';
+        h.push(
+          '<div style="margin-top:8px;padding:8px 10px;background:rgba(0,0,0,0.25);border-radius:8px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">'+
+          '<div><span style="font-size:10px;font-weight:700;color:'+_c+'">Licence: '+_t+'</span>'+
+          (_d?'<div style="font-size:9px;color:#475569;margin-top:2px">'+_d+'</div>':'')+'</div>'+
+          '<div style="display:flex;gap:4px">'+
+          '<button data-uid="'+pp.uid+'" data-nom="'+pp.centreNom+'" onclick="agpDevPayer(this)" style="padding:4px 9px;border:none;border-radius:5px;background:'+(_ok?'#22c55e':'#64748b')+';color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">'+(_ok?'Paye':'Payer')+'</button>'+
+          '<button data-uid="'+pp.uid+'" data-nom="'+pp.centreNom+'" onclick="agpDevImPayer(this)" style="padding:4px 9px;border:1px solid rgba(239,68,68,0.4);border-radius:5px;background:transparent;color:#ef4444;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Impaye</button>'+
+          '</div></div>'
+        );
+      })(p);
+      h.push(
+      '<div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;margin-top:6px">',
       '<button data-code="'+p.codeAcces+'" onclick="agpDevCopy(this)" style="padding:4px 9px;border:none;border-radius:5px;background:#2563eb;color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Copier</button>',
       '<button data-uid="'+p.uid+'" data-bl="'+(bl?'1':'0')+'" onclick="agpDevToggle(this)" style="padding:4px 9px;border:none;border-radius:5px;background:'+(bl?'#22c55e':'#ef4444')+';color:#fff;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">'+(bl?'Debloquer':'Bloquer')+'</button>',
       '<button data-uid="'+p.uid+'" data-name="'+p.centreNom+'" onclick="agpDevDel(this)" style="padding:4px 9px;border:1px solid rgba(239,68,68,0.4);border-radius:5px;background:transparent;color:#ef4444;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit">Suppr</button>',
@@ -617,6 +680,70 @@ document.addEventListener('DOMContentLoaded',function(){
   keys.forEach(function(k){localStorage.removeItem(k);});
   agpSections('agp-landing');
 });
+
+
+// ===== LICENCE: CHRONO BANNIERE =====
+function agpAfficherChrono(prest){
+  var ex=document.getElementById('agp-chrono-banner');
+  if(ex) ex.remove();
+  if(!prest||!prest.dateExpiration) return;
+  var expD=new Date(prest.dateExpiration);
+  var nowD=new Date();
+  var isPaye=prest.licenceStatut==='actif';
+  var jours=Math.ceil((expD-nowD)/(1000*60*60*24));
+  if(isPaye&&jours>30) return;
+  if(jours<=0&&!isPaye) return;
+  var bg=jours>30?'#f59e0b':jours>10?'#f97316':'#ef4444';
+  var txt=isPaye?
+    'Licence active - expire le '+expD.toLocaleDateString('fr-FR')+' ('+jours+' jours restants)':
+    'Essai gratuit: '+jours+' jour'+(jours>1?'s':'')+' restant'+(jours>1?'s':'')+'. Contactez +224 623 030 403 pour votre licence.';
+  var ban=document.createElement('div');
+  ban.id='agp-chrono-banner';
+  ban.style.cssText='position:fixed;bottom:0;left:0;right:0;z-index:8888;background:'+bg+';color:#fff;padding:8px 16px;font-size:12px;font-weight:700;font-family:sans-serif;display:flex;align-items:center;justify-content:center;gap:10px;text-align:center';
+  var sp=document.createElement('span');
+  sp.textContent='Licence: '+txt;
+  var cl=document.createElement('button');
+  cl.textContent='X';
+  cl.style.cssText='background:rgba(255,255,255,0.25);border:none;color:#fff;border-radius:4px;padding:2px 8px;cursor:pointer;font-family:inherit;font-size:11px;flex-shrink:0';
+  cl.onclick=function(){ban.remove();};
+  ban.appendChild(sp);ban.appendChild(cl);
+  document.body.appendChild(ban);
+}
+
+// ===== LICENCE: MARQUER PAYE (12 MOIS) =====
+function agpDevPayer(btn){
+  var uid=btn.getAttribute('data-uid');
+  var nom=btn.getAttribute('data-nom');
+  var db=window._agpDb,r=window._agpRef,s=window._agpSet;
+  var now=new Date();
+  var exp=new Date(now.getTime()+365*24*60*60*1000);
+  var mois=now.toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+  var expStr=exp.toLocaleDateString('fr-FR');
+  if(!confirm('Confirmer paiement pour '+nom+' ? Licence renouvelee 12 mois jusqu au '+expStr)) return;
+  btn.disabled=true;btn.textContent='...';
+  // Mise a jour UNIQUEMENT des champs licence - donnees existantes intactes
+  s(r(db,'agp_prest/'+uid+'/info/licenceStatut'),'actif');
+  s(r(db,'agp_prest/'+uid+'/info/dateExpiration'),exp.toISOString());
+  s(r(db,'agp_prest/'+uid+'/info/dateDernierPaiement'),now.toISOString());
+  s(r(db,'agp_prest/'+uid+'/info/licencePeriode'),mois);
+  s(r(db,'agp_prest/'+uid+'/info/blocked'),false).then(function(){
+    alert('Paiement confirme ! Licence active jusqu au '+expStr+' (debut: '+now.toLocaleDateString('fr-FR')+')');
+    var p=document.getElementById('agp-dev-panel');if(p)p.remove();agpDevPanel();
+  }).catch(function(e){btn.disabled=false;btn.textContent='Payer';alert('Erreur: '+e.message);});
+}
+
+// ===== LICENCE: MARQUER IMPAYE =====
+function agpDevImPayer(btn){
+  var uid=btn.getAttribute('data-uid');
+  var nom=btn.getAttribute('data-nom');
+  var db=window._agpDb,r=window._agpRef,s=window._agpSet;
+  if(!confirm('Marquer '+nom+' comme impayee ? Elle sera bloquee a expiration.')) return;
+  btn.disabled=true;
+  s(r(db,'agp_prest/'+uid+'/info/licenceStatut'),'impaye').then(function(){
+    alert('Prestation marquee comme impayee.');
+    var p=document.getElementById('agp-dev-panel');if(p)p.remove();agpDevPanel();
+  }).catch(function(e){btn.disabled=false;alert('Erreur: '+e.message);});
+}
 
 </script>
 
