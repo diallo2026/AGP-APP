@@ -136,6 +136,7 @@ window.agpLoadData = function(prest) {
       try{ renderHistorique(); }catch(e){}
       try{ renderDepenses(); }catch(e){}
       try{ verifierEcheances(); }catch(e){}
+      try{ renderAttente(); }catch(e){}
       var dt=document.getElementById('dateText');
       if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     },400);
@@ -351,14 +352,26 @@ function agpLaunch(prest, role, agentName, agIdx){
   var gerantBtn=document.getElementById('gerantBtn');
   var salaireBtn=document.getElementById('salaireBtn');
   var btnReinit=document.getElementById('btnReinit');
+  var dashboardBtn=document.getElementById('dashboardBtn');
+  var parametresBtn=document.getElementById('parametresBtn');
   if(role==='FONDATEUR'){
     if(gerantBtn)gerantBtn.style.display='block';
     if(btnReinit)btnReinit.style.display='block';
+    if(dashboardBtn)dashboardBtn.style.display='block';
+    if(parametresBtn)parametresBtn.style.display='block';
   } else {
     if(gerantBtn)gerantBtn.style.display='none';
     if(btnReinit)btnReinit.style.display='none';
+    if(dashboardBtn)dashboardBtn.style.display='none';
+    if(parametresBtn)parametresBtn.style.display='none';
   }
   if(salaireBtn)salaireBtn.style.display='block';
+  // Si gérant, aller sur Inscription par défaut
+  if(role==='GERANT'){
+    setTimeout(function(){
+      try{showSection('formations');}catch(e){}
+    },600);
+  }
 
   // Afficher l'app
   agpSections('app');
@@ -1074,15 +1087,17 @@ function agpDevImPayer(btn){
 
   <div class="flex flex-col md:flex-row min-h-screen">
     <nav class="bg-white md:w-56 p-4 shadow-lg space-y-1 no-print">
-      <button onclick="showSection('dashboard')" class="menuBtn">📊 Tableau de Bord</button>
+      <button onclick="showSection('dashboard')" id="dashboardBtn" class="menuBtn">📊 Tableau de Bord</button>
       <button onclick="showSection('formations')" class="menuBtn">🎓 Inscription</button>
       <button onclick="showSection('inscrits')" class="menuBtn">📋 Liste Inscrits</button>
       <button onclick="showSection('services')" class="menuBtn">🖨️ Services</button>
       <button onclick="showSection('depenses')" class="menuBtn">💸 Dépenses</button>
       <button onclick="showSection('stock')" class="menuBtn">📦 Stock</button>
       <button onclick="showSection('historique')" class="menuBtn">📜 Historique</button>
+      <button onclick="showSection('attente')" id="attenteBtn" class="menuBtn">⏳ Formations en attente</button>
       <button onclick="showSection('gerants')" id="gerantBtn" class="menuBtn" style="display:none">👥 Gérants</button>
       <button onclick="showSection('salaires')" id="salaireBtn" class="menuBtn" style="display:none">💰 Salaires</button>
+      <button onclick="showSection('parametres')" id="parametresBtn" class="menuBtn" style="display:none">⚙️ Paramètres</button>
     </nav>
 
     <main class="flex-1 p-4 space-y-4">
@@ -1458,6 +1473,71 @@ function agpDevImPayer(btn){
         <div id="historyList" class="space-y-2"></div>
       </section>
 
+      <!-- FORMATIONS EN ATTENTE -->
+      <section id="attente" class="section bg-white rounded-3xl shadow-xl p-6">
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+          <h2 class="text-3xl font-bold text-blue-950">⏳ Formations en attente</h2>
+          <div class="flex flex-wrap gap-2 no-print">
+            <select id="filtreAttenteHoraire" onchange="renderAttente()" class="inp text-sm" style="width:140px">
+              <option value="">Tous horaires</option>
+            </select>
+            <select id="filtreAttenteJour" onchange="renderAttente()" class="inp text-sm" style="width:130px">
+              <option value="">Tous jours</option>
+              <option value="Lundi">Lundi</option>
+              <option value="Mardi">Mardi</option>
+              <option value="Mercredi">Mercredi</option>
+              <option value="Jeudi">Jeudi</option>
+              <option value="Vendredi">Vendredi</option>
+              <option value="Samedi">Samedi</option>
+              <option value="Dimanche">Dimanche</option>
+            </select>
+            <button onclick="renderAttente()" class="bg-blue-950 text-white px-3 py-2 rounded-xl text-xs font-bold">🔄 Actualiser</button>
+          </div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 text-sm text-blue-800 font-bold">
+          📌 Cet onglet affiche tous les élèves inscrits avec leurs cours et horaires, classés par heure de passage — pour connaître les cours qui arrivent à chaque instant.
+        </div>
+        <div id="attenteContent" class="space-y-3"></div>
+      </section>
+
+      <!-- PARAMÈTRES PRESTATION (Fondateur seulement) -->
+      <section id="parametres" class="section bg-white rounded-3xl shadow-xl p-6">
+        <h2 class="text-3xl font-bold text-blue-950 mb-5">⚙️ Paramètres de la Prestation</h2>
+        <div class="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 mb-5">
+          <p class="text-sm font-bold text-yellow-800 mb-1">⚠️ Ces modifications s'appliquent directement à votre prestation enregistrée dans Firebase.</p>
+          <p class="text-xs text-yellow-700">Le nom, l'adresse et le numéro seront mis à jour sur tous les documents générés.</p>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="space-y-3">
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1">Nom de la prestation *</label>
+              <input id="paramNom" placeholder="Nom de votre centre / prestation" class="inp">
+            </div>
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1">Adresse</label>
+              <input id="paramAdresse" placeholder="Adresse complète" class="inp">
+            </div>
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1">Numéro de téléphone</label>
+              <input id="paramTel" placeholder="Ex: +224 620 000 000" class="inp">
+            </div>
+            <div>
+              <label class="text-xs font-bold text-slate-600 block mb-1">Logo (image)</label>
+              <input type="file" id="paramLogo" accept="image/*" class="inp text-sm">
+              <div id="paramLogoPreview" class="mt-2 hidden">
+                <img id="paramLogoImg" class="h-20 rounded-xl border-2 border-blue-950 object-contain">
+              </div>
+            </div>
+          </div>
+          <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+            <h3 class="font-bold text-blue-950 mb-3 text-sm">Aperçu actuel</h3>
+            <div id="paramApercuActuel" class="text-sm text-slate-600 space-y-2"></div>
+          </div>
+        </div>
+        <button onclick="sauvegarderParametres()" class="mt-5 btn-primary w-full text-base">💾 Enregistrer les paramètres</button>
+        <p id="paramMsg" class="text-sm font-bold mt-3" style="display:none"></p>
+      </section>
+
     </main>
   </div>
 </div>
@@ -1654,9 +1734,16 @@ function login(){
   document.getElementById('app').style.display='block';
   document.getElementById('connectedUser').innerText=currentUser+' ('+currentRole+')';
   document.getElementById('roleText').innerText=currentRole;
+  var dashboardBtn=document.getElementById('dashboardBtn');
+  var parametresBtn=document.getElementById('parametresBtn');
   if(currentRole==='FONDATEUR'){
     document.getElementById('gerantBtn').style.display='block';
     document.getElementById('btnReinit').style.display='block';
+    if(dashboardBtn)dashboardBtn.style.display='block';
+    if(parametresBtn)parametresBtn.style.display='block';
+  } else {
+    if(dashboardBtn)dashboardBtn.style.display='none';
+    if(parametresBtn)parametresBtn.style.display='none';
   }
   document.getElementById('salaireBtn').style.display='block';
   ajouterHistorique(currentUser+' connecte');
@@ -1664,6 +1751,9 @@ function login(){
   renderDepenses();
   renderServiceSelect();
   renderStockSelect();
+  if(currentRole==='GERANT'){
+    showSection('formations');
+  }
 }
 
 function logout(){
@@ -1673,6 +1763,8 @@ function logout(){
   document.getElementById('gerantBtn').style.display='none';
   document.getElementById('salaireBtn').style.display='none';
   document.getElementById('btnReinit').style.display='none';
+  var dashBtn=document.getElementById('dashboardBtn');if(dashBtn)dashBtn.style.display='block';
+  var pBtn=document.getElementById('parametresBtn');if(pBtn)pBtn.style.display='none';
   document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
   document.getElementById('dashboard').classList.add('active');
   // Mode AGP: retourner à la page de connexion de la prestation
@@ -1695,6 +1787,8 @@ function showSection(id){
   document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
   document.getElementById(id).classList.add('active');
   if(id==='dashboard') verifierEcheances();
+  if(id==='attente') renderAttente();
+  if(id==='parametres') chargerApercuParametres();
   if(id==='gerants'){
     renderManagerList();
     const fi=users.findIndex(function(u){return u.role==='FONDATEUR';});
@@ -2033,10 +2127,60 @@ function registerStudent(){
 function afficherRecu(ins, logoSrc){
   document.getElementById('receipt').style.display='block';
   document.getElementById('photoPreview').style.display='none';
+  // Utiliser le nom de la prestation courante (AGP ou standalone)
+  var nomPrest=centreNom;
+  var adressePrest=centreAdresse;
+  var telPrest='+224 624 139 549 / +224 623 030 403';
+  if(window._AGP_MODE && window._agpCurrentPrest){
+    nomPrest=window._agpCurrentPrest.centreNom||centreNom;
+    adressePrest=window._agpCurrentPrest.adresse||window._agpCurrentPrest.ville||centreAdresse;
+    if(window._agpCurrentPrest.tel) telPrest=window._agpCurrentPrest.tel;
+  }
   const joursHtml=ins.jours.map(function(j){return '<li style="margin-bottom:2px;">'+j+'</li>';}).join('');
-  const msgWA='RECU+NEINDI%0AMatricule:+'+ins.mat+'%0ANom:+'+ins.nom+'+'+ins.prenom+'%0AFormation:+'+ins.formation+'%0ATotal:+'+(ins.total||ins.prix+30000).toLocaleString()+'+GNF'+(ins.resteAPayer>0?'%0ARestant:+'+ins.resteAPayer.toLocaleString()+'+GNF'+(ins.echeance?'%0AEcheance:+'+new Date(ins.echeance).toLocaleDateString("fr-FR"):''):'%0APaiement+COMPLET');
+  const msgWA='RECU+'+encodeURIComponent(nomPrest)+'%0AMatricule:+'+ins.mat+'%0ANom:+'+ins.nom+'+'+ins.prenom+'%0AFormation:+'+ins.formation+'%0ATotal:+'+(ins.total||ins.prix+30000).toLocaleString()+'+GNF'+(ins.resteAPayer>0?'%0ARestant:+'+ins.resteAPayer.toLocaleString()+'+GNF'+(ins.echeance?'%0AEcheance:+'+new Date(ins.echeance).toLocaleDateString("fr-FR"):''):'%0APaiement+COMPLET');
   document.getElementById('receiptContent').innerHTML=
-    '<div id="recuPrintable">'    +'<div style="display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:2px solid #172554;margin-bottom:12px;">'    +'<img src="'+logoSrc+'" style="width:65px;border-radius:10px;flex-shrink:0;">'    +'<div><div style="font-size:17px;font-weight:900;color:#172554;">'+centreNom+'</div>'    +'<div style="font-size:11px;color:#64748b;">'+centreAdresse+'</div>'    +'<div style="font-size:11px;color:#64748b;">Tel: +224 624 139 549 / +224 623 030 403</div>'    +'<div style="font-size:12px;font-weight:bold;color:#f97316;margin-top:2px;">RECU D&#39;INSCRIPTION</div></div></div>'    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px;">'    +'<div><strong>Matricule:</strong> <span style="color:#172554;font-weight:900;font-size:15px;">'+ins.mat+'</span></div>'    +'<div><strong>Date:</strong> '+ins.date+'</div>'    +'<div><strong>Nom:</strong> '+ins.nom+'</div>'    +'<div><strong>Prenom:</strong> '+ins.prenom+'</div>'    +'<div><strong>Tuteur:</strong> '+(ins.tuteur||'')+'</div>'    +'<div><strong>Telephone:</strong> '+(ins.tel||'')+'</div>'    +'</div>'    +'<div style="font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'    +'<strong>Formation:</strong> '+ins.formation+'<br>'    +'<strong>Programme:</strong><ul style="margin:4px 0 0 16px;padding:0;">'+joursHtml+'</ul>'    +'<span style="font-size:11px;color:#94a3b8;">'+ins.jours.length+' jours/semaine'+(ins.dureeFormation?'  '+ins.dureeFormation:'')+(ins.duree&&ins.duree!==ins.dureeFormation?' | '+ins.duree:'')+'</span>'    +'</div>'    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'    +'<div>Frais inscription: 30 000 GNF</div>'    +'<div>Frais formation: '+(ins.prixNormal&&ins.rabais>0?'<span style="text-decoration:line-through;color:#94a3b8;">'+ins.prixNormal.toLocaleString()+'</span> <span style="color:#16a34a;font-weight:bold;">'+ins.prix.toLocaleString()+' GNF (Rabais: '+ins.rabais.toLocaleString()+' GNF)</span>':ins.prix.toLocaleString()+' GNF')+'</div>'    +((ins.brochurePrix&&ins.brochurePrix>0)?'<div>Brochure: '+(ins.brochurePayee?'<span style="color:#16a34a;font-weight:bold;">'+ins.brochurePrix.toLocaleString()+' GNF  Payee</span>':'<span style="color:#dc2626;font-weight:bold;">Non payee </span>')+'</div><div></div>':'')    +'</div>'    +'<div style="font-size:20px;font-weight:900;color:#15803d;text-align:center;border-top:2px solid #e2e8f0;padding-top:8px;">TOTAL DU: '+(ins.total||ins.prix+30000).toLocaleString()+' GNF</div>'    +(ins.resteAPayer>0 ? '<div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:10px;margin-top:8px;font-size:13px;">'  +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Total du:</strong></span><span style="font-weight:bold;color:#172554;">'+(ins.total||0).toLocaleString()+' GNF</span></div>'  +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Verse:</strong></span><span style="color:#16a34a;font-weight:bold;">'+(ins.montantPaye||0).toLocaleString()+' GNF</span></div>'  +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Reste:</strong></span><span style="color:#dc2626;font-weight:bold;font-size:15px;">'+ins.resteAPayer.toLocaleString()+' GNF</span></div>'  +(ins.echeance?'<div style="display:flex;justify-content:space-between;"><span><strong>Echeance:</strong></span><span style="color:#7c3aed;font-weight:bold;">'+new Date(ins.echeance).toLocaleDateString('fr-FR')+'</span></div>':'')  +((ins.versements&&ins.versements.length)?'<div style="margin-top:6px;border-top:1px solid #fed7aa;padding-top:6px;font-size:11px;"><strong>Versements:</strong><ul style="margin:3px 0 0 12px;padding:0;">'+ins.versements.map(function(v){return '<li>'+v.date+' : '+v.montant.toLocaleString()+' GNF</li>';}).join('')+'</ul></div>':'')  +'</div>'  : '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;margin-top:6px;text-align:center;font-size:12px;color:#15803d;font-weight:bold;"> PAIEMENT COMPLET</div>')    +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:4px;">Document officiel  '+centreNom+'</div>'    +'</div>'    +'<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'    +'<a href="https://wa.me/'+WA1+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#16a34a;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 1</a>'    +'<a href="https://wa.me/'+WA2+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#15803d;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 2</a>'    +'<button onclick="imprimerRecu()" style="background:#172554;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">Imprimer</button>'    +'<button onclick="genererPDF()" style="background:#dc2626;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">PDF</button>'    +'</div>';
+    '<div id="recuPrintable">'
+    +'<div style="display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:2px solid #172554;margin-bottom:12px;">'
+    +'<img src="'+logoSrc+'" style="width:65px;border-radius:10px;flex-shrink:0;">'
+    +'<div><div style="font-size:17px;font-weight:900;color:#172554;">'+nomPrest+'</div>'
+    +'<div style="font-size:11px;color:#64748b;">'+adressePrest+'</div>'
+    +'<div style="font-size:11px;color:#64748b;">Tel: '+telPrest+'</div>'
+    +'<div style="font-size:12px;font-weight:bold;color:#f97316;margin-top:2px;">RECU D&#39;INSCRIPTION</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:10px;">'
+    +'<div><strong>Matricule:</strong> <span style="color:#172554;font-weight:900;font-size:15px;">'+ins.mat+'</span></div>'
+    +'<div><strong>Date:</strong> '+ins.date+'</div>'
+    +'<div><strong>Nom:</strong> '+ins.nom+'</div>'
+    +'<div><strong>Prenom:</strong> '+ins.prenom+'</div>'
+    +'<div><strong>Tuteur:</strong> '+(ins.tuteur||'')+'</div>'
+    +'<div><strong>Telephone:</strong> '+(ins.tel||'')+'</div>'
+    +'</div>'
+    +'<div style="font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'
+    +'<strong>Formation:</strong> '+ins.formation+'<br>'
+    +'<strong>Programme:</strong><ul style="margin:4px 0 0 16px;padding:0;">'+joursHtml+'</ul>'
+    +'<span style="font-size:11px;color:#94a3b8;">'+ins.jours.length+' jours/semaine'+(ins.dureeFormation?'  '+ins.dureeFormation:'')+(ins.duree&&ins.duree!==ins.dureeFormation?' | '+ins.duree:'')+'</span>'
+    +'</div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'
+    +'<div>Frais inscription: 30 000 GNF</div>'
+    +'<div>Frais formation: '+(ins.prixNormal&&ins.rabais>0?'<span style="text-decoration:line-through;color:#94a3b8;">'+ins.prixNormal.toLocaleString()+'</span> <span style="color:#16a34a;font-weight:bold;">'+ins.prix.toLocaleString()+' GNF (Rabais: '+ins.rabais.toLocaleString()+' GNF)</span>':ins.prix.toLocaleString()+' GNF')+'</div>'
+    +((ins.brochurePrix&&ins.brochurePrix>0)?'<div>Brochure: '+(ins.brochurePayee?'<span style="color:#16a34a;font-weight:bold;">'+ins.brochurePrix.toLocaleString()+' GNF  Payee</span>':'<span style="color:#dc2626;font-weight:bold;">Non payee </span>')+'</div><div></div>':'')
+    +'</div>'
+    +'<div style="font-size:20px;font-weight:900;color:#15803d;text-align:center;border-top:2px solid #e2e8f0;padding-top:8px;">TOTAL DU: '+(ins.total||ins.prix+30000).toLocaleString()+' GNF</div>'
+    +(ins.resteAPayer>0 ? '<div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:10px;margin-top:8px;font-size:13px;">'
+      +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Total du:</strong></span><span style="font-weight:bold;color:#172554;">'+(ins.total||0).toLocaleString()+' GNF</span></div>'
+      +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Verse:</strong></span><span style="color:#16a34a;font-weight:bold;">'+(ins.montantPaye||0).toLocaleString()+' GNF</span></div>'
+      +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Reste:</strong></span><span style="color:#dc2626;font-weight:bold;font-size:15px;">'+ins.resteAPayer.toLocaleString()+' GNF</span></div>'
+      +(ins.echeance?'<div style="display:flex;justify-content:space-between;"><span><strong>Echeance:</strong></span><span style="color:#7c3aed;font-weight:bold;">'+new Date(ins.echeance).toLocaleDateString('fr-FR')+'</span></div>':'')
+      +((ins.versements&&ins.versements.length)?'<div style="margin-top:6px;border-top:1px solid #fed7aa;padding-top:6px;font-size:11px;"><strong>Versements:</strong><ul style="margin:3px 0 0 12px;padding:0;">'+ins.versements.map(function(v){return '<li>'+v.date+' : '+v.montant.toLocaleString()+' GNF</li>';}).join('')+'</ul></div>':'')
+      +'</div>'
+      : '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;margin-top:6px;text-align:center;font-size:12px;color:#15803d;font-weight:bold;"> PAIEMENT COMPLET</div>')
+    +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:4px;">Document officiel  '+nomPrest+'</div>'
+    +'</div>'
+    +'<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'
+    +'<a href="https://wa.me/'+WA1+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#16a34a;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 1</a>'
+    +'<a href="https://wa.me/'+WA2+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#15803d;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 2</a>'
+    +'<button onclick="imprimerRecu()" style="background:#172554;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">Imprimer</button>'
+    +'<button onclick="genererPDF()" style="background:#dc2626;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">PDF</button>'
+    +'</div>';
 }
 
 function imprimerRecu(){
@@ -2625,7 +2769,7 @@ function addManager(){
   if(!nom||!code){alert('Remplissez nom et code');return;}
   if(users.find(function(u){return u.nom.toLowerCase()===nom.toLowerCase();})){alert('Nom deja utilise');return;}
   const idx=users.length;
-  users.push({nom,code,role:'GERANT',bloque:false,salaire:mode==='fixe'?valeur:0,salaireMois:{},salaireMode:mode,salairePourcentage:mode==='pourcentage'?valeur:0});
+  users.push({nom,code,role:'GERANT',bloque:false,salaire:mode==='fixe'?valeur:0,salaireMois:{},salaireMode:mode,salairePourcentage:mode==='pourcentage'?valeur:0,photo:''});
   permissionsGerants[idx]={peutModifier:false,peutSupprimer:false};
   sauvegarder(); loadUsers(); renderManagerList();
   ['managerName','managerCode','salaireValeurCreation'].forEach(function(id){document.getElementById(id).value='';});
@@ -2646,8 +2790,15 @@ function renderManagerList(){
     const card=document.createElement('div');
     card.className='bg-slate-50 p-4 rounded-2xl border mb-3';
     const modeLabel=u.salaireMode==='pourcentage'?u.salairePourcentage+'% des benefices':(u.salaire||0).toLocaleString()+' GNF fixe';
+    const photoHtml=u.photo?('<img src="'+u.photo+'" style="width:56px;height:56px;border-radius:50%;object-fit:cover;border:3px solid #2563eb;flex-shrink:0;">'):('<div style="width:56px;height:56px;border-radius:50%;background:#dbeafe;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;">👤</div>');
     card.innerHTML=
-      '<div class="flex flex-wrap items-center gap-2 mb-3">'      +'<strong class="text-base">'+u.nom+'</strong>'      +'<span class="px-2 py-1 rounded-lg text-xs font-bold '+(u.bloque?'bg-red-200 text-red-800':'bg-green-200 text-green-800')+'">'+(u.bloque?'BLOQUE':'ACTIF')+'</span>'      +'<span class="text-xs bg-white px-2 py-1 rounded-lg border">'+modeLabel+'</span>'      +'</div>'      +'<div class="flex flex-wrap gap-2" id="btnGrp_'+i+'"></div>';
+      '<div class="flex flex-wrap items-center gap-3 mb-3">'
+      +photoHtml
+      +'<div><strong class="text-base">'+u.nom+'</strong><br>'
+      +'<span class="px-2 py-1 rounded-lg text-xs font-bold '+(u.bloque?'bg-red-200 text-red-800':'bg-green-200 text-green-800')+'">'+(u.bloque?'BLOQUE':'ACTIF')+'</span>'
+      +'<span class="text-xs bg-white px-2 py-1 rounded-lg border ml-1">'+modeLabel+'</span></div>'
+      +'</div>'
+      +'<div class="flex flex-wrap gap-2" id="btnGrp_'+i+'"></div>';
     div.appendChild(card);
     const bg=document.getElementById('btnGrp_'+i);
     // Modifier
@@ -2686,7 +2837,34 @@ function renderManagerList(){
     bs2.textContent=' Salaire';
     bs2.onclick=function(){modifierSalaireGerant(i);};
     bg.appendChild(bs2);
+    // Bouton photo
+    const bph=document.createElement('button');
+    bph.className='px-3 py-2 rounded-xl text-xs font-bold bg-blue-600 text-white';
+    bph.textContent=' Photo';
+    bph.onclick=function(){changerPhotoGerant(i);};
+    bg.appendChild(bph);
   });
+}
+
+function changerPhotoGerant(idx){
+  if(currentRole!=='FONDATEUR'){alert('Reserve au Fondateur');return;}
+  // Créer un input file temporaire
+  const inp=document.createElement('input');
+  inp.type='file'; inp.accept='image/*'; inp.style.display='none';
+  inp.onchange=function(){
+    if(!inp.files||!inp.files[0]) return;
+    const rd=new FileReader();
+    rd.onload=function(e){
+      users[idx].photo=e.target.result;
+      sauvegarder();
+      renderManagerList();
+      ajouterHistorique('Photo mise a jour pour: '+users[idx].nom);
+    };
+    rd.readAsDataURL(inp.files[0]);
+  };
+  document.body.appendChild(inp);
+  inp.click();
+  setTimeout(function(){inp.remove();},5000);
 }
 
 function modifierSalaireGerant(idx){
@@ -2894,33 +3072,125 @@ function renderSalaires(){
     });
     if(!hasG) div.innerHTML+='<p class="text-gray-500 italic">Aucun gerant cree.</p>';
 
-  // ===== VUE GERANT POURCENTAGE: voit benefices + son salaire =====
-  } else if(currentRole==='GERANT' && users[currentUserIndex] && users[currentUserIndex].salaireMode==='pourcentage'){
-    const u=users[currentUserIndex];
-    const salCalc=Math.round(ben*(u.salairePourcentage||0)/100);
-    const reste=getFondsResteMois(currentUserIndex,moisCourant,salCalc);
-    div.innerHTML='<div class="bg-purple-50 border-2 border-purple-200 p-5 rounded-2xl">'
-      +'<div class="grid grid-cols-2 gap-3 mb-4">'
-      +'<div><p class="text-xs text-slate-500">Benefices nets</p><p class="text-xl font-bold '+(ben>=0?'text-blue-700':'text-red-600')+'">'+ben.toLocaleString()+' GNF</p></div>'
-      +'<div><p class="text-xs text-slate-500">Votre part ('+u.salairePourcentage+'%)</p><p class="text-2xl font-bold text-purple-700">'+salCalc.toLocaleString()+' GNF</p></div>'
-      +'</div>'
-      +(reste>0?'<p class="text-sm font-bold text-red-600 mb-3">Reste a percevoir ce mois: '+reste.toLocaleString()+' GNF</p>':'')
-      +'<div class="text-sm text-gray-600">'+getHistSalaires(currentUserIndex)+'</div>'
-      +'<p class="mt-3 text-xs text-gray-400 italic">Lecture seule</p></div>';
-
-  // ===== VUE GERANT FIXE: voit UNIQUEMENT son salaire fixe (pas benefices) =====
+  // ===== VUE GERANT: Bulletin de paie avec tri par mois =====
   } else if(currentRole==='GERANT'){
     const u=users[currentUserIndex];
     if(!u){div.innerHTML='<p class="text-gray-500">Erreur utilisateur.</p>';return;}
-    const reste=getFondsResteMois(currentUserIndex,moisCourant,u.salaire||0);
-    div.innerHTML='<div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl">'
-      +'<p class="mb-2"><strong>Nom:</strong> '+u.nom+'</p>'
-      +'<p class="mb-3"><strong>Mode:</strong> Salaire fixe</p>'
-      +'<p class="text-3xl font-bold text-green-700">'+(u.salaire||0).toLocaleString()+' GNF / mois</p>'
-      +(reste>0?'<p class="text-sm font-bold text-red-600 mt-2">Reste a percevoir: '+reste.toLocaleString()+' GNF</p>':'')
-      +'<div class="text-sm text-gray-600 mt-3">'+getHistSalaires(currentUserIndex)+'</div>'
-      +'<p class="mt-3 text-xs text-gray-400 italic">Lecture seule - Contactez le Fondateur pour modifier</p></div>';
+
+    // Obtenir le nom de la prestation
+    var nomPrest=centreNom;
+    var logoPrest='';
+    if(window._AGP_MODE && window._agpCurrentPrest){
+      nomPrest=window._agpCurrentPrest.centreNom||centreNom;
+      logoPrest=window._agpCurrentPrest.logo||'';
+    }
+
+    // Calculer le salaire
+    const salCalc=u.salaireMode==='pourcentage'?Math.round(getBenefices()*(u.salairePourcentage||0)/100):(u.salaire||0);
+
+    // Récupérer tous les mois payés (validés par le fondateur)
+    const moisPayes=u.salaireMois||{};
+    const listeMoisPayes=Object.keys(moisPayes).sort();
+
+    // Filtre par mois
+    const filtreId='gerantFiltresBulletin';
+    let filtreHtml='<div class="flex flex-wrap gap-2 mb-4 no-print">'
+      +'<select id="'+filtreId+'" onchange="renderSalaires()" class="inp text-sm" style="max-width:200px">'
+      +'<option value="">Tous les bulletins</option>';
+    // Grouper par mois principal (avant " - tranche")
+    const moisUniques=new Set();
+    listeMoisPayes.forEach(function(k){ moisUniques.add(k.split(' - tranche')[0]); });
+    moisUniques.forEach(function(m){ filtreHtml+='<option value="'+m+'">'+m+'</option>'; });
+    filtreHtml+='</select>'
+      +'<button onclick="imprimerBulletin()" class="bg-blue-950 text-white px-4 py-2 rounded-xl text-sm font-bold no-print"> Imprimer Bulletin</button>'
+      +'</div>';
+
+    div.innerHTML=filtreHtml;
+
+    // Déterminer le filtre actif
+    const selEl=document.getElementById(filtreId);
+    const filtreActif=selEl?selEl.value:'';
+
+    // Filtrer les entrées
+    const entreesFiltrees={};
+    listeMoisPayes.forEach(function(k){
+      const moisPrincipal=k.split(' - tranche')[0];
+      if(!filtreActif||moisPrincipal===filtreActif) entreesFiltrees[k]=moisPayes[k];
+    });
+
+    if(!Object.keys(entreesFiltrees).length&&!Object.keys(moisPayes).length){
+      div.innerHTML+='<div class="bg-green-50 border-2 border-green-200 p-5 rounded-2xl">'
+        +(u.photo?'<div style="text-align:center;margin-bottom:12px;"><img src="'+u.photo+'" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #2563eb;display:inline-block;"></div>':'')
+        +'<p class="mb-2"><strong>Nom:</strong> '+u.nom+'</p>'
+        +'<p class="mb-3"><strong>Mode:</strong> '+(u.salaireMode==='pourcentage'?u.salairePourcentage+'% des benefices':'Salaire fixe: '+(u.salaire||0).toLocaleString()+' GNF / mois')+'</p>'
+        +'<p class="text-3xl font-bold text-green-700">'+salCalc.toLocaleString()+' GNF / mois</p>'
+        +'<p class="mt-3 text-sm text-orange-600 italic">Aucun paiement validé par le Fondateur pour le moment.</p>'
+        +'<p class="mt-1 text-xs text-gray-400 italic">Lecture seule - Contactez le Fondateur</p></div>';
+      return;
+    }
+
+    // Afficher le bulletin de paie
+    const totalPaye=Object.values(entreesFiltrees).reduce(function(s,v){return s+v;},0);
+    const photoHtml=u.photo?('<div style="float:right;"><img src="'+u.photo+'" style="width:90px;height:90px;border-radius:50%;object-fit:cover;border:3px solid #2563eb;"></div>'):'';
+    const logoHtml=logoPrest?('<img src="'+logoPrest+'" style="height:48px;object-fit:contain;border-radius:8px;margin-right:10px;flex-shrink:0;">'):'<div style="width:48px;height:48px;background:#dbeafe;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-right:10px;font-size:20px;flex-shrink:0;">💼</div>';
+
+    div.innerHTML+=
+      '<div id="bulletinGerant" style="background:white;border:2px solid #172554;border-radius:16px;padding:20px;max-width:600px;margin:0 auto;">'
+      // En-tête bulletin
+      +'<div style="display:flex;align-items:center;border-bottom:2px solid #172554;padding-bottom:12px;margin-bottom:14px;">'
+      +logoHtml
+      +'<div style="flex:1;">'
+      +'<div style="font-size:16px;font-weight:900;color:#172554;">'+nomPrest+'</div>'
+      +'<div style="font-size:11px;color:#64748b;font-weight:bold;">BULLETIN DE PAIE</div>'
+      +'</div>'
+      +photoHtml
+      +'</div>'
+      // Info gérant
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px;margin-bottom:14px;background:#f8fafc;padding:10px;border-radius:10px;">'
+      +'<div><strong>Nom:</strong> '+u.nom+'</div>'
+      +'<div><strong>Rôle:</strong> Gérant</div>'
+      +'<div><strong>Mode:</strong> '+(u.salaireMode==='pourcentage'?u.salairePourcentage+'% bénéfices':'Fixe')+'</div>'
+      +'<div><strong>Salaire mensuel:</strong> '+salCalc.toLocaleString()+' GNF</div>'
+      +'</div>'
+      // Titre période
+      +(filtreActif?'<div style="text-align:center;font-weight:bold;font-size:14px;color:#172554;margin-bottom:10px;border:1px solid #dbeafe;padding:6px;border-radius:8px;">Période : '+filtreActif+'</div>':'')
+      // Tableau paiements
+      +'<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:12px;">'
+      +'<thead><tr style="background:#172554;color:white;">'
+      +'<th style="padding:8px 10px;text-align:left;">Période / Tranche</th>'
+      +'<th style="padding:8px 10px;text-align:right;">Montant payé</th>'
+      +'<th style="padding:8px 10px;text-align:center;">Statut</th>'
+      +'</tr></thead><tbody>';
+    
+    Object.keys(entreesFiltrees).sort().forEach(function(k){
+      const montant=entreesFiltrees[k];
+      div.innerHTML+='<tr style="border-bottom:1px solid #e2e8f0;">'
+        +'<td style="padding:7px 10px;">'+k+'</td>'
+        +'<td style="padding:7px 10px;text-align:right;font-weight:bold;color:#15803d;">'+montant.toLocaleString()+' GNF</td>'
+        +'<td style="padding:7px 10px;text-align:center;"><span style="background:#dcfce7;color:#15803d;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:bold;">✅ Validé</span></td>'
+        +'</tr>';
+    });
+
+    div.innerHTML+='</tbody>'
+      +'<tfoot><tr style="background:#f0fdf4;font-weight:bold;">'
+      +'<td style="padding:8px 10px;">TOTAL PAYÉ</td>'
+      +'<td style="padding:8px 10px;text-align:right;color:#15803d;font-size:15px;">'+totalPaye.toLocaleString()+' GNF</td>'
+      +'<td></td></tr></tfoot>'
+      +'</table>'
+      +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:6px;">Document officiel - '+nomPrest+' - Tous les paiements sont validés par le Fondateur.</div>'
+      +'</div>';
   }
+}
+
+function imprimerBulletin(){
+  const el=document.getElementById('bulletinGerant');
+  if(!el){alert('Aucun bulletin à imprimer');return;}
+  const w=window.open('','_blank');
+  w.document.write('<html><head><title>Bulletin de Paie</title><style>body{font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
+  w.document.write(el.outerHTML);
+  w.document.write('</body></html>');
+  w.document.close();
+  w.onload=function(){w.print();};
 }
 function getHistSalaires(idx){
   const u=users[idx];
@@ -3302,6 +3572,183 @@ function verifierEcheances(){
       );
     liste.appendChild(div);
   });
+}
+
+// ===== FORMATIONS EN ATTENTE =====
+function renderAttente(){
+  const cont=document.getElementById('attenteContent');
+  if(!cont) return;
+
+  // Remplir le filtre horaire
+  const selHor=document.getElementById('filtreAttenteHoraire');
+  if(selHor&&selHor.options.length<=1){
+    horaires.forEach(function(h){
+      const o=document.createElement('option');
+      o.value=h; o.textContent=h;
+      selHor.appendChild(o);
+    });
+  }
+
+  const filtreHoraire=(document.getElementById('filtreAttenteHoraire')||{}).value||'';
+  const filtreJour=(document.getElementById('filtreAttenteJour')||{}).value||'';
+
+  // Collecter toutes les séances (inscrit × jours)
+  var seances=[];
+  inscrits.forEach(function(ins){
+    if(!ins.jours||!ins.jours.length) return;
+    ins.jours.forEach(function(joursStr){
+      // joursStr peut être "Lundi 08H-10H" ou "Lundi"
+      var parts=joursStr.split(' ');
+      var jour=parts[0]||'';
+      var horaire=parts.slice(1).join(' ')||'';
+      if(filtreJour&&jour!==filtreJour) return;
+      if(filtreHoraire&&horaire!==filtreHoraire) return;
+      seances.push({ins:ins,jour:jour,horaire:horaire,joursStr:joursStr});
+    });
+  });
+
+  if(!seances.length){
+    cont.innerHTML='<div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-gray-400 italic">'
+      +(inscrits.length?'Aucun cours ne correspond aux filtres sélectionnés.':'Aucun étudiant inscrit pour le moment.')
+      +'</div>';
+    return;
+  }
+
+  // Trier par horaire puis par jour
+  const ordreJours={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
+  seances.sort(function(a,b){
+    if(a.horaire<b.horaire) return -1;
+    if(a.horaire>b.horaire) return 1;
+    return (ordreJours[a.jour]||9)-(ordreJours[b.jour]||9);
+  });
+
+  // Grouper par horaire
+  var groupes={};
+  seances.forEach(function(s){
+    var k=s.horaire||'Sans horaire';
+    if(!groupes[k]) groupes[k]=[];
+    groupes[k].push(s);
+  });
+
+  cont.innerHTML='<p class="text-sm text-slate-500 mb-3 font-bold">'+seances.length+' séance(s) trouvée(s)</p>';
+  Object.keys(groupes).sort().forEach(function(hor){
+    const gSeances=groupes[hor];
+    const block=document.createElement('div');
+    block.className='mb-4';
+    block.innerHTML='<div class="bg-blue-950 text-white px-4 py-2 rounded-t-2xl font-bold text-sm flex items-center gap-2">'
+      +'<span>🕐 '+hor+'</span>'
+      +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gSeances.length+' cours</span>'
+      +'</div>'
+      +'<div class="border-2 border-blue-950 border-t-0 rounded-b-2xl overflow-hidden">';
+    
+    gSeances.forEach(function(s,idx){
+      const ins=s.ins;
+      const rowBg=idx%2===0?'background:#f8fafc':'background:white';
+      block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
+        +'<div>'
+        +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
+        +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
+        +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
+        +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
+        +'</div>'
+        +'<div style="text-align:right;">'
+        +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
+        +((ins.resteAPayer&&ins.resteAPayer>0)?'<br><span style="font-size:11px;color:#dc2626;font-weight:bold;margin-top:3px;display:block;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
+        +'</div>'
+        +'</div>';
+    });
+    block.innerHTML+='</div>';
+    cont.appendChild(block);
+  });
+}
+
+// ===== PARAMÈTRES PRESTATION =====
+function chargerApercuParametres(){
+  if(currentRole!=='FONDATEUR') return;
+  var div=document.getElementById('paramApercuActuel');
+  if(!div) return;
+  var nomP=centreNom, adrP=centreAdresse, telP='';
+  if(window._AGP_MODE && window._agpCurrentPrest){
+    nomP=window._agpCurrentPrest.centreNom||centreNom;
+    adrP=window._agpCurrentPrest.adresse||window._agpCurrentPrest.ville||centreAdresse;
+    telP=window._agpCurrentPrest.tel||'';
+    // Pré-remplir les champs
+    var pn=document.getElementById('paramNom');if(pn&&!pn.value)pn.value=nomP;
+    var pa=document.getElementById('paramAdresse');if(pa&&!pa.value)pa.value=adrP;
+    var pt=document.getElementById('paramTel');if(pt&&!pt.value)pt.value=telP;
+    // Logo actuel
+    if(window._agpCurrentPrest.logo){
+      var prev=document.getElementById('paramLogoPreview');
+      var img=document.getElementById('paramLogoImg');
+      if(prev&&img){prev.classList.remove('hidden');img.src=window._agpCurrentPrest.logo;}
+    }
+  }
+  div.innerHTML='<div><strong>Nom:</strong> '+nomP+'</div>'
+    +'<div><strong>Adresse:</strong> '+adrP+'</div>'
+    +'<div><strong>Téléphone:</strong> '+(telP||'Non défini')+'</div>';
+}
+
+function sauvegarderParametres(){
+  if(currentRole!=='FONDATEUR'){alert('Reserve au Fondateur');return;}
+  var nomV=(document.getElementById('paramNom').value||'').trim();
+  var adrV=(document.getElementById('paramAdresse').value||'').trim();
+  var telV=(document.getElementById('paramTel').value||'').trim();
+  var msg=document.getElementById('paramMsg');
+  if(!nomV){
+    msg.style.display='block';msg.style.color='#dc2626';msg.textContent='Le nom est obligatoire.';return;
+  }
+  function applyAndSave(logoData){
+    // Mettre à jour les variables locales
+    centreNom=nomV;
+    centreAdresse=adrV||centreAdresse;
+    // Mettre à jour l'entête
+    var hn=document.getElementById('headerNom');if(hn)hn.textContent=nomV;
+    if(window._AGP_MODE && window._agpCurrentPrest){
+      // Sauvegarder dans Firebase
+      var db=window._agpDb,r=window._agpRef,s=window._agpSet;
+      var uid=window._agpCurrentPrest.uid;
+      if(uid&&db){
+        var updates={};
+        updates['agp_prest/'+uid+'/info/centreNom']=nomV;
+        updates['agp_prest/'+uid+'/info/adresse']=adrV;
+        updates['agp_prest/'+uid+'/info/tel']=telV;
+        if(logoData) updates['agp_prest/'+uid+'/info/logo']=logoData;
+        // Firebase set individuel pour chaque champ
+        s(r(db,'agp_prest/'+uid+'/info/centreNom'),nomV);
+        s(r(db,'agp_prest/'+uid+'/info/adresse'),adrV);
+        s(r(db,'agp_prest/'+uid+'/info/tel'),telV);
+        if(logoData){
+          s(r(db,'agp_prest/'+uid+'/info/logo'),logoData);
+          // Mettre à jour le logo local
+          window._agpCurrentPrest.logo=logoData;
+          var hl=document.getElementById('headerLogo');if(hl)hl.src=logoData;
+          var prev=document.getElementById('paramLogoPreview');
+          var img=document.getElementById('paramLogoImg');
+          if(prev&&img){prev.classList.remove('hidden');img.src=logoData;}
+        }
+        // Mettre à jour l'objet local
+        window._agpCurrentPrest.centreNom=nomV;
+        window._agpCurrentPrest.adresse=adrV;
+        window._agpCurrentPrest.tel=telV;
+        // Mettre à jour le cache localStorage
+        try{localStorage.setItem('agp_p_'+window._agpCurrentPrest.codeAcces,JSON.stringify(window._agpCurrentPrest));}catch(e){}
+      }
+    }
+    sauvegarder();
+    msg.style.display='block';msg.style.color='#16a34a';
+    msg.textContent='✅ Paramètres enregistrés avec succès!';
+    chargerApercuParametres();
+    ajouterHistorique('Parametres prestation modifies: '+nomV);
+    setTimeout(function(){msg.style.display='none';},5000);
+  }
+  var logoFile=document.getElementById('paramLogo').files[0];
+  if(logoFile){
+    var rd=new FileReader();
+    rd.onload=function(e){applyAndSave(e.target.result);};
+    rd.readAsDataURL(logoFile);
+  } else {
+    applyAndSave(null);
+  }
 }
 
 // ===== INIT =====
