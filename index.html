@@ -366,11 +366,12 @@ function agpLaunch(prest, role, agentName, agIdx){
     if(parametresBtn)parametresBtn.style.display='none';
   }
   if(salaireBtn)salaireBtn.style.display='block';
-  // Si gérant, aller sur Inscription par défaut
-  if(role==='GERANT'){
-    setTimeout(function(){
-      try{showSection('formations');}catch(e){}
-    },600);
+  // Navigation par défaut selon le rôle
+  if(role==='FONDATEUR'){
+    setTimeout(function(){ try{showSection('dashboard');}catch(e){} },600);
+  } else {
+    // Gérant : toujours sur Inscription, jamais le dashboard
+    setTimeout(function(){ try{showSection('formations');}catch(e){} },600);
   }
 
   // Afficher l'app
@@ -1752,9 +1753,12 @@ function login(){
     document.getElementById('btnReinit').style.display='block';
     if(dashboardBtn)dashboardBtn.style.display='block';
     if(parametresBtn)parametresBtn.style.display='block';
+    showSection('dashboard');
   } else {
     if(dashboardBtn)dashboardBtn.style.display='none';
     if(parametresBtn)parametresBtn.style.display='none';
+    // Gérant : toujours commencer sur Inscription, jamais le dashboard
+    showSection('formations');
   }
   document.getElementById('salaireBtn').style.display='block';
   ajouterHistorique(currentUser+' connecte');
@@ -1762,9 +1766,6 @@ function login(){
   renderDepenses();
   renderServiceSelect();
   renderStockSelect();
-  if(currentRole==='GERANT'){
-    showSection('formations');
-  }
 }
 
 function logout(){
@@ -1795,6 +1796,10 @@ function logout(){
 
 // ===== NAVIGATION =====
 function showSection(id){
+  // Bloquer le dashboard pour les gérants - toujours, sans exception
+  if(id==='dashboard' && typeof currentRole!=='undefined' && currentRole==='GERANT'){
+    id='formations'; // rediriger vers inscription
+  }
   document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
   document.getElementById(id).classList.add('active');
   if(id==='dashboard') verifierEcheances();
@@ -2097,7 +2102,10 @@ function ajouterLigneLogiciel(formationNom, formationVal) {
 
   div.innerHTML = selHtml
     + '<span data-lgc="prix" style="font-size:11px;font-weight:700;color:#2563eb;white-space:nowrap;min-width:70px;text-align:right;"></span>'
-    + '<button type="button" onclick="supprimerLigneLogiciel(''+id+'')" style="background:#fecaca;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;color:#dc2626;font-weight:700;font-size:13px;flex-shrink:0;">✕</button>';
+    + '<button type="button" data-lgcid="'+id+'" style="background:#fecaca;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;color:#dc2626;font-weight:700;font-size:13px;flex-shrink:0;">✕</button>';
+  // Attacher l'event handler proprement (évite les problèmes de quotes dans innerHTML)
+  var btn = div.querySelector('[data-lgcid]');
+  if(btn) btn.addEventListener('click', function(){ supprimerLigneLogiciel(id); });
 
   liste.appendChild(div);
 
