@@ -37,11 +37,13 @@ window._agpGet    = get;
 window._agpOnVal  = onValue;
 window._agpRemove = remove;
 
-// Sauvegarde Firebase isolee par prestation
+// ============================================================
+// SAUVEGARDE FIREBASE — mode en ligne uniquement, simple et sûr
+// ============================================================
 window.agpSaveFirebase = function() {
   const p = window._agpCurrentPrest;
-  if(!p) return;
-  const toArr = v => Array.isArray(v)?v:(v&&typeof v==='object'?Object.values(v):[]);
+  // PROTECTION ABSOLUE : ne jamais écraser avant que les données soient chargées
+  if(!p || !window._AGP_READY) return;
   const data = {
     users:              typeof users!=='undefined'?users:[],
     stocks:             typeof stocks!=='undefined'?stocks:{},
@@ -62,88 +64,80 @@ window.agpSaveFirebase = function() {
     fraisInscription:   typeof fraisInscriptionGlobal!=='undefined'?fraisInscriptionGlobal:30000
   };
   set(ref(db, 'agp_prest/' + p.uid + '/data'), data).catch(e=>console.warn('Save err:',e));
-  agpUpdateStatusUI(true);
+  agpFlashSync();
 };
 
-function agpUpdateStatusUI(synced){
-  var ind=document.getElementById('agpSyncIndicator');
+// Indicateur visuel simple — vert 2s puis retour bleu
+function agpFlashSync(){
   var dot=document.getElementById('agpStatusDot');
   var txt=document.getElementById('agpStatusText');
-  if(!ind||!dot||!txt) return;
-  if(synced){
-    dot.style.background='#22c55e';
-    dot.style.animation='none';
-    txt.textContent='En ligne ✓';
-    txt.style.color='#15803d';
-  } else {
-    dot.style.background='#2563eb';
-    dot.style.animation='none';
-    txt.textContent='Cloud actif';
-    txt.style.color='#2563eb';
-  }
-  setTimeout(function(){
-    dot.style.background='#2563eb';
-    txt.textContent='Cloud actif';
-    txt.style.color='#2563eb';
+  if(!dot||!txt) return;
+  dot.style.background='#22c55e'; txt.textContent='Sauvegardé ✓'; txt.style.color='#15803d';
+  clearTimeout(window._agpFlashT);
+  window._agpFlashT=setTimeout(function(){
+    dot.style.background='#22c55e'; txt.textContent='En ligne'; txt.style.color='#15803d';
   },2000);
 }
 
-// Charger les donnees d'une prestation depuis Firebase
+// ============================================================
+// CHARGEMENT FIREBASE — une seule lecture, simple et sûr
+// ============================================================
 window.agpLoadData = function(prest) {
+  // Stopper l'ancien listener s'il existe
   if(window._agpListener){ window._agpListener(); window._agpListener=null; }
+  // Bloquer toute sauvegarde pendant le chargement
   window._AGP_READY=false;
+
+  const toA = v => !v?[]:Array.isArray(v)?v:Object.values(v);
+
   const unsubscribe = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
-    const data=snap.val();
-    const toA=v=>!v?[]:Array.isArray(v)?v:Object.values(v);
-    // RESET toutes les variables
-    if(typeof users!=='undefined') users=[{nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0}];
-    if(typeof stocks!=='undefined') stocks={};
-    if(typeof historique!=='undefined') historique=[];
-    if(typeof depenses!=='undefined') depenses=[];
-    if(typeof inscrits!=='undefined') inscrits=[];
-    if(typeof servicesList!=='undefined') servicesList=[];
-    if(typeof formations!=='undefined') formations=[];
-    if(typeof horaires!=='undefined') horaires=[];
-    if(typeof durees!=='undefined') durees=[];
-    if(typeof servicesTypes!=='undefined') servicesTypes=['Saisie','Impression','Photocopie','Prestation'];
-    if(typeof permissionsGerants!=='undefined') permissionsGerants={};
-    if(typeof revenu!=='undefined') revenu=0;
-    if(typeof totalDepenses!=='undefined') totalDepenses=0;
-    if(typeof totalStudents!=='undefined') totalStudents=0;
-    if(typeof totalServices!=='undefined') totalServices=0;
-    if(typeof matricule!=='undefined') matricule=1;
+    const data = snap.val();
+
+    // RESET propre avant chargement
+    users=[{nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0}];
+    stocks={}; historique=[]; depenses=[]; inscrits=[]; servicesList=[];
+    formations=[]; horaires=[]; durees=[];
+    servicesTypes=['Saisie','Impression','Photocopie','Prestation'];
+    permissionsGerants={}; revenu=0; totalDepenses=0; totalStudents=0; totalServices=0;
+    matricule=1;
     if(typeof fraisInscriptionGlobal!=='undefined') fraisInscriptionGlobal=30000;
-    // Charger les donnees si elles existent
+
+    // Charger depuis Firebase si des données existent
     if(data){
-      if(data.users) users=toA(data.users);
-      if(data.stocks) stocks=data.stocks;
-      if(data.historique) historique=toA(data.historique);
-      if(data.depenses) depenses=toA(data.depenses);
-      if(data.inscrits) inscrits=toA(data.inscrits);
-      if(data.servicesList) servicesList=toA(data.servicesList);
-      if(data.fraisInscription!=null) fraisInscriptionGlobal=data.fraisInscription;
-      if(data.formations) formations=toA(data.formations);
-      if(data.horaires){ var h=data.horaires; horaires=Array.isArray(h)?h:(typeof h==='object'?Object.values(h):[]); }
-      if(data.durees) durees=toA(data.durees);
-      if(data.servicesTypes) servicesTypes=toA(data.servicesTypes);
-      if(data.permissionsGerants) permissionsGerants=data.permissionsGerants||{};
-      if(data.revenu!=null) revenu=data.revenu;
-      if(data.totalDepenses!=null) totalDepenses=data.totalDepenses;
-      if(data.totalStudents!=null) totalStudents=data.totalStudents;
-      if(data.totalServices!=null) totalServices=data.totalServices;
-      if(data.matricule!=null) matricule=data.matricule;
+      if(data.users)              users              = toA(data.users);
+      if(data.stocks)             stocks             = data.stocks;
+      if(data.historique)         historique         = toA(data.historique);
+      if(data.depenses)           depenses           = toA(data.depenses);
+      if(data.inscrits)           inscrits           = toA(data.inscrits);
+      if(data.servicesList)       servicesList       = toA(data.servicesList);
+      if(data.formations)         formations         = toA(data.formations);
+      if(data.horaires)           horaires           = Array.isArray(data.horaires)?data.horaires:Object.values(data.horaires||{});
+      if(data.durees)             durees             = toA(data.durees);
+      if(data.servicesTypes)      servicesTypes      = toA(data.servicesTypes);
+      if(data.permissionsGerants) permissionsGerants = data.permissionsGerants||{};
+      if(data.revenu        !=null) revenu        = data.revenu;
+      if(data.totalDepenses !=null) totalDepenses = data.totalDepenses;
+      if(data.totalStudents !=null) totalStudents = data.totalStudents;
+      if(data.totalServices !=null) totalServices = data.totalServices;
+      if(data.matricule     !=null) matricule     = data.matricule;
+      if(data.fraisInscription!=null && typeof fraisInscriptionGlobal!=='undefined')
+                                    fraisInscriptionGlobal = data.fraisInscription;
     }
-    // S'assurer que le fondateur est dans users
-    if(!users.find(u=>u.role==='FONDATEUR')){
+
+    // Garantir que le fondateur est dans users
+    if(!users.find(u=>u.role==='FONDATEUR'))
       users.unshift({nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0});
-    }
-    // Synchroniser currentUserIndex pour les gerants
+
+    // Synchroniser l'index gérant
     if(typeof currentRole!=='undefined' && currentRole==='GERANT' && typeof currentUser!=='undefined'){
       const gi=users.findIndex(u=>u.nom===currentUser||u.nom.includes(currentUser)||currentUser.includes(u.nom));
       if(gi>=0 && typeof currentUserIndex!=='undefined') currentUserIndex=gi;
     }
-    window._AGP_READY=true;
-    // Initialiser l'interface
+
+    // DONNÉES PRÊTES — on autorise les sauvegardes
+    window._AGP_READY = true;
+
+    // Rafraîchir l'interface
     try{ loadUsers(); }catch(e){}
     try{ updateDashboard(); }catch(e){}
     setTimeout(function(){
@@ -3800,14 +3794,97 @@ function verifierConcepteur(){
   const code=document.getElementById('codeConcepteur').value.trim();
   if(code!==CODE_CONCEPTEUR){alert('Code maitre incorrect');return;}
   const res=document.getElementById('concepteurResult');
-  let html='<div class="bg-blue-50 p-4 rounded-xl border border-blue-200">'    +'<h3 class="font-bold text-blue-950 mb-3">Identifiants du centre</h3>'    +'<div class="overflow-x-auto"><table class="w-full text-sm"><thead>'    +'<tr class="bg-blue-950 text-white"><th class="p-2">Utilisateur</th><th class="p-2">Role</th><th class="p-2">Code</th><th class="p-2">Statut</th></tr>'    +'</thead><tbody>';
+  let html='<div class="bg-blue-50 p-4 rounded-xl border border-blue-200">'
+    +'<h3 class="font-bold text-blue-950 mb-3">Identifiants du centre</h3>'
+    +'<div class="overflow-x-auto"><table class="w-full text-sm"><thead>'
+    +'<tr class="bg-blue-950 text-white"><th class="p-2">Utilisateur</th><th class="p-2">Role</th><th class="p-2">Code</th><th class="p-2">Statut</th></tr>'
+    +'</thead><tbody>';
   users.forEach(function(u){
-    html+='<tr class="border-b"><td class="p-2 font-bold">'+u.nom+'</td><td class="p-2">'+u.role+'</td>'      +'<td class="p-2 font-mono bg-yellow-100 font-bold text-blue-950">'+u.code+'</td>'      +'<td class="p-2 '+(u.bloque?'text-red-600':'text-green-600')+'">'+(u.bloque?'BLOQUE':'ACTIF')+'</td></tr>';
+    html+='<tr class="border-b"><td class="p-2 font-bold">'+u.nom+'</td><td class="p-2">'+u.role+'</td>'
+      +'<td class="p-2 font-mono bg-yellow-100 font-bold text-blue-950">'+u.code+'</td>'
+      +'<td class="p-2 '+(u.bloque?'text-red-600':'text-green-600')+'">'+(u.bloque?'BLOQUE':'ACTIF')+'</td></tr>';
   });
   html+='</tbody></table></div></div>';
+  // Outil de recuperation des donnees perdues
+  html+='<div class="mt-4 bg-red-50 p-4 rounded-xl border-2 border-red-300">'
+    +'<h3 class="font-bold text-red-900 mb-1">\uD83D\uDEA8 Recuperation des donnees perdues</h3>'
+    +'<p class="text-xs text-red-700 mb-3">Analyse Firebase et restaure les donnees de toutes les prestations videes accidentellement.</p>'
+    +'<button onclick="agpRecupererToutesPrests()" class="w-full bg-red-600 text-white py-2 rounded-xl font-bold text-sm mb-2">\uD83D\uDD04 Scanner et recuperer toutes les prestations</button>'
+    +'<div id="recupLog" class="text-xs font-mono bg-white border border-red-200 rounded-lg p-3 max-h-64 overflow-y-auto" style="display:none;white-space:pre-wrap"></div>'
+    +'</div>';
   res.innerHTML=html;
   res.style.display='block';
 }
+
+// ===== OUTIL DE RECUPERATION DE TOUTES LES PRESTATIONS =====
+window.agpRecupererToutesPrests = async function(){
+  var log=document.getElementById('recupLog');
+  if(!log) return;
+  log.style.display='block';
+  log.textContent='⏳ Connexion Firebase...\n';
+  var db=window._agpDb, r=window._agpRef, g=window._agpGet, s=window._agpSet;
+  if(!db){log.textContent+='❌ Firebase non disponible.\n';return;}
+  try{
+    log.textContent+='📦 Lecture de toutes les prestations...\n';
+    var allSnap=await g(r(db,'agp_prest'));
+    var allPracts=allSnap.val();
+    if(!allPracts){log.textContent+='❌ Aucune prestation trouvee.\n';return;}
+    var uids=Object.keys(allPracts);
+    log.textContent+='✅ '+uids.length+' prestations trouvees.\n\n';
+    var videes=0,ok=0,restaurees=0;
+    for(var i=0;i<uids.length;i++){
+      var uid=uids[i];
+      var prest=allPracts[uid];
+      var info=prest.info||{};
+      var data=prest.data||null;
+      var nom=info.centreNom||info.nom||uid;
+      var nbIns=0,nbSvc=0,nbDep=0;
+      if(data){
+        if(data.inscrits) nbIns=Array.isArray(data.inscrits)?data.inscrits.length:Object.keys(data.inscrits).length;
+        if(data.servicesList) nbSvc=Array.isArray(data.servicesList)?data.servicesList.length:Object.keys(data.servicesList).length;
+        if(data.depenses) nbDep=Array.isArray(data.depenses)?data.depenses.length:Object.keys(data.depenses).length;
+      }
+      if(!data||(nbIns===0&&nbSvc===0&&nbDep===0)){
+        log.textContent+='⚠️  ['+nom+'] VIDE — '+nbIns+' inscrits, '+nbSvc+' services\n';
+        videes++;
+        var backup=null;
+        try{var b=localStorage.getItem('agp_offline_'+uid);if(b)backup=JSON.parse(b);}catch(e){}
+        if(backup&&backup.data){
+          var bd=backup.data;
+          var nbBI=bd.inscrits?bd.inscrits.length:0;
+          var nbBS=bd.servicesList?bd.servicesList.length:0;
+          if(nbBI>0||nbBS>0){
+            log.textContent+='   💾 Backup local: '+nbBI+' inscrits, '+nbBS+' services\n';
+            log.textContent+='   ↗️  Restauration Firebase...\n';
+            try{
+              await s(r(db,'agp_prest/'+uid+'/data'),bd);
+              log.textContent+='   ✅ RESTAUREE avec succes!\n';
+              restaurees++;
+            }catch(e2){log.textContent+='   ❌ Erreur: '+e2.message+'\n';}
+          } else {
+            log.textContent+='   ℹ️  Backup local vide aussi.\n';
+          }
+        } else {
+          log.textContent+='   ℹ️  Pas de backup sur cet appareil.\n';
+          log.textContent+='      → Faire ouvrir l\'app par le fondateur depuis SON appareil.\n';
+        }
+      } else {
+        log.textContent+='✅ ['+nom+'] OK — '+nbIns+' inscrits, '+nbSvc+' services, '+nbDep+' depenses\n';
+        ok++;
+      }
+    }
+    log.textContent+='\n════════════════════\n';
+    log.textContent+='BILAN:\n';
+    log.textContent+='  Prestations OK: '+ok+'\n';
+    log.textContent+='  Prestations vides: '+videes+'\n';
+    log.textContent+='  Restaurees: '+restaurees+'\n';
+    if(videes-restaurees>0){
+      log.textContent+='\n⚠️  '+(videes-restaurees)+' prestations a recuperer depuis\n';
+      log.textContent+='   l\'appareil du fondateur de chaque boutique.\n';
+    }
+    if(restaurees>0) log.textContent+='\n🎉 '+restaurees+' prestations restaurees!\n';
+  }catch(e){log.textContent+='❌ Erreur: '+e.message+'\n';console.error(e);}
+};
 function fermerModal(id){ document.getElementById(id).style.display='none'; }
 
 // ===== NOUVEAU CENTRE =====
