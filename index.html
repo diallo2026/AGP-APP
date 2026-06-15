@@ -37,15 +37,12 @@ window._agpGet    = get;
 window._agpOnVal  = onValue;
 window._agpRemove = remove;
 
-// ===== GESTION OFFLINE / ONLINE =====
-window._agpIsOnline = navigator.onLine;
-window._agpHasPending = false;
-window._agpPendingData = null;
-window._agpSyncRetryTimer = null;
-
-function agpGetCurrentData(){
+// Sauvegarde Firebase isolee par prestation
+window.agpSaveFirebase = function() {
+  const p = window._agpCurrentPrest;
+  if(!p) return;
   const toArr = v => Array.isArray(v)?v:(v&&typeof v==='object'?Object.values(v):[]);
-  return {
+  const data = {
     users:              typeof users!=='undefined'?users:[],
     stocks:             typeof stocks!=='undefined'?stocks:{},
     permissionsGerants: typeof permissionsGerants!=='undefined'?permissionsGerants:{},
@@ -64,150 +61,37 @@ function agpGetCurrentData(){
     servicesList:       typeof servicesList!=='undefined'?servicesList:[],
     fraisInscription:   typeof fraisInscriptionGlobal!=='undefined'?fraisInscriptionGlobal:30000
   };
-}
-
-function agpUpdateStatusUI(){
-  var badge=document.getElementById('agpStatusBadge');
-  var dot=document.getElementById('agpStatusDot');
-  var txt=document.getElementById('agpStatusText');
-  var btn=document.getElementById('agpSavePendingBtn');
-  if(!badge||!dot||!txt) return;
-
-  if(window._agpIsOnline){
-    if(window._agpHasPending){
-      // En ligne mais synchro en cours
-      badge.style.background='rgba(254,252,232,0.97)';
-      badge.style.border='1.5px solid #fbbf24';
-      dot.style.background='#f59e0b';
-      dot.classList.add('pulse');
-      txt.style.color='#92400e';
-      txt.textContent='Synchronisation…';
-      if(btn) btn.style.display='none';
-    } else {
-      // En ligne, tout sync
-      badge.style.background='rgba(240,253,244,0.97)';
-      badge.style.border='1.5px solid #86efac';
-      dot.style.background='#22c55e';
-      dot.classList.remove('pulse');
-      txt.style.color='#15803d';
-      txt.textContent='En ligne ✓';
-      if(btn) btn.style.display='none';
-    }
-  } else {
-    // Hors ligne
-    badge.style.background='rgba(254,242,242,0.97)';
-    badge.style.border='1.5px solid #fca5a5';
-    dot.style.background='#ef4444';
-    dot.classList.add('pulse');
-    txt.style.color='#991b1b';
-    txt.textContent='Hors ligne';
-    if(btn) btn.style.display = window._agpHasPending ? 'block' : 'none';
-  }
-}
-
-function agpSetOnline(online){
-  window._agpIsOnline = online;
-  agpUpdateStatusUI();
-  if(online && window._agpHasPending){
-    // Connexion rétablie → sync automatique immédiate
-    agpForceSyncNow();
-  }
-}
-
-function agpForceSyncNow(){
-  var p=window._agpCurrentPrest;
-  if(!p||!window._agpDb) return;
-  var data=window._agpPendingData||agpGetCurrentData();
-  agpUpdateStatusUI();
-  set(ref(db,'agp_prest/'+p.uid+'/data'), data)
-    .then(function(){
-      window._agpHasPending=false;
-      window._agpPendingData=null;
-      agpUpdateStatusUI();
-      // Flash confirmation
-      var txt=document.getElementById('agpStatusText');
-      if(txt){var prev=txt.textContent;txt.textContent='Sauvegardé ✓';setTimeout(function(){agpUpdateStatusUI();},2500);}
-    })
-    .catch(function(e){
-      console.warn('Sync err:',e);
-      window._agpHasPending=true;
-      window._agpIsOnline=false;
-      agpUpdateStatusUI();
-      // Réessayer dans 10 secondes
-      if(window._agpSyncRetryTimer) clearTimeout(window._agpSyncRetryTimer);
-      window._agpSyncRetryTimer=setTimeout(function(){
-        if(navigator.onLine) agpForceSyncNow();
-      },10000);
-    });
-}
-
-// Sauvegarde Firebase isolee par prestation avec gestion offline
-window.agpSaveFirebase = function() {
-  const p = window._agpCurrentPrest;
-  if(!p) return;
-  const data = agpGetCurrentData();
-
-  // Toujours sauvegarder localement (backup)
-  try{localStorage.setItem('agp_offline_'+p.uid, JSON.stringify({data:data,ts:Date.now()}));}catch(e){}
-
-  if(!navigator.onLine){
-    // Hors ligne : mettre en attente
-    window._agpHasPending=true;
-    window._agpIsOnline=false;
-    window._agpPendingData=data;
-    agpUpdateStatusUI();
-    return;
-  }
-
-  // En ligne : sauvegarder Firebase
-  window._agpIsOnline=true;
-  window._agpHasPending=true;
-  agpUpdateStatusUI();
-  set(ref(db, 'agp_prest/' + p.uid + '/data'), data)
-    .then(function(){
-      window._agpHasPending=false;
-      window._agpPendingData=null;
-      agpUpdateStatusUI();
-    })
-    .catch(function(e){
-      console.warn('Save err:',e);
-      window._agpHasPending=true;
-      window._agpPendingData=data;
-      window._agpIsOnline=navigator.onLine;
-      agpUpdateStatusUI();
-      // Réessayer dans 8 secondes
-      if(window._agpSyncRetryTimer) clearTimeout(window._agpSyncRetryTimer);
-      window._agpSyncRetryTimer=setTimeout(function(){
-        if(navigator.onLine) agpForceSyncNow();
-      },8000);
-    });
+  set(ref(db, 'agp_prest/' + p.uid + '/data'), data).catch(e=>console.warn('Save err:',e));
+  agpUpdateStatusUI(true);
 };
 
-// Écoute des événements réseau navigateur
-window.addEventListener('online', function(){
-  agpSetOnline(true);
-});
-window.addEventListener('offline', function(){
-  agpSetOnline(false);
-});
+function agpUpdateStatusUI(synced){
+  var ind=document.getElementById('agpSyncIndicator');
+  var dot=document.getElementById('agpStatusDot');
+  var txt=document.getElementById('agpStatusText');
+  if(!ind||!dot||!txt) return;
+  if(synced){
+    dot.style.background='#22c55e';
+    dot.style.animation='none';
+    txt.textContent='En ligne ✓';
+    txt.style.color='#15803d';
+  } else {
+    dot.style.background='#2563eb';
+    dot.style.animation='none';
+    txt.textContent='Cloud actif';
+    txt.style.color='#2563eb';
+  }
+  setTimeout(function(){
+    dot.style.background='#2563eb';
+    txt.textContent='Cloud actif';
+    txt.style.color='#2563eb';
+  },2000);
+}
 
 // Charger les donnees d'une prestation depuis Firebase
 window.agpLoadData = function(prest) {
   if(window._agpListener){ window._agpListener(); window._agpListener=null; }
-  if(window._agpConnListener){ window._agpConnListener(); window._agpConnListener=null; }
   window._AGP_READY=false;
-
-  // Surveiller la connexion Firebase réelle
-  var connRef=ref(db,'.info/connected');
-  var unsubConn=onValue(connRef,function(snap){
-    var connected=snap.val()===true;
-    window._agpIsOnline=connected;
-    agpUpdateStatusUI();
-    if(connected&&window._agpHasPending){
-      agpForceSyncNow();
-    }
-  });
-  window._agpConnListener=unsubConn;
   const unsubscribe = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
     const data=snap.val();
     const toA=v=>!v?[]:Array.isArray(v)?v:Object.values(v);
@@ -292,7 +176,6 @@ window.agpLoadData = function(prest) {
 window._AGP_MODE    = false;
 window._AGP_READY   = false;
 window._agpCurrentPrest = null;
-window._agpConnListener = null;
 window.AGP_DEV_PWD  = 'AGPDev2026#';
 
 /* ===== NAVIGATION ===== */
@@ -527,11 +410,7 @@ function agpLaunch(prest, role, agentName, agIdx){
 
   // Afficher l'app
   agpSections('app');
-  var si=document.getElementById('agpSyncIndicator');
-  if(si){si.style.display='flex';}
-  window._agpIsOnline=navigator.onLine;
-  window._agpHasPending=false;
-  agpUpdateStatusUI();
+  var si=document.getElementById('agpSyncIndicator');if(si)si.style.display='flex';
   agpAfficherChrono(prest);
 
   // Logout = retour page login
@@ -539,10 +418,6 @@ function agpLaunch(prest, role, agentName, agIdx){
     window._AGP_MODE=false;
     window._AGP_READY=false;
     window._agpCurrentPrest=null;
-    window._agpHasPending=false;
-    window._agpPendingData=null;
-    if(window._agpSyncRetryTimer){clearTimeout(window._agpSyncRetryTimer);window._agpSyncRetryTimer=null;}
-    if(window._agpConnListener){window._agpConnListener();window._agpConnListener=null;}
     var si=document.getElementById('agpSyncIndicator');if(si)si.style.display='none';
     var lf=document.getElementById('agp-l-fond');if(lf)lf.value='';
     var lm=document.getElementById('agp-login-msg');if(lm)lm.style.display='none';
@@ -730,6 +605,7 @@ function agpDevRender(list){
     '<p style="font-size:11px;color:#475569;margin:0">Gestion des acces</p></div>',
     '<div style="display:flex;gap:6px">',
     '<button onclick="agpDevChangePwd()" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.3);border-radius:7px;background:transparent;color:#60a5fa;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Mot de passe</button>',
+    '<button onclick="agpRestoreAllData()" style="padding:6px 11px;border:1px solid rgba(34,197,94,0.4);border-radius:7px;background:rgba(34,197,94,0.1);color:#22c55e;font-size:11px;font-weight:700;cursor:pointer;font-family:inherit">🔄 Restaurer données</button>',
     '<button id="agp-reload-dev" style="padding:6px 11px;border:1px solid rgba(37,99,235,0.15);border-radius:7px;background:transparent;color:#475569;font-size:11px;cursor:pointer;font-family:inherit">Actualiser</button>',
     '<button onclick="agpInitLicencesExistantes()" style="padding:6px 11px;border:1px solid rgba(249,115,22,0.4);border-radius:7px;background:rgba(249,115,22,0.08);color:#fb923c;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit">Init licences</button>',
     '<button id="agp-close-dev" style="background:none;border:none;color:#64748b;font-size:22px;cursor:pointer;line-height:1;padding:2px 6px">&#x2715;</button>',
@@ -817,6 +693,45 @@ function agpDevDel(btn){
     var p=document.getElementById('agp-dev-panel');if(p)p.remove();agpDevPanel();
   });
 }
+// ===== RESTAURATION DES DONNÉES PERDUES =====
+function agpRestoreAllData(){
+  var db=window._agpDb,r=window._agpRef,g=window._agpGet,s=window._agpSet;
+  if(!db){alert('Firebase non disponible');return;}
+  if(!confirm('Analyser toutes les prestations et tenter de restaurer les données vides depuis le backup localStorage des navigateurs ?\n\nNote: ceci ne restaure que si un backup local existe sur CET appareil.'))return;
+
+  g(r(db,'agp_prest')).then(function(snap){
+    var restored=0,checked=0,empty=0;
+    snap.forEach(function(child){
+      var uid=child.key;
+      var info=child.val()&&child.val().info;
+      var data=child.val()&&child.val().data;
+      checked++;
+      // Détecter si les données sont vides (inscrits vide ou absent)
+      var inscritsVide=!data||!data.inscrits||(Array.isArray(data.inscrits)&&data.inscrits.length===0)||(typeof data.inscrits==='object'&&Object.keys(data.inscrits).length===0);
+      if(inscritsVide){
+        empty++;
+        // Chercher dans localStorage un backup pour cet uid
+        try{
+          var bk=localStorage.getItem('agp_offline_'+uid);
+          if(bk){
+            var bObj=JSON.parse(bk);
+            if(bObj&&bObj.data&&bObj.data.inscrits){
+              var nbIns=Array.isArray(bObj.data.inscrits)?bObj.data.inscrits.length:Object.keys(bObj.data.inscrits).length;
+              if(nbIns>0){
+                s(r(db,'agp_prest/'+uid+'/data'),bObj.data);
+                restored++;
+              }
+            }
+          }
+        }catch(e){}
+      }
+    });
+    alert('Analyse terminée !\n\n✅ Prestations vérifiées: '+checked+'\n⚠️ Avec données vides: '+empty+'\n🔄 Restaurées depuis backup local: '+restored+'\n\n'+(restored>0?'Les données ont été restaurées dans Firebase.':'Aucun backup local trouvé sur cet appareil.\nLes données doivent être récupérées depuis les appareils qui ont utilisé l\'application.'));
+    var p=document.getElementById('agp-dev-panel');if(p)p.remove();
+    agpDevPanel();
+  }).catch(function(e){alert('Erreur: '+e.message);});
+}
+
 function agpDevChangePwd(){
   var ov2=document.createElement('div');
   ov2.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999999;display:flex;align-items:center;justify-content:center';
@@ -1024,34 +939,21 @@ function agpDevImPayer(btn){
 #agp-landing,#agp-register,#agp-login{ display:none }
 #agpSyncIndicator{
   position:fixed;top:10px;right:14px;z-index:9999;
-  font-size:12px;font-weight:700;
   display:none;font-family:sans-serif;
-  display:flex;align-items:center;gap:6px;
 }
 #agpStatusBadge{
-  display:flex;align-items:center;gap:5px;
-  padding:5px 12px;border-radius:20px;
-  box-shadow:0 2px 10px rgba(0,0,0,0.18);
+  display:flex;align-items:center;gap:6px;
+  padding:5px 13px;border-radius:20px;
+  background:rgba(240,253,244,0.97);
+  border:1.5px solid #86efac;
+  box-shadow:0 2px 8px rgba(0,0,0,0.13);
   font-size:12px;font-weight:700;cursor:default;
-  transition:all 0.3s;
 }
 #agpStatusDot{
   width:9px;height:9px;border-radius:50%;
-  display:inline-block;flex-shrink:0;
-  animation:none;
+  background:#22c55e;display:inline-block;flex-shrink:0;
 }
-#agpStatusDot.pulse{animation:agpPulse 1.2s infinite;}
-@keyframes agpPulse{0%,100%{opacity:1;transform:scale(1);}50%{opacity:0.4;transform:scale(0.7);}}
-#agpSavePendingBtn{
-  display:none;
-  padding:5px 13px;border-radius:20px;border:none;
-  background:linear-gradient(135deg,#f59e0b,#d97706);
-  color:#000;font-size:11px;font-weight:800;cursor:pointer;
-  box-shadow:0 2px 8px rgba(245,158,11,0.4);
-  animation:agpBlink 1.5s infinite;
-  font-family:sans-serif;
-}
-@keyframes agpBlink{0%,100%{opacity:1;}50%{opacity:0.6;}}
+#agpStatusText{color:#15803d;}
 
 .menuBtn{width:100%;padding:12px 14px;border-radius:16px;background:#f1f5f9;font-weight:bold;text-align:left;transition:all 0.2s;border:none;cursor:pointer;}
 .menuBtn:hover{background:#172554;color:white;}
@@ -1077,13 +979,10 @@ function agpDevImPayer(btn){
 <body style="background:#060d24;font-family:sans-serif">
 
 <div id="agpSyncIndicator" style="display:none;">
-  <div id="agpStatusBadge" style="background:rgba(255,255,255,0.96);">
+  <div id="agpStatusBadge">
     <span id="agpStatusDot"></span>
-    <span id="agpStatusText">En ligne</span>
+    <span id="agpStatusText">En ligne ✓</span>
   </div>
-  <button id="agpSavePendingBtn" onclick="agpForceSyncNow()" title="Des modifications sont en attente — cliquez pour synchroniser">
-    💾 Sauvegarder
-  </button>
 </div>
 
 <!-- ===== AGP LANDING ===== -->
