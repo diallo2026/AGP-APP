@@ -1727,7 +1727,15 @@ function agpDevImPayer(btn){
           </div>
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-1">Année</label>
-            <select id="rapportAnnee" class="inp text-sm" style="width:110px"></select>
+            <select id="rapportAnnee" class="inp text-sm" style="width:110px">
+              <option value="2040">2040</option><option value="2039">2039</option><option value="2038">2038</option>
+              <option value="2037">2037</option><option value="2036">2036</option><option value="2035">2035</option>
+              <option value="2034">2034</option><option value="2033">2033</option><option value="2032">2032</option>
+              <option value="2031">2031</option><option value="2030">2030</option><option value="2029">2029</option>
+              <option value="2028">2028</option><option value="2027">2027</option><option value="2026" selected>2026</option>
+              <option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option>
+              <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
+            </select>
           </div>
           <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
           <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
@@ -1737,7 +1745,15 @@ function agpDevImPayer(btn){
         <div id="filtresAnnuel" class="flex flex-wrap gap-3 items-end mb-5 no-print" style="display:none!important">
           <div>
             <label class="block text-xs font-bold text-slate-600 mb-1">Année</label>
-            <select id="rapportAnneeAnnuel" class="inp text-sm" style="width:110px"></select>
+            <select id="rapportAnneeAnnuel" class="inp text-sm" style="width:110px">
+              <option value="2040">2040</option><option value="2039">2039</option><option value="2038">2038</option>
+              <option value="2037">2037</option><option value="2036">2036</option><option value="2035">2035</option>
+              <option value="2034">2034</option><option value="2033">2033</option><option value="2032">2032</option>
+              <option value="2031">2031</option><option value="2030">2030</option><option value="2029">2029</option>
+              <option value="2028">2028</option><option value="2027">2027</option><option value="2026" selected>2026</option>
+              <option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option>
+              <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
+            </select>
           </div>
           <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
           <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
@@ -5320,13 +5336,17 @@ function setRapportMode(mode){
 function _remplirAnneesRapport(){
   var annees = new Set();
   var now = new Date().getFullYear();
-  annees.add(now);
+  // Années fixes de 2020 à 2040
+  for(var y = 2020; y <= 2040; y++){ annees.add(y); }
+  // + années tirées des données réelles
   if(typeof inscrits !== 'undefined'){
     inscrits.forEach(function(i){ var d = parseDateFR(i.date); if(d && d.getFullYear()>2000) annees.add(d.getFullYear()); });
   }
   if(typeof servicesList !== 'undefined'){
     servicesList.forEach(function(s){ var d = parseDateFR(s.date); if(d && d.getFullYear()>2000) annees.add(d.getFullYear()); });
   }
+  // Ajouter toutes les années de 2020 à 2040
+  for(var y=2020; y<=2040; y++) annees.add(y);
   var sorted = Array.from(annees).sort(function(a,b){return b-a;});
   ['rapportAnnee','rapportAnneeAnnuel'].forEach(function(id){
     var sel = document.getElementById(id);
