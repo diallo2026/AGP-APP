@@ -5006,9 +5006,9 @@ function renderAttente(){
         +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
         +((ins.resteAPayer&&ins.resteAPayer>0)?'<span style="font-size:11px;color:#dc2626;font-weight:bold;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
         +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
-        +'<button onclick="changerStatutInscrit(''+mat+'','en_cours')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(statut==='en_cours'?'#2563eb':'white')+';color:'+(statut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
-        +'<button onclick="changerStatutInscrit(''+mat+'','termine')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(statut==='termine'?'#15803d':'white')+';color:'+(statut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
-        +'<button onclick="changerStatutInscrit(''+mat+'','abandonne')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(statut==='abandonne'?'#dc2626':'white')+';color:'+(statut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
+        +'<button data-mat="'+mat+'" data-statut="en_cours" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(statut==='en_cours'?'#2563eb':'white')+';color:'+(statut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
+        +'<button data-mat="'+mat+'" data-statut="termine" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(statut==='termine'?'#15803d':'white')+';color:'+(statut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
+        +'<button data-mat="'+mat+'" data-statut="abandonne" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(statut==='abandonne'?'#dc2626':'white')+';color:'+(statut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
         +'</div>'
         +'</div>'
         +'</div>';
