@@ -11,6 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 
 <!-- Firebase AGP -->
 <script type="module">
@@ -134,6 +135,13 @@ window.agpLoadData = function(prest) {
       if(gi>=0 && typeof currentUserIndex!=='undefined') currentUserIndex=gi;
     }
 
+    // Purger l'historique de plus d'1 mois dès le chargement
+    var _maintenant = new Date();
+    var _unMoisAvant = new Date(_maintenant.getTime() - 30*24*60*60*1000);
+    historique = historique.filter(function(h){
+      if(typeof h === 'string') return true; // compatibilité ancien format, gardé
+      return h.ts ? new Date(h.ts) >= _unMoisAvant : true;
+    });
     // DONNÉES PRÊTES — on autorise les sauvegardes
     window._AGP_READY = true;
 
@@ -1212,6 +1220,25 @@ function agpDevImPayer(btn){
             <div id="alertesListe" class="space-y-2"></div>
           </div>
         </div>
+        <!-- GRAPHIQUES TABLEAU DE BORD -->
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-2 gap-5">
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow">
+            <h3 class="font-bold text-blue-950 mb-3 text-sm">📊 Revenus vs Dépenses vs Bénéfices</h3>
+            <canvas id="chartFinance" height="180"></canvas>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow">
+            <h3 class="font-bold text-blue-950 mb-3 text-sm">🎓 Inscriptions par mois (année en cours)</h3>
+            <canvas id="chartInscrits" height="180"></canvas>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow">
+            <h3 class="font-bold text-blue-950 mb-3 text-sm">🏆 Top 10 Services du mois</h3>
+            <canvas id="chartTopServices" height="220"></canvas>
+          </div>
+          <div class="bg-white border border-slate-200 rounded-2xl p-4 shadow">
+            <h3 class="font-bold text-blue-950 mb-3 text-sm">📈 Services par type (mois en cours)</h3>
+            <canvas id="chartServices" height="180"></canvas>
+          </div>
+        </div>
       </section>
 
       <!-- INSCRIPTION -->
@@ -1481,7 +1508,9 @@ function agpDevImPayer(btn){
             <tr class="bg-blue-950 text-white">
               <th class="p-3 text-left">#</th>
               <th class="p-3 text-left">Service</th>
-              <th class="p-3 text-left">Montant</th>
+              <th class="p-3 text-left">Prix unit.</th>
+              <th class="p-3 text-left">Qté</th>
+              <th class="p-3 text-left">Total</th>
               <th class="p-3 text-left">Par</th>
               <th class="p-3 text-left">Date</th>
               <th class="p-3 text-left no-print">Actions</th>
@@ -1899,6 +1928,124 @@ function getMatriculePrefix(){
   return initiales||'NEI';
 }
 
+// ===== GRAPHIQUES TABLEAU DE BORD =====
+var _charts = {};
+
+function renderCharts(){
+  if(typeof Chart === 'undefined') return;
+
+  // -- Graphique Finances (barres) --
+  var ctxF = document.getElementById('chartFinance');
+  if(ctxF){
+    if(_charts.finance) _charts.finance.destroy();
+    _charts.finance = new Chart(ctxF, {
+      type: 'bar',
+      data: {
+        labels: ['Revenus Bruts', 'Dépenses', 'Bénéfices Nets'],
+        datasets: [{
+          label: 'GNF',
+          data: [revenu, totalDepenses, getBenefices()],
+          backgroundColor: ['#22c55e','#ef4444','#3b82f6'],
+          borderRadius: 8
+        }]
+      },
+      options: {
+        responsive: true, plugins: {legend:{display:false}},
+        scales: { y: { ticks: { callback: function(v){ return (v/1000).toFixed(0)+'k'; } } } }
+      }
+    });
+  }
+
+  // -- Graphique Inscrits par mois --
+  var ctxI = document.getElementById('chartInscrits');
+  if(ctxI){
+    var moisLabels=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
+    var annee = new Date().getFullYear();
+    var parMois = new Array(12).fill(0);
+    inscrits.forEach(function(ins){
+      var d = parseDateFR(ins.date);
+      if(d && d.getFullYear()===annee) parMois[d.getMonth()]++;
+    });
+    if(_charts.inscrits) _charts.inscrits.destroy();
+    _charts.inscrits = new Chart(ctxI, {
+      type: 'line',
+      data: {
+        labels: moisLabels,
+        datasets: [{
+          label: 'Inscrits',
+          data: parMois,
+          borderColor: '#f97316',
+          backgroundColor: 'rgba(249,115,22,0.15)',
+          fill: true, tension: 0.4, pointRadius: 5
+        }]
+      },
+      options: { responsive: true, plugins: {legend:{display:false}} }
+    });
+  }
+
+  // -- Top 10 Services du mois --
+  var ctxTop = document.getElementById('chartTopServices');
+  if(ctxTop){
+    var now = new Date();
+    var moisCur = now.getMonth(); var anCur = now.getFullYear();
+    var svcMois = servicesList.filter(function(s){
+      var d=parseDateFR(s.date);
+      return d && d.getFullYear()===anCur && d.getMonth()===moisCur;
+    });
+    // Grouper par type de service et totaliser
+    var topMap = {};
+    svcMois.forEach(function(s){
+      if(!topMap[s.service]) topMap[s.service]={count:0,total:0};
+      topMap[s.service].count += (s.quantite||1);
+      topMap[s.service].total += s.montant;
+    });
+    var topArr = Object.keys(topMap).map(function(k){return{nom:k,total:topMap[k].total,count:topMap[k].count};});
+    topArr.sort(function(a,b){return b.total-a.total;});
+    var top10 = topArr.slice(0,10);
+    if(_charts.top) _charts.top.destroy();
+    _charts.top = new Chart(ctxTop, {
+      type: 'bar',
+      data: {
+        labels: top10.map(function(t){return t.nom;}),
+        datasets: [{
+          label: 'Total GNF',
+          data: top10.map(function(t){return t.total;}),
+          backgroundColor: ['#3b82f6','#8b5cf6','#f97316','#22c55e','#ef4444','#06b6d4','#f59e0b','#ec4899','#10b981','#6366f1'],
+          borderRadius: 6
+        }]
+      },
+      options: {
+        indexAxis: 'y', responsive: true,
+        plugins: {legend:{display:false}, tooltip:{callbacks:{label:function(c){return c.raw.toLocaleString()+' GNF';}}}},
+        scales: { x: { ticks: { callback: function(v){ return (v/1000).toFixed(0)+'k'; } } } }
+      }
+    });
+  }
+
+  // -- Services par type (mois) --
+  var ctxS = document.getElementById('chartServices');
+  if(ctxS){
+    var now2=new Date(); var m2=now2.getMonth(); var a2=now2.getFullYear();
+    var svcM2=servicesList.filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===a2&&d.getMonth()===m2;});
+    var typeMap={};
+    svcM2.forEach(function(s){typeMap[s.service]=(typeMap[s.service]||0)+s.montant;});
+    var types=Object.keys(typeMap);
+    var couleurs=['#3b82f6','#8b5cf6','#f97316','#22c55e','#ef4444','#06b6d4','#f59e0b'];
+    if(_charts.svctype) _charts.svctype.destroy();
+    _charts.svctype = new Chart(ctxS, {
+      type: 'doughnut',
+      data: {
+        labels: types,
+        datasets: [{data: types.map(function(t){return typeMap[t];}), backgroundColor: couleurs, borderWidth: 2}]
+      },
+      options: {
+        responsive: true,
+        plugins: {legend:{position:'right'}, tooltip:{callbacks:{label:function(c){return c.label+': '+c.raw.toLocaleString()+' GNF';}}}}
+      }
+    });
+  }
+}
+
 function getBenefices(){
   // Uniquement les depenses reelles (salaires payes sont deja dans totalDepenses)
   return revenu-totalDepenses;
@@ -1916,6 +2063,8 @@ function updateDashboard(){
   verifierEcheances();
   const dt=document.getElementById('dateText');
   if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
+  // Mettre à jour les graphiques (différé pour ne pas bloquer le rendu)
+  setTimeout(renderCharts, 200);
   // Mettre a jour l'adresse dans le header selon la prestation
   var ha=document.getElementById('headerAdresse');
   if(ha){
@@ -2051,6 +2200,7 @@ function showSection(id){
     },500);
   }
   if(id==='formations'){ renderFormationSelect(); renderDureeSelect(); renderCatalogueFormations(); renderHoraireTable(); renderDureeTable(); initLogiciels(); }
+  if(id==='dashboard'){ setTimeout(renderCharts, 300); }
   if(id==='services'){renderServiceTable();afficherBanniereAuth();}
 }
 
@@ -2058,14 +2208,37 @@ function printSection(){ window.print(); }
 
 // ===== HISTORIQUE =====
 function ajouterHistorique(txt){
-  historique.unshift(new Date().toLocaleString('fr-FR')+'  '+txt);
-  if(historique.length>300) historique.pop();
+  // Stocker avec timestamp ISO pour la suppression automatique après 1 mois
+  var now = new Date();
+  var entry = {
+    ts: now.toISOString(),
+    label: now.toLocaleString('fr-FR') + '  ' + txt
+  };
+  historique.unshift(entry);
+  // Supprimer définitivement les entrées de plus d'1 mois
+  var unMoisAvant = new Date(now.getTime() - 30*24*60*60*1000);
+  historique = historique.filter(function(h){
+    if(typeof h === 'string') return true; // compatibilité ancien format
+    return h.ts ? new Date(h.ts) >= unMoisAvant : true;
+  });
+  if(historique.length>500) historique.splice(500);
   sauvegarder();
 }
 function renderHistorique(){
   const div=document.getElementById('historyList');
   if(!div) return;
-  div.innerHTML=historique.map(function(h){return '<div class="bg-slate-100 p-3 rounded-xl text-sm">'+h+'</div>';}).join('');
+  // Compatibilité avec l'ancien format (string) et le nouveau (objet)
+  if(!historique.length){div.innerHTML='<div class="text-gray-400 italic p-4 text-center">Aucun historique.</div>';return;}
+  var now=new Date(); var unMoisAvant=new Date(now.getTime()-30*24*60*60*1000);
+  div.innerHTML='<div class="bg-orange-50 border border-orange-200 rounded-xl p-2 mb-3 text-xs text-orange-700 font-bold">⏳ Les historiques sont conservés 1 mois puis supprimés automatiquement</div>'
+    +historique.map(function(h){
+      var label = typeof h==='string' ? h : (h.label||h.ts||'');
+      var ts = typeof h==='string' ? null : (h.ts ? new Date(h.ts) : null);
+      var age = ts ? (now-ts)/(1000*60*60*24) : 0;
+      var color = age>25 ? 'background:#fee2e2;border:1px solid #fca5a5;' : 'background:#f1f5f9;';
+      var badge = age>25 ? '<span style="color:#dc2626;font-size:10px;margin-left:6px;">⚠️ Expire bientôt</span>' : '';
+      return '<div style="'+color+'padding:10px 12px;border-radius:10px;font-size:12px;margin-bottom:4px;">'+label+badge+'</div>';
+    }).join('');
 }
 
 // ===== JOURS =====
@@ -2454,6 +2627,17 @@ function registerStudent(){
   const tuteur=document.getElementById('tuteur').value.trim();
   const tel=document.getElementById('telephone').value.trim();
   if(!nom||!prenom){alert('Remplissez nom et prenom');return;}
+  // Vérifier si l'étudiant est déjà inscrit (même nom + prénom)
+  const nomNorm=nom.toLowerCase().replace(/\s+/g,'');
+  const prenomNorm=prenom.toLowerCase().replace(/\s+/g,'');
+  const dejainscrit=inscrits.find(function(i){
+    return i.nom.toLowerCase().replace(/\s+/g,'')=== nomNorm &&
+           i.prenom.toLowerCase().replace(/\s+/g,'')=== prenomNorm;
+  });
+  if(dejainscrit){
+    alert('⚠️ ÉTUDIANT DÉJÀ INSCRIT\n\nMatricule: '+dejainscrit.mat+'\nFormation actuelle: '+dejainscrit.formation+'\nDate d\'inscription: '+dejainscrit.date+'\n\nCet étudiant est déjà enregistré dans le système.');
+    return;
+  }
   const cases=document.querySelectorAll('.jourCase:checked');
   if(cases.length<3||cases.length>5){alert('Choisissez 3 a 5 jours (actuellement '+cases.length+')');return;}
   const joursAvecHeures=[];
@@ -2544,10 +2728,20 @@ function afficherRecu(ins, logoSrc){
   const joursHtml=ins.jours.map(function(j){return '<li style="margin-bottom:2px;">'+j+'</li>';}).join('');
   const msgWA='RECU+'+encodeURIComponent(nomPrest)+'%0AMatricule:+'+ins.mat+'%0ANom:+'+ins.nom+'+'+ins.prenom+'%0AFormation:+'+ins.formation+'%0ATotal:+'+(ins.total||ins.prix+30000).toLocaleString()+'+GNF'+(ins.resteAPayer>0?'%0ARestant:+'+ins.resteAPayer.toLocaleString()+'+GNF'+(ins.echeance?'%0AEcheance:+'+new Date(ins.echeance).toLocaleDateString('fr-FR'):''):'%0APaiement+COMPLET');
 
-  // Photo de l'étudiant pour affichage sur le reçu imprimé
+  // Photo de l'étudiant — OBLIGATOIREMENT affichée sur le reçu si disponible
   var photoHtml = '';
   if(ins.photo && ins.photo.length > 10) {
-    photoHtml = '<img src="'+ins.photo+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid #172554;float:right;margin-left:10px;margin-bottom:6px;">';
+    photoHtml = '<img src="'+ins.photo+'" style="width:90px;height:90px;object-fit:cover;border-radius:10px;border:3px solid #172554;float:right;margin-left:14px;margin-bottom:8px;" alt="Photo étudiant">';
+  }
+  // Aussi mettre à jour le preview à droite du reçu
+  var photoPreview = document.getElementById('photoPreview');
+  if(photoPreview) {
+    if(ins.photo && ins.photo.length > 10){
+      photoPreview.src = ins.photo;
+      photoPreview.style.display = 'block';
+    } else {
+      photoPreview.style.display = 'none';
+    }
   }
 
   // Brochures par module (nouvelle logique)
@@ -2629,15 +2823,21 @@ function afficherRecu(ins, logoSrc){
 }
 
 function imprimerRecu(){
-  const el=document.getElementById('recuPrintable');
+  const ins_mat=document.getElementById('recuPrintable');
+  if(!ins_mat) return;
+  // Trouver l'inscrit courant pour passer à imprimerRecuDirect
+  // Sinon, fallback: ouvrir le contenu existant en A4
+  const logoSrc=document.getElementById('headerLogo').src;
   const w=window.open('','_blank');
-  w.document.write('<!DOCTYPE html><html><head><title>Recu Inscription</title><style>');
-  w.document.write('@page{size:A4;margin:15mm 15mm 15mm 15mm;}');
-  w.document.write('body{font-family:Arial,sans-serif;margin:0;padding:0;width:210mm;min-height:297mm;box-sizing:border-box;}');
-  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:10mm;}');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Recu A4</title><style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
+  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
+  w.document.write('h1,h2,.total{font-size:20px!important;}');
+  w.document.write('div{font-size:14px;}li{font-size:14px;margin-bottom:3px;}');
   w.document.write('</style></head><body>');
-  w.document.write(el.outerHTML);
+  w.document.write(ins_mat.outerHTML);
   w.document.write('</body></html>');
   w.document.close();
   w.onload=function(){w.print();};
@@ -2645,12 +2845,14 @@ function imprimerRecu(){
 
 function genererPDF(){
   const el=document.getElementById('recuPrintable');
+  if(!el) return;
   const w=window.open('','_blank');
-  w.document.write('<!DOCTYPE html><html><head><title>PDF Recu</title><style>');
-  w.document.write('@page{size:A4;margin:15mm 15mm 15mm 15mm;}');
-  w.document.write('body{font-family:Arial,sans-serif;margin:0;padding:0;width:210mm;min-height:297mm;box-sizing:border-box;}');
-  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:10mm;}');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>PDF Recu A4</title><style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
+  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
+  w.document.write('div{font-size:14px;}li{font-size:14px;margin-bottom:3px;}');
   w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
   w.document.write('<script>window.onload=function(){window.print();};<\/script>');
@@ -2682,24 +2884,42 @@ function renderInscrits(liste){
     // Bouton revoir recu
     const br=document.createElement('button');
     br.className='bg-blue-950 text-white px-2 py-1 rounded-lg text-xs mr-1';
-    br.textContent='';
+    br.textContent='👁️ Reçu';
     br.title='Voir recu';
-    br.onclick=function(){
+    br.onclick=(function(insLocal){return function(){
       const logoSrc=document.getElementById('headerLogo').src;
       showSection('formations');
       document.getElementById('receipt').style.display='block';
-      afficherRecu(ins, logoSrc);
-      if(ins.photo){const pp=document.getElementById('photoPreview');pp.src=ins.photo;pp.style.display='block';}
-    };
+      afficherRecu(insLocal, logoSrc);
+      if(insLocal.photo){const pp=document.getElementById('photoPreview');pp.src=insLocal.photo;pp.style.display='block';}
+    };})(ins);
     atd.appendChild(br);
+    // Bouton impression directe A4
+    const bprt=document.createElement('button');
+    bprt.className='mr-1';
+    bprt.style.cssText='background:#7c3aed;color:white;padding:4px 8px;border-radius:8px;font-size:11px;font-weight:bold;border:none;cursor:pointer;';
+    bprt.textContent='🖨️A4';
+    bprt.title='Imprimer reçu A4 directement';
+    bprt.onclick=(function(insLocal){return function(){
+      const logoSrc=document.getElementById('headerLogo').src;
+      imprimerRecuDirect(insLocal, logoSrc);
+    };})(ins);
+    atd.appendChild(bprt);
     if(peutModifier()){
       // Bouton modifier infos
       const bm=document.createElement('button');
       bm.className='btn-edit mr-1';
-      bm.textContent='';
+      bm.textContent='✏️';
       bm.title='Modifier infos';
-      bm.onclick=function(){modifierInscrit(realIdx);};
+      bm.onclick=(function(ri){return function(){modifierInscrit(ri);};})(realIdx);
       atd.appendChild(bm);
+      // Bouton modifier matricule
+      const bmat=document.createElement('button');
+      bmat.style.cssText='background:#0891b2;color:white;padding:4px 8px;border-radius:8px;font-size:11px;font-weight:bold;border:none;cursor:pointer;margin-right:4px;';
+      bmat.textContent='Mat.';
+      bmat.title='Modifier le matricule';
+      bmat.onclick=(function(ri){return function(){modifierMatricule(ri);};})(realIdx);
+      atd.appendChild(bmat);
       // Bouton paiement (affiche si reste > 0)
       if((ins.resteAPayer||0)>0){
         const bp=document.createElement('button');
@@ -2959,6 +3179,136 @@ function supprimerInscrit(idx){
   ajouterHistorique('Suppression inscrit: '+ins.mat);
 }
 
+function changerStatutInscrit(mat, statut){
+  var idx = inscrits.findIndex(function(i){ return i.mat===mat; });
+  if(idx<0) return;
+  inscrits[idx].statut = statut;
+  renderAttente();
+  sauvegarder();
+  ajouterHistorique('Statut formation: '+inscrits[idx].nom+' '+inscrits[idx].prenom+' -> '+statut);
+}
+
+function modifierMatricule(idx){
+  if(!peutModifier()){alert('Non autorisé');return;}
+  var ins=inscrits[idx];
+  if(!ins) return;
+  var nouveau=prompt('Nouveau matricule pour '+ins.nom+' '+ins.prenom+' :\n(Laisser vide pour regénérer automatiquement)\nActuel: '+ins.mat,'');
+  if(nouveau===null) return; // annulé
+  if(nouveau.trim()===''){
+    // Regénérer automatiquement
+    var prefix=getMatriculePrefix();
+    nouveau=prefix+'-'+String(matricule).padStart(4,'0');
+    matricule++;
+  }
+  var ancien=ins.mat;
+  inscrits[idx].mat=nouveau.trim().toUpperCase();
+  renderInscrits();
+  sauvegarder();
+  ajouterHistorique('Modif matricule: '+ancien+' -> '+inscrits[idx].mat);
+}
+
+function imprimerRecuDirect(ins, logoSrc){
+  // Ouvrir directement une fenêtre A4 d'impression sans passer par l'écran
+  var nomPrest=centreNom, adressePrest=centreAdresse, telPrest='+224 624 139 549 / +224 623 030 403';
+  if(window._AGP_MODE&&window._agpCurrentPrest){
+    nomPrest=window._agpCurrentPrest.centreNom||centreNom;
+    adressePrest=window._agpCurrentPrest.adresse||window._agpCurrentPrest.ville||centreAdresse;
+    if(window._agpCurrentPrest.tel) telPrest=window._agpCurrentPrest.tel;
+  }
+  var joursHtml=ins.jours.map(function(j){return '<li style="margin-bottom:4px;font-size:14px;">'+j+'</li>';}).join('');
+
+  // Brochures
+  var brochuresHtml='';
+  if(ins.logicielsList&&ins.logicielsList.length>0){
+    var bl=ins.logicielsList.filter(function(l){return l.brochure>0;});
+    if(bl.length>0){
+      brochuresHtml='<div style="grid-column:1/-1;font-size:13px;margin-top:4px;">Brochure(s): '
+        +bl.map(function(l){return '<strong>'+l.nom+'</strong>: <span style="color:'+(l.brochurePayee?'#16a34a':'#dc2626')+';font-weight:bold;">'+Number(l.brochure).toLocaleString()+' GNF '+(l.brochurePayee?'✅':'❌')+'</span>';}).join(' | ')
+        +'</div>';
+    }
+  } else if(ins.brochurePrix&&ins.brochurePrix>0){
+    brochuresHtml='<div style="grid-column:1/-1;font-size:13px;">Brochure: <span style="color:'+(ins.brochurePayee?'#16a34a':'#dc2626')+';font-weight:bold;">'+ins.brochurePrix.toLocaleString()+' GNF '+(ins.brochurePayee?'✅ Payée':'❌ Non payée')+'</span></div>';
+  }
+
+  // Logiciels
+  var logicielsHtml='';
+  if(ins.logicielsList&&ins.logicielsList.length>1){
+    logicielsHtml='<strong style="font-size:15px;">Logiciels:</strong><ul style="margin:6px 0 10px 20px;padding:0;">'
+      +ins.logicielsList.map(function(l){return '<li style="font-size:14px;margin-bottom:3px;">'+l.nom+' — '+Number(l.prix).toLocaleString()+' GNF'+(l.brochure>0?' | Brochure: '+Number(l.brochure).toLocaleString()+' GNF '+(l.brochurePayee?'✅':'❌'):'')+'</li>';}).join('')
+      +'</ul>';
+  } else {
+    logicielsHtml='<div style="font-size:15px;margin-bottom:8px;"><strong>Formation:</strong> '+ins.formation+'</div>';
+  }
+
+  // Photo
+  var photoStyle='display:none';
+  var photoSrc='';
+  if(ins.photo&&ins.photo.length>10){photoSrc=ins.photo;photoStyle='display:block;';}
+
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Reçu '+ins.mat+'</title><style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
+  w.document.write('*{box-sizing:border-box;}');
+  w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;width:180mm;min-height:257mm;color:#111;}');
+  w.document.write('.recu{max-width:180mm;margin:0 auto;padding:0;}');
+  w.document.write('.header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #172554;padding-bottom:12px;margin-bottom:16px;}');
+  w.document.write('.logo{width:80px;height:80px;object-fit:contain;border-radius:10px;}');
+  w.document.write('.centre-name{font-size:22px;font-weight:900;color:#172554;}');
+  w.document.write('.centre-sub{font-size:13px;color:#64748b;margin-top:2px;}');
+  w.document.write('.recu-title{font-size:16px;font-weight:bold;color:#f97316;margin-top:6px;}');
+  w.document.write('.photo-etu{width:90px;height:90px;object-fit:cover;border-radius:10px;border:3px solid #172554;float:right;margin-left:16px;margin-bottom:8px;}');
+  w.document.write('.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:14px;margin-bottom:14px;}');
+  w.document.write('.grid2 div{padding:4px 0;border-bottom:1px solid #f1f5f9;}');
+  w.document.write('.mat-val{font-size:20px;font-weight:900;color:#172554;}');
+  w.document.write('.section-box{border-top:2px solid #e2e8f0;padding-top:10px;margin-bottom:12px;}');
+  w.document.write('.total-box{font-size:24px;font-weight:900;color:#15803d;text-align:center;border:3px solid #15803d;border-radius:12px;padding:10px;margin:12px 0;}');
+  w.document.write('.reste-box{background:#fff7ed;border:3px solid #f97316;border-radius:12px;padding:12px;margin-top:10px;font-size:15px;}');
+  w.document.write('.paye-box{background:#f0fdf4;border:2px solid #86efac;border-radius:10px;padding:10px;text-align:center;font-size:15px;color:#15803d;font-weight:bold;}');
+  w.document.write('.finance-row{display:flex;justify-content:space-between;margin-bottom:6px;font-size:14px;}');
+  w.document.write('.footer{font-size:11px;text-align:center;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:16px;}');
+  w.document.write('</style></head><body>');
+  w.document.write('<div class="recu">');
+  if(photoSrc) w.document.write('<img src="'+photoSrc+'" class="photo-etu" alt="Photo">');
+  w.document.write('<div class="header">');
+  w.document.write('<img src="'+logoSrc+'" class="logo" alt="Logo">');
+  w.document.write('<div><div class="centre-name">'+nomPrest+'</div>');
+  w.document.write('<div class="centre-sub">'+adressePrest+'</div>');
+  w.document.write('<div class="centre-sub">Tél: '+telPrest+'</div>');
+  w.document.write('<div class="recu-title">REÇU D'INSCRIPTION</div></div></div>');
+  w.document.write('<div class="grid2">');
+  w.document.write('<div><strong>Matricule:</strong> <span class="mat-val">'+ins.mat+'</span></div>');
+  w.document.write('<div><strong>Date:</strong> <span style="font-size:15px;">'+ins.date+'</span></div>');
+  w.document.write('<div><strong>Nom:</strong> <span style="font-size:15px;">'+ins.nom+'</span></div>');
+  w.document.write('<div><strong>Prénom:</strong> <span style="font-size:15px;">'+ins.prenom+'</span></div>');
+  w.document.write('<div><strong>Tuteur:</strong> '+(ins.tuteur||'—')+'</div>');
+  w.document.write('<div><strong>Téléphone:</strong> '+(ins.tel||'—')+'</div>');
+  w.document.write('</div>');
+  w.document.write('<div class="section-box">'+logicielsHtml);
+  w.document.write('<strong style="font-size:15px;">Programme ('+ins.jours.length+' j/sem'+(ins.dureeFormation?' — '+ins.dureeFormation:'')+')</strong>');
+  w.document.write('<ul style="margin:6px 0 0 20px;padding:0;">'+joursHtml+'</ul></div>');
+  w.document.write('<div class="section-box"><div class="grid2">');
+  w.document.write('<div>Frais inscription: <span style="color:'+(ins.inscriptionPayee?'#16a34a':'#dc2626')+';font-weight:bold;font-size:14px;">'+((ins.fraisInscription!==undefined?ins.fraisInscription:30000)).toLocaleString()+' GNF '+(ins.inscriptionPayee?'✅':'❌')+'</span></div>');
+  w.document.write('<div>Frais formation: <span style="font-weight:bold;font-size:14px;">'+ins.prix.toLocaleString()+' GNF'+(ins.rabais>0?' (Rabais: '+ins.rabais.toLocaleString()+' GNF)':'')+'</span></div>');
+  w.document.write(brochuresHtml);
+  w.document.write('</div></div>');
+  w.document.write('<div class="total-box">TOTAL DÛ: '+(ins.total||ins.prix+30000).toLocaleString()+' GNF</div>');
+  if(ins.resteAPayer>0){
+    w.document.write('<div class="reste-box">');
+    w.document.write('<div class="finance-row"><span><strong>Total dû:</strong></span><span style="font-weight:bold;color:#172554;">'+(ins.total||0).toLocaleString()+' GNF</span></div>');
+    w.document.write('<div class="finance-row"><span><strong>Versé:</strong></span><span style="color:#16a34a;font-weight:bold;">'+(ins.montantPaye||0).toLocaleString()+' GNF</span></div>');
+    w.document.write('<div class="finance-row"><span><strong>Reste à payer:</strong></span><span style="color:#dc2626;font-weight:bold;font-size:18px;">'+ins.resteAPayer.toLocaleString()+' GNF</span></div>');
+    if(ins.echeance) w.document.write('<div class="finance-row"><span><strong>Échéance:</strong></span><span style="color:#7c3aed;font-weight:bold;">'+new Date(ins.echeance).toLocaleDateString('fr-FR')+'</span></div>');
+    w.document.write('</div>');
+  } else {
+    w.document.write('<div class="paye-box">✅ PAIEMENT COMPLET</div>');
+  }
+  w.document.write('<div class="footer">Document officiel — '+nomPrest+' — '+new Date().toLocaleDateString('fr-FR')+'</div>');
+  w.document.write('</div></body></html>');
+  w.document.close();
+  w.onload=function(){w.print();};
+}
+
+
 // ===== FILTRES SERVICES =====
 function remplirFiltreAnneesServices(){
   var sel=document.getElementById('filtreServiceAnnee');
@@ -3061,15 +3411,27 @@ function addNewServiceType(){
   sauvegarder(); alert('Service "'+n+'" ajoute!');
 }
 
+function majAperçuService(){
+  var prix=parseInt(document.getElementById('servicePrice').value||0);
+  var qty=parseInt(document.getElementById('serviceQty').value||1)||1;
+  var total=prix*qty;
+  var el=document.getElementById('aperçuServiceTotal');
+  if(el) el.textContent=total>0?'Total: '+total.toLocaleString()+' GNF':'';
+}
+
 function addService(){
   const service=document.getElementById('serviceSelect').value;
-  const montant=parseInt(document.getElementById('servicePrice').value||0);
-  if(!montant||montant<=0){alert('Montant invalide');return;}
-  revenu+=montant; totalServices++;
-  servicesList.push({service,montant,par:currentUser,date:new Date().toLocaleDateString('fr-FR'),id:Date.now()});
+  const prix=parseInt(document.getElementById('servicePrice').value||0);
+  const qty=parseInt(document.getElementById('serviceQty').value||1)||1;
+  if(!prix||prix<=0){alert('Montant unitaire invalide');return;}
+  const montant=prix*qty;
+  revenu+=montant; totalServices+=qty;
+  servicesList.push({service,prix,quantite:qty,montant,par:currentUser,date:new Date().toLocaleDateString('fr-FR'),id:Date.now()});
   document.getElementById('servicePrice').value='';
+  document.getElementById('serviceQty').value='1';
+  var el=document.getElementById('aperçuServiceTotal'); if(el) el.textContent='';
   renderServiceTable(); updateDashboard(); sauvegarder();
-  ajouterHistorique('Service: '+service+'  '+montant.toLocaleString()+' GNF');
+  ajouterHistorique('Service: '+service+' x'+qty+'  '+montant.toLocaleString()+' GNF');
 }
 
 function renderServiceTable(filteredData){
@@ -3082,9 +3444,19 @@ function renderServiceTable(filteredData){
     const realIdx=servicesList.indexOf(s);
     const tr=document.createElement('tr');
     tr.className='border-b hover:bg-slate-50';
+    var prix_unit = s.prix||s.montant;
+    var qty = s.quantite||1;
+    var total = s.montant||(prix_unit*qty);
     tr.innerHTML=
-      '<td class="p-3 text-sm">'+(idx+1)+'</td>'+'<td class="p-3 text-sm font-bold">'+s.service+'</td>'+'<td class="p-3 text-sm font-bold text-green-700">'+s.montant.toLocaleString()+' GNF</td>'+'<td class="p-3 text-sm">'+s.par+'</td>'+'<td class="p-3 text-sm">'+s.date+'</td>'+'<td class="p-3 no-print"></td>';
-    const atd=tr.querySelectorAll('td')[5];
+      '<td class="p-3 text-sm">'+(idx+1)+'</td>'
+      +'<td class="p-3 text-sm font-bold">'+s.service+'</td>'
+      +'<td class="p-3 text-sm text-blue-700">'+prix_unit.toLocaleString()+' GNF</td>'
+      +'<td class="p-3 text-sm font-bold text-center">'+qty+'</td>'
+      +'<td class="p-3 text-sm font-bold text-green-700">'+total.toLocaleString()+' GNF</td>'
+      +'<td class="p-3 text-sm">'+s.par+'</td>'
+      +'<td class="p-3 text-sm">'+s.date+'</td>'
+      +'<td class="p-3 no-print"></td>';
+    const atd=tr.querySelectorAll('td')[7];
     if(peutModifier()){
       const bm=document.createElement('button');
       bm.className='btn-edit mr-1';
@@ -4554,7 +4926,6 @@ function renderAttente(){
   const cont=document.getElementById('attenteContent');
   if(!cont) return;
 
-  // Remplir le filtre horaire
   const selHor=document.getElementById('filtreAttenteHoraire');
   if(selHor&&selHor.options.length<=1){
     horaires.forEach(function(h){
@@ -4567,12 +4938,10 @@ function renderAttente(){
   const filtreHoraire=(document.getElementById('filtreAttenteHoraire')||{}).value||'';
   const filtreJour=(document.getElementById('filtreAttenteJour')||{}).value||'';
 
-  // Collecter toutes les séances (inscrit × jours)
   var seances=[];
   inscrits.forEach(function(ins){
     if(!ins.jours||!ins.jours.length) return;
     ins.jours.forEach(function(joursStr){
-      // joursStr peut être "Lundi 08H-10H" ou "Lundi"
       var parts=joursStr.split(' ');
       var jour=parts[0]||'';
       var horaire=parts.slice(1).join(' ')||'';
@@ -4589,7 +4958,6 @@ function renderAttente(){
     return;
   }
 
-  // Trier par horaire puis par jour
   const ordreJours={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
   seances.sort(function(a,b){
     if(a.horaire<b.horaire) return -1;
@@ -4597,7 +4965,6 @@ function renderAttente(){
     return (ordreJours[a.jour]||9)-(ordreJours[b.jour]||9);
   });
 
-  // Grouper par horaire
   var groupes={};
   seances.forEach(function(s){
     var k=s.horaire||'Sans horaire';
@@ -4615,20 +4982,34 @@ function renderAttente(){
       +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gSeances.length+' cours</span>'
       +'</div>'
       +'<div class="border-2 border-blue-950 border-t-0 rounded-b-2xl overflow-hidden">';
-    
+
     gSeances.forEach(function(s,idx){
       const ins=s.ins;
       const rowBg=idx%2===0?'background:#f8fafc':'background:white';
+      // Statut formation
+      var statut=ins.statut||'en_cours';
+      var statutLabel,statutColor,statutBg;
+      if(statut==='termine'){statutLabel='✅ Terminé';statutColor='#15803d';statutBg='#dcfce7';}
+      else if(statut==='abandonne'){statutLabel='🚫 Abandonné';statutColor='#dc2626';statutBg='#fee2e2';}
+      else{statutLabel='📚 En cours';statutColor='#2563eb';statutBg='#dbeafe';}
+
+      var mat=ins.mat;
       block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
         +'<div>'
         +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
         +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
         +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
         +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
+        +'<br><span style="font-size:11px;background:'+statutBg+';color:'+statutColor+';padding:2px 8px;border-radius:8px;font-weight:bold;margin-top:3px;display:inline-block;">'+statutLabel+'</span>'
         +'</div>'
-        +'<div style="text-align:right;">'
+        +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
         +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
-        +((ins.resteAPayer&&ins.resteAPayer>0)?'<br><span style="font-size:11px;color:#dc2626;font-weight:bold;margin-top:3px;display:block;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
+        +((ins.resteAPayer&&ins.resteAPayer>0)?'<span style="font-size:11px;color:#dc2626;font-weight:bold;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
+        +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+        +'<button onclick="changerStatutInscrit(''+mat+'','en_cours')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(statut==='en_cours'?'#2563eb':'white')+';color:'+(statut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
+        +'<button onclick="changerStatutInscrit(''+mat+'','termine')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(statut==='termine'?'#15803d':'white')+';color:'+(statut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
+        +'<button onclick="changerStatutInscrit(''+mat+'','abandonne')" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(statut==='abandonne'?'#dc2626':'white')+';color:'+(statut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
+        +'</div>'
         +'</div>'
         +'</div>';
     });
