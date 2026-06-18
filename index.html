@@ -3274,7 +3274,7 @@ function imprimerRecuDirect(ins, logoSrc){
   w.document.write('<div><div class="centre-name">'+nomPrest+'</div>');
   w.document.write('<div class="centre-sub">'+adressePrest+'</div>');
   w.document.write('<div class="centre-sub">Tél: '+telPrest+'</div>');
-  w.document.write('<div class="recu-title">REÇU D'INSCRIPTION</div></div></div>');
+  w.document.write('<div class="recu-title">RE&#199;U D&#39;INSCRIPTION</div></div></div>');
   w.document.write('<div class="grid2">');
   w.document.write('<div><strong>Matricule:</strong> <span class="mat-val">'+ins.mat+'</span></div>');
   w.document.write('<div><strong>Date:</strong> <span style="font-size:15px;">'+ins.date+'</span></div>');
@@ -3411,11 +3411,11 @@ function addNewServiceType(){
   sauvegarder(); alert('Service "'+n+'" ajoute!');
 }
 
-function majAperçuService(){
+function majApercuService(){
   var prix=parseInt(document.getElementById('servicePrice').value||0);
   var qty=parseInt(document.getElementById('serviceQty').value||1)||1;
   var total=prix*qty;
-  var el=document.getElementById('aperçuServiceTotal');
+  var el=document.getElementById('apercuServiceTotal');
   if(el) el.textContent=total>0?'Total: '+total.toLocaleString()+' GNF':'';
 }
 
@@ -3429,7 +3429,7 @@ function addService(){
   servicesList.push({service,prix,quantite:qty,montant,par:currentUser,date:new Date().toLocaleDateString('fr-FR'),id:Date.now()});
   document.getElementById('servicePrice').value='';
   document.getElementById('serviceQty').value='1';
-  var el=document.getElementById('aperçuServiceTotal'); if(el) el.textContent='';
+  var el=document.getElementById('apercuServiceTotal'); if(el) el.textContent='';
   renderServiceTable(); updateDashboard(); sauvegarder();
   ajouterHistorique('Service: '+service+' x'+qty+'  '+montant.toLocaleString()+' GNF');
 }
