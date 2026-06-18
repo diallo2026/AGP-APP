@@ -2988,6 +2988,17 @@ function renderInscrits(liste){
       imprimerRecuDirect(insLocal, logoSrc);
     };})(ins);
     atd.appendChild(bprt);
+    // Bouton Badge
+    const bbadge=document.createElement('button');
+    bbadge.className='mr-1';
+    bbadge.style.cssText='background:#b45309;color:white;padding:4px 8px;border-radius:8px;font-size:11px;font-weight:bold;border:none;cursor:pointer;';
+    bbadge.textContent='🪪Badge';
+    bbadge.title='Imprimer le badge de l\'inscrit';
+    bbadge.onclick=(function(insLocal){return function(){
+      const logoSrc=document.getElementById('headerLogo').src;
+      imprimerBadge(insLocal, logoSrc);
+    };})(ins);
+    atd.appendChild(bbadge);
     if(peutModifier()){
       // Bouton modifier infos
       const bm=document.createElement('button');
@@ -3032,6 +3043,111 @@ function renderInscrits(liste){
     const tot=data.reduce(function(s,i){return s+(i.montantPaye||i.total||0);},0);
     rev.textContent='Total encaisse: '+tot.toLocaleString()+' GNF';
   }
+}
+
+// ===== IMPRESSION BADGE INSCRIT =====
+function imprimerBadge(ins, logoSrc){
+  var p = window._agpCurrentPrest || {};
+  var centreNom = (p.centreNom || document.getElementById('loginNom')&&document.getElementById('loginNom').textContent || 'CENTRE DE FORMATION').toUpperCase();
+  var nomComplet = (ins.nom + ' ' + ins.prenom).toUpperCase();
+  var tel = ins.tel || '';
+  var mat = ins.mat || '';
+  var photo = ins.photo || '';
+  var logo = logoSrc || '';
+
+  var w = window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
+  w.document.write('<title>Badge — '+nomComplet+'</title>');
+  w.document.write('<style>');
+  w.document.write('@page{size:55mm 85mm;margin:0;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;margin:0;padding:0;}');
+  w.document.write('body{width:55mm;height:85mm;font-family:Arial,Helvetica,sans-serif;background:#fff;overflow:hidden;}');
+  w.document.write('.badge{width:55mm;height:85mm;position:relative;border-radius:6px;overflow:hidden;display:flex;flex-direction:column;}');
+  // En-tête bleu marine
+  w.document.write('.badge-top{background:#0f1f5c;width:100%;padding:7px 4px 5px;text-align:center;position:relative;flex-shrink:0;}');
+  // Bande décorative blanche + rouge (diagonale)
+  w.document.write('.badge-top::after{content:"";position:absolute;bottom:-9px;left:0;width:100%;height:10px;background:#0f1f5c;clip-path:polygon(0 0,100% 0,100% 60%,0 100%);z-index:1;}');
+  w.document.write('.badge-logo{width:28px;height:28px;object-fit:contain;border-radius:50%;border:2px solid #fbbf24;margin-bottom:3px;}');
+  w.document.write('.badge-logo-placeholder{width:28px;height:28px;border-radius:50%;border:2px solid #fbbf24;background:#1e3a8a;margin:0 auto 3px;display:flex;align-items:center;justify-content:center;font-size:10px;color:#fbbf24;font-weight:bold;}');
+  w.document.write('.badge-centre{font-size:6.5px;font-weight:900;color:#fff;letter-spacing:.04em;line-height:1.2;text-transform:uppercase;}');
+  // Zone photo + déco
+  w.document.write('.badge-mid{background:#0f1f5c;position:relative;display:flex;justify-content:center;padding-top:14px;padding-bottom:0;flex-shrink:0;}');
+  w.document.write('.badge-curve{position:absolute;top:0;left:0;width:100%;height:100%;}');
+  // Fond blanc incliné
+  w.document.write('.badge-white-bg{position:absolute;bottom:0;right:0;width:45%;height:100%;background:#fff;clip-path:polygon(30% 0,100% 0,100% 100%,0 100%);}');
+  w.document.write('.badge-red-line{position:absolute;bottom:0;left:55%;width:4px;height:100%;background:#dc2626;transform:rotate(-15deg);transform-origin:bottom left;}');
+  w.document.write('.photo-wrap{width:38mm;height:38mm;border-radius:50%;border:3px solid #0f1f5c;overflow:hidden;position:relative;z-index:2;background:#e2e8f0;flex-shrink:0;}');
+  w.document.write('.photo-wrap img{width:100%;height:100%;object-fit:cover;}');
+  w.document.write('.photo-placeholder{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;color:#94a3b8;}');
+  // Zone infos bas
+  w.document.write('.badge-bot{background:#fff;flex:1;padding:6px 5px 5px;text-align:center;display:flex;flex-direction:column;justify-content:space-between;}');
+  w.document.write('.badge-name{font-size:8.5px;font-weight:900;color:#0f1f5c;letter-spacing:.04em;margin-bottom:1px;}');
+  w.document.write('.badge-role{font-size:6.5px;font-weight:700;color:#dc2626;letter-spacing:.06em;text-transform:uppercase;margin-bottom:5px;}');
+  w.document.write('.badge-info{font-size:6px;color:#1e3a8a;line-height:1.8;text-align:left;padding:0 3px;}');
+  w.document.write('.badge-info span.lbl{font-weight:700;color:#dc2626;}');
+  // Barre code en bas
+  w.document.write('.badge-barcode{border-top:1px solid #e2e8f0;padding-top:4px;margin-top:3px;}');
+  w.document.write('.barcode-lines{display:flex;justify-content:center;align-items:flex-end;gap:0.7px;height:10px;}');
+  w.document.write('.bl{background:#0f1f5c;height:100%;}');
+  w.document.write('.bl.t{height:80%;}');
+  w.document.write('.bl.s{height:60%;}');
+  w.document.write('.barcode-num{font-size:5px;color:#475569;margin-top:1px;letter-spacing:.05em;}');
+  w.document.write('@media print{body{width:55mm;height:85mm;}.badge{border-radius:6px;}}');
+  w.document.write('</style></head><body>');
+
+  // Générer les barres du code-barre à partir du matricule
+  var barcodeStr = mat.replace(/[^0-9A-Z]/g,'').padEnd(16,'0');
+  var barHtml = '<div class="barcode-lines">';
+  for(var bi=0;bi<barcodeStr.length*2;bi++){
+    var cc = barcodeStr.charCodeAt(bi%barcodeStr.length);
+    var mod = cc % 3;
+    var cls = mod===0?'bl':mod===1?'bl t':'bl s';
+    var ww = (bi%3===0)?'1.2px':'0.7px';
+    barHtml += '<div class="'+cls+'" style="width:'+ww+'"></div>';
+  }
+  barHtml += '</div>';
+
+  var logoHtml = logo
+    ? '<img src="'+logo+'" class="badge-logo">'
+    : '<div class="badge-logo-placeholder">AGP</div>';
+
+  var photoHtml = photo
+    ? '<img src="'+photo+'" alt="Photo">'
+    : '<div class="photo-placeholder">👤</div>';
+
+  w.document.write('<div class="badge">');
+  // TOP
+  w.document.write('<div class="badge-top">');
+  w.document.write(logoHtml);
+  w.document.write('<div class="badge-centre">'+centreNom+'</div>');
+  w.document.write('</div>');
+  // MID photo
+  w.document.write('<div class="badge-mid">');
+  w.document.write('<div class="badge-white-bg"></div>');
+  w.document.write('<div class="badge-red-line"></div>');
+  w.document.write('<div class="photo-wrap">'+photoHtml+'</div>');
+  w.document.write('</div>');
+  // BOT
+  w.document.write('<div class="badge-bot">');
+  w.document.write('<div>');
+  w.document.write('<div class="badge-name">'+nomComplet+'</div>');
+  w.document.write('<div class="badge-role">Élève / Inscrit</div>');
+  w.document.write('<div class="badge-info">');
+  if(tel) w.document.write('<div><span class="lbl">Tél&nbsp;:</span> '+tel+'</div>');
+  w.document.write('<div><span class="lbl">Mat.&nbsp;:</span> '+mat+'</div>');
+  w.document.write('<div><span class="lbl">Date&nbsp;:</span> '+(ins.date||'')+'</div>');
+  w.document.write('</div>');
+  w.document.write('</div>');
+  // Barcode
+  w.document.write('<div class="badge-barcode">');
+  w.document.write(barHtml);
+  w.document.write('<div class="barcode-num">'+mat+'</div>');
+  w.document.write('</div>');
+  w.document.write('</div>'); // badge-bot
+  w.document.write('</div>'); // badge
+  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('</body></html>');
+  w.document.close();
 }
 
 function parseDateFR(dateStr){
