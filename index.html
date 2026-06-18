@@ -2754,9 +2754,13 @@ function registerStudent(){
   // Sauvegarder la liste des logiciels dans l'inscrit
   const logicielsList = lgcList;
   // Paiement partiel
+  // REGLE : si montant verse = 0 → tout (formation + brochure + inscription) enregistré en dette
+  //         si champ vide        → paiement complet par défaut
+  //         si montant > 0       → paiement partiel ou total
   const mpEl=document.getElementById('montantPaye');
   const ecEl=document.getElementById('echeancePaiement');
-  const montantPaye=mpEl&&mpEl.value&&parseInt(mpEl.value)>0 ? parseInt(mpEl.value) : totalDu;
+  const _mpVal=(mpEl&&mpEl.value.trim()!=='')?mpEl.value.trim():null;
+  const montantPaye=(_mpVal===null) ? totalDu : Math.max(0,parseInt(_mpVal)||0);
   const echeance=ecEl?ecEl.value:'';
   const resteAPayer=Math.max(0, totalDu-montantPaye);
   revenu+=montantPaye; totalStudents++;
