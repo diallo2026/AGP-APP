@@ -1238,8 +1238,8 @@ function agpDevImPayer(btn){
             <input type="file" id="photo" accept="image/*" class="inp text-sm">
             <div class="bg-orange-50 border-2 border-orange-300 p-3 rounded-xl space-y-2">
               <p class="text-sm font-bold text-orange-700">💰 Paiement &amp; Brochure</p>
-              <!-- Brochure -->
-              <div id="brochureZone" class="bg-white border border-orange-200 p-2 rounded-xl">
+              <!-- Brochure — désormais gérée par module dans la liste logiciels -->
+              <div id="brochureZone" class="bg-white border border-orange-200 p-2 rounded-xl" style="display:none;">
                 <p class="text-xs font-bold text-slate-600 mb-1">📘 Brochure <span id="brochurePrixLabel" class="text-orange-600"></span></p>
                 <div class="flex gap-3 items-center">
                   <label class="flex items-center gap-2 cursor-pointer">
@@ -2301,14 +2301,14 @@ function fermerModal(id){
 // ===== MULTI-LOGICIELS =====
 var _logicielsCounter = 0;
 
-function ajouterLigneLogiciel(formationNom, formationVal) {
+function ajouterLigneLogiciel(formationNom, formationVal, brochureChecked) {
   var liste = document.getElementById('logicielsListe');
   if(!liste) return;
   _logicielsCounter++;
   var id = 'lgc_' + _logicielsCounter;
   var div = document.createElement('div');
   div.id = id;
-  div.style.cssText = 'display:flex;gap:6px;align-items:center;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:6px 8px;';
+  div.style.cssText = 'display:flex;flex-direction:column;gap:4px;background:white;border:1px solid #cbd5e1;border-radius:10px;padding:8px;';
 
   // Construire le select
   var selHtml = '<select data-lgc="sel" onchange="onLogicielChange(this)" style="flex:1;border:none;outline:none;font-size:13px;font-weight:600;color:#172554;background:transparent;min-width:0;">';
@@ -2322,9 +2322,17 @@ function ajouterLigneLogiciel(formationNom, formationVal) {
   }
   selHtml += '</select>';
 
-  div.innerHTML = selHtml
+  div.innerHTML = '<div style="display:flex;gap:6px;align-items:center;">'
+    + selHtml
     + '<span data-lgc="prix" style="font-size:11px;font-weight:700;color:#2563eb;white-space:nowrap;min-width:70px;text-align:right;"></span>'
-    + '<button type="button" data-lgcid="'+id+'" style="background:#fecaca;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;color:#dc2626;font-weight:700;font-size:13px;flex-shrink:0;">✕</button>';
+    + '<button type="button" data-lgcid="'+id+'" style="background:#fecaca;border:none;border-radius:6px;padding:3px 8px;cursor:pointer;color:#dc2626;font-weight:700;font-size:13px;flex-shrink:0;">✕</button>'
+    + '</div>'
+    + '<div data-lgc="brochure-zone" style="display:none;background:#fff7ed;border:1px solid #fdba74;border-radius:8px;padding:5px 8px;font-size:11px;align-items:center;gap:8px;flex-wrap:wrap;">'
+    + '<label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:700;color:#92400e;">'
+    + '<input type="checkbox" data-lgc="brochure-chk" onchange="majCalculPaiement()" style="width:15px;height:15px;"'+(brochureChecked?' checked':'')+'>📘 Brochure : <span data-lgc="brochure-label" style="color:#ea580c;font-weight:900;"></span>'
+    + '</label>'
+    + '</div>';
+
   // Attacher l'event handler proprement (évite les problèmes de quotes dans innerHTML)
   var btn = div.querySelector('[data-lgcid]');
   if(btn) btn.addEventListener('click', function(){ supprimerLigneLogiciel(id); });
@@ -2355,8 +2363,22 @@ function onLogicielChange(sel) {
   if(!row) return;
   var parts = sel.value.split('|');
   var prix = parts[1] ? parseInt(parts[1]) : 0;
+  var brochure = parts[2] ? parseInt(parts[2]) : 0;
   var span = row.querySelector('[data-lgc="prix"]');
   if(span) span.textContent = prix > 0 ? prix.toLocaleString()+' GNF' : '';
+  // Afficher/cacher la zone brochure pour ce module
+  var brochureZone = row.querySelector('[data-lgc="brochure-zone"]');
+  var brochureLabel = row.querySelector('[data-lgc="brochure-label"]');
+  if(brochureZone) {
+    if(brochure > 0 && sel.value) {
+      brochureZone.style.display = 'flex';
+      if(brochureLabel) brochureLabel.textContent = brochure.toLocaleString()+' GNF';
+    } else {
+      brochureZone.style.display = 'none';
+      var chk = row.querySelector('[data-lgc="brochure-chk"]');
+      if(chk) chk.checked = false;
+    }
+  }
   _syncFormationSelectCache();
   _majTotalLogiciels();
   majCalculPaiement();
@@ -2399,7 +2421,7 @@ function _syncFormationSelectCache() {
   }
 }
 
-// Retourne le tableau {nom, prix, brochure} de tous les logiciels sélectionnés
+// Retourne le tableau {nom, prix, brochure, brochurePayee} de tous les logiciels sélectionnés
 function getLogicielsSelectionnes() {
   var rows = document.querySelectorAll('#logicielsListe [data-lgc="sel"]');
   var res = [];
@@ -2409,7 +2431,10 @@ function getLogicielsSelectionnes() {
     var nom = parts[0]||'';
     var prix = parseInt(parts[1]||0);
     var brochure = parseInt(parts[2]||0);
-    res.push({ nom: nom, prix: prix, brochure: brochure });
+    var row = s.closest('[id^="lgc_"]');
+    var chk = row ? row.querySelector('[data-lgc="brochure-chk"]') : null;
+    var brochurePayee = chk ? chk.checked : false;
+    res.push({ nom: nom, prix: prix, brochure: brochure, brochurePayee: brochurePayee });
   });
   return res;
 }
@@ -2444,19 +2469,17 @@ function registerStudent(){
   const formation = lgcList.map(function(l){return l.nom;}).join(' + ');
   // Prix total de toutes les formations
   const prixNormal = lgcList.reduce(function(s,l){return s+l.prix;},0);
-  // Brochure = celle du premier logiciel uniquement (champ brochure existant)
-  const brochurePrix = firstLgc.brochure||0;
-  // Frais d'inscription = celui de la formation principale ou 30000 par defaut
+  // Brochure = somme de toutes les brochures cochées (par module)
+  const brochureTotalePayee = lgcList.reduce(function(s,l){ return s + (l.brochurePayee && l.brochure>0 ? l.brochure : 0); }, 0);
+  const brochurePrix = lgcList.reduce(function(s,l){ return s + (l.brochure>0 ? l.brochure : 0); }, 0); // total possible
+  const brochurePayee = brochureTotalePayee > 0;
+  const brochureIncluse = brochureTotalePayee;
   // Frais d'inscription = frais globaux de la prestation (défini dans Paramètres)
   const fraisInscription = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
   // Prix modifie (rabais) ?
   const pmEl=document.getElementById('prixModifie');
   const prix=(pmEl&&pmEl.value&&parseInt(pmEl.value)>0)?parseInt(pmEl.value):prixNormal;
   const rabais=prixNormal-prix;
-  // Brochure payee ou non
-  const brOui=document.getElementById('brochureOui');
-  const brochurePayee=brOui&&brOui.checked&&brochurePrix>0;
-  const brochureIncluse=brochurePayee?brochurePrix:0;
   // Frais d'inscription payés ou non (statut uniquement, toujours inclus dans le total)
   const inscrPayeEl=document.getElementById('inscriptionPaye');
   const inscriptionPayee=inscrPayeEl&&inscrPayeEl.checked;
@@ -2493,7 +2516,6 @@ function registerStudent(){
   }
   ['nom','prenom','tuteur','telephone','montantPaye','echeancePaiement','prixModifie'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
   const dsel=document.getElementById('dureeSelect'); if(dsel) dsel.value='';
-  const brNon=document.getElementById('brochureNon'); if(brNon) brNon.checked=true;
   const insImp=document.getElementById('inscriptionImpaye'); if(insImp) insImp.checked=true;
   const rc=document.getElementById('resumeCalcul'); if(rc){rc.classList.add('hidden');rc.textContent='';}
   document.getElementById('photo').value='';
@@ -2511,7 +2533,6 @@ function registerStudent(){
 function afficherRecu(ins, logoSrc){
   document.getElementById('receipt').style.display='block';
   document.getElementById('photoPreview').style.display='none';
-  // Utiliser le nom de la prestation courante (AGP ou standalone)
   var nomPrest=centreNom;
   var adressePrest=centreAdresse;
   var telPrest='+224 624 139 549 / +224 623 030 403';
@@ -2521,9 +2542,49 @@ function afficherRecu(ins, logoSrc){
     if(window._agpCurrentPrest.tel) telPrest=window._agpCurrentPrest.tel;
   }
   const joursHtml=ins.jours.map(function(j){return '<li style="margin-bottom:2px;">'+j+'</li>';}).join('');
-  const msgWA='RECU+'+encodeURIComponent(nomPrest)+'%0AMatricule:+'+ins.mat+'%0ANom:+'+ins.nom+'+'+ins.prenom+'%0AFormation:+'+ins.formation+'%0ATotal:+'+(ins.total||ins.prix+30000).toLocaleString()+'+GNF'+(ins.resteAPayer>0?'%0ARestant:+'+ins.resteAPayer.toLocaleString()+'+GNF'+(ins.echeance?'%0AEcheance:+'+new Date(ins.echeance).toLocaleDateString("fr-FR"):''):'%0APaiement+COMPLET');
+  const msgWA='RECU+'+encodeURIComponent(nomPrest)+'%0AMatricule:+'+ins.mat+'%0ANom:+'+ins.nom+'+'+ins.prenom+'%0AFormation:+'+ins.formation+'%0ATotal:+'+(ins.total||ins.prix+30000).toLocaleString()+'+GNF'+(ins.resteAPayer>0?'%0ARestant:+'+ins.resteAPayer.toLocaleString()+'+GNF'+(ins.echeance?'%0AEcheance:+'+new Date(ins.echeance).toLocaleDateString('fr-FR'):''):'%0APaiement+COMPLET');
+
+  // Photo de l'étudiant pour affichage sur le reçu imprimé
+  var photoHtml = '';
+  if(ins.photo && ins.photo.length > 10) {
+    photoHtml = '<img src="'+ins.photo+'" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid #172554;float:right;margin-left:10px;margin-bottom:6px;">';
+  }
+
+  // Brochures par module (nouvelle logique)
+  var brochuresHtml = '';
+  if(ins.logicielsList && ins.logicielsList.length > 0) {
+    var brochuresList = ins.logicielsList.filter(function(l){ return l.brochure>0; });
+    if(brochuresList.length > 0) {
+      brochuresHtml = '<div style="grid-column:1/-1;font-size:11px;">Brochure(s): '
+        + brochuresList.map(function(l){
+            var paid = l.brochurePayee;
+            return '<span style="font-weight:bold;">' + l.nom + ':</span> '
+              + '<span style="color:'+(paid?'#16a34a':'#dc2626')+';font-weight:bold;">'
+              + Number(l.brochure).toLocaleString()+' GNF '+(paid?'✅ Payée':'❌ Non payée')+'</span>';
+          }).join(' | ')
+        + '</div>';
+    }
+  } else if(ins.brochurePrix && ins.brochurePrix>0) {
+    brochuresHtml = '<div>Brochure: '+(ins.brochurePayee?'<span style="color:#16a34a;font-weight:bold;">'+ins.brochurePrix.toLocaleString()+' GNF ✅ Payée</span>':'<span style="color:#dc2626;font-weight:bold;">❌ Non payée</span>')+'</div><div></div>';
+  }
+
+  // Logiciels liste avec brochure
+  var logicielsHtml = '';
+  if(ins.logicielsList && ins.logicielsList.length > 1){
+    logicielsHtml = '<strong>Logiciels:</strong><ul style="margin:2px 0 6px 16px;padding:0;">'
+      + ins.logicielsList.map(function(l){
+          return '<li style="font-size:11px;">'+l.nom+' — '+Number(l.prix).toLocaleString()+' GNF'
+            +(l.brochure>0?' | Brochure: '+Number(l.brochure).toLocaleString()+' GNF '+(l.brochurePayee?'✅':'❌'):'')
+            +'</li>';
+        }).join('')
+      +'</ul>';
+  } else {
+    logicielsHtml = '<strong>Formation:</strong> '+ins.formation+'<br>';
+  }
+
   document.getElementById('receiptContent').innerHTML=
-    '<div id="recuPrintable">'
+    '<div id="recuPrintable" style="font-family:Arial,sans-serif;max-width:700px;margin:0 auto;">'
+    + photoHtml
     +'<div style="display:flex;align-items:center;gap:12px;padding-bottom:10px;border-bottom:2px solid #172554;margin-bottom:12px;">'
     +'<img src="'+logoSrc+'" style="width:65px;border-radius:10px;flex-shrink:0;">'
     +'<div><div style="font-size:17px;font-weight:900;color:#172554;">'+nomPrest+'</div>'
@@ -2539,21 +2600,14 @@ function afficherRecu(ins, logoSrc){
     +'<div><strong>Telephone:</strong> '+(ins.tel||'')+'</div>'
     +'</div>'
     +'<div style="font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'
-    +(function(){
-      if(ins.logicielsList&&ins.logicielsList.length>1){
-        return '<strong>Logiciels:</strong><ul style="margin:2px 0 6px 16px;padding:0;">'
-          +ins.logicielsList.map(function(l){return '<li style="font-size:11px;">'+l.nom+' — '+Number(l.prix).toLocaleString()+' GNF</li>';}).join('')
-          +'</ul>';
-      }
-      return '<strong>Formation:</strong> '+ins.formation+'<br>';
-    })()
+    + logicielsHtml
     +'<strong>Programme:</strong><ul style="margin:4px 0 0 16px;padding:0;">'+joursHtml+'</ul>'
     +'<span style="font-size:11px;color:#94a3b8;">'+ins.jours.length+' jours/semaine'+(ins.dureeFormation?'  '+ins.dureeFormation:'')+(ins.duree&&ins.duree!==ins.dureeFormation?' | '+ins.duree:'')+'</span>'
     +'</div>'
     +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:12px;border-top:1px solid #e2e8f0;padding-top:8px;margin-bottom:8px;">'
     +'<div>Frais inscription: <span style="'+(ins.inscriptionPayee?'color:#16a34a;font-weight:bold;':'color:#dc2626;font-weight:bold;')+'">'+((ins.fraisInscription!==undefined?ins.fraisInscription:30000)).toLocaleString()+' GNF '+(ins.inscriptionPayee?'&#x2705; Pay&eacute;':'&#x274C; Impay&eacute;')+'</span></div>'
     +'<div>Frais formation: '+(ins.prixNormal&&ins.rabais>0?'<span style="text-decoration:line-through;color:#94a3b8;">'+ins.prixNormal.toLocaleString()+'</span> <span style="color:#16a34a;font-weight:bold;">'+ins.prix.toLocaleString()+' GNF (Rabais: '+ins.rabais.toLocaleString()+' GNF)</span>':ins.prix.toLocaleString()+' GNF')+'</div>'
-    +((ins.brochurePrix&&ins.brochurePrix>0)?'<div>Brochure: '+(ins.brochurePayee?'<span style="color:#16a34a;font-weight:bold;">'+ins.brochurePrix.toLocaleString()+' GNF  Payee</span>':'<span style="color:#dc2626;font-weight:bold;">Non payee </span>')+'</div><div></div>':'')
+    + brochuresHtml
     +'</div>'
     +'<div style="font-size:20px;font-weight:900;color:#15803d;text-align:center;border-top:2px solid #e2e8f0;padding-top:8px;">TOTAL DU: '+(ins.total||ins.prix+30000).toLocaleString()+' GNF</div>'
     +(ins.resteAPayer>0 ? '<div style="background:#fff7ed;border:2px solid #f97316;border-radius:10px;padding:10px;margin-top:8px;font-size:13px;">'
@@ -2564,35 +2618,42 @@ function afficherRecu(ins, logoSrc){
       +((ins.versements&&ins.versements.length)?'<div style="margin-top:6px;border-top:1px solid #fed7aa;padding-top:6px;font-size:11px;"><strong>Versements:</strong><ul style="margin:3px 0 0 12px;padding:0;">'+ins.versements.map(function(v){return '<li>'+v.date+' : '+v.montant.toLocaleString()+' GNF</li>';}).join('')+'</ul></div>':'')
       +'</div>'
       : '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;margin-top:6px;text-align:center;font-size:12px;color:#15803d;font-weight:bold;"> PAIEMENT COMPLET</div>')
-    +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:4px;">Document officiel  '+nomPrest+'</div>'
+    +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:4px;">Document officiel — '+nomPrest+'</div>'
     +'</div>'
     +'<div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">'
     +'<a href="https://wa.me/'+WA1+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#16a34a;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 1</a>'
     +'<a href="https://wa.me/'+WA2+'?text='+encodeURIComponent(msgWA)+'" target="_blank" style="background:#15803d;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;text-decoration:none;">WhatsApp 2</a>'
-    +'<button onclick="imprimerRecu()" style="background:#172554;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">Imprimer</button>'
-    +'<button onclick="genererPDF()" style="background:#dc2626;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">PDF</button>'
+    +'<button onclick="imprimerRecu()" style="background:#172554;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">🖨️ Imprimer A4</button>'
+    +'<button onclick="genererPDF()" style="background:#dc2626;color:white;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:bold;cursor:pointer;border:none;">📄 PDF A4</button>'
     +'</div>';
 }
 
 function imprimerRecu(){
+  const el=document.getElementById('recuPrintable');
   const w=window.open('','_blank');
-  w.document.write('<html><head><title>Recu</title><style>body{font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
-  w.document.write(document.getElementById('recuPrintable').outerHTML);
+  w.document.write('<!DOCTYPE html><html><head><title>Recu Inscription</title><style>');
+  w.document.write('@page{size:A4;margin:15mm 15mm 15mm 15mm;}');
+  w.document.write('body{font-family:Arial,sans-serif;margin:0;padding:0;width:210mm;min-height:297mm;box-sizing:border-box;}');
+  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:10mm;}');
+  w.document.write('.no-print{display:none!important;}');
+  w.document.write('</style></head><body>');
+  w.document.write(el.outerHTML);
   w.document.write('</body></html>');
   w.document.close();
   w.onload=function(){w.print();};
 }
 
 function genererPDF(){
-  if(typeof window.jspdf==='undefined'&&typeof jspdf==='undefined'){
-    alert('Bibliotheque PDF non chargee. Utilisez le bouton Imprimer et choisissez Enregistrer en PDF dans les options impression.');
-    return;
-  }
   const el=document.getElementById('recuPrintable');
   const w=window.open('','_blank');
-  w.document.write('<html><head><title>PDF Recu</title><style>body{font-family:Arial,sans-serif;max-width:400px;margin:0 auto;padding:12px;font-size:12px;}</style></head><body>');
+  w.document.write('<!DOCTYPE html><html><head><title>PDF Recu</title><style>');
+  w.document.write('@page{size:A4;margin:15mm 15mm 15mm 15mm;}');
+  w.document.write('body{font-family:Arial,sans-serif;margin:0;padding:0;width:210mm;min-height:297mm;box-sizing:border-box;}');
+  w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:10mm;}');
+  w.document.write('.no-print{display:none!important;}');
+  w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
-  w.document.write('<scr'+'ipt>window.onload=function(){window.print();}</scr'+'ipt>');
+  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -4175,7 +4236,8 @@ function majCalculPaiement(){
   // Calculer le prix total de tous les logiciels sélectionnés
   var lgcList = (typeof getLogicielsSelectionnes === 'function') ? getLogicielsSelectionnes() : [];
   var prixNormalMulti = lgcList.reduce(function(s,l){return s+l.prix;},0);
-  var brochurePrixMulti = lgcList.length>0 ? (lgcList[0].brochure||0) : 0;
+  // Somme de toutes les brochures cochées
+  var brochureTotalePayee = lgcList.reduce(function(s,l){ return s + (l.brochurePayee && l.brochure>0 ? l.brochure : 0); }, 0);
   var fraisInscMulti = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
   // Si aucun logiciel sélectionné, essayer le select caché (fallback)
   if(prixNormalMulti===0){
@@ -4183,17 +4245,17 @@ function majCalculPaiement(){
     if(!sel||!sel.value) return;
     const df=sel.value.split('|');
     prixNormalMulti=parseInt(df[1]||0);
-    brochurePrixMulti=parseInt(df[2]||0);
+    // Fallback : ancienne brochure unique via radio
+    var brOuiF=document.getElementById('brochureOui');
+    if(brOuiF&&brOuiF.checked) brochureTotalePayee=parseInt(df[2]||0);
   }
   const prixNormal = prixNormalMulti;
-  const brochurePrix = brochurePrixMulti;
+  const brochureIncluse = brochureTotalePayee;
   const fraisInsc = fraisInscMulti;
   // Prix modifie (rabais)
   const pmEl=document.getElementById('prixModifie');
   const prixApplique=(pmEl&&pmEl.value&&parseInt(pmEl.value)>0)?parseInt(pmEl.value):prixNormal;
   const rabais=prixNormal-prixApplique;
-  const brOui=document.getElementById('brochureOui');
-  const brochureIncluse=(brOui&&brOui.checked&&brochurePrix>0)?brochurePrix:0;
   const totalDu=prixApplique+fraisInsc+brochureIncluse;
   // Montant verse
   const mpEl=document.getElementById('montantPaye');
@@ -4210,7 +4272,7 @@ function majCalculPaiement(){
     } else {
       txt+=prixApplique.toLocaleString()+' GNF';
     }
-    if(brochureIncluse>0) txt+='  |  Brochure: '+brochureIncluse.toLocaleString()+' GNF';
+    if(brochureIncluse>0) txt+='  |  Brochure(s): '+brochureIncluse.toLocaleString()+' GNF';
     txt+='    TOTAL DÛ: '+totalDu.toLocaleString()+' GNF';
     if(montantPaye>0){
       const reste=totalDu-montantPaye;
