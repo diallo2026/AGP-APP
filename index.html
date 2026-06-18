@@ -1188,6 +1188,7 @@ function agpDevImPayer(btn){
       <button onclick="showSection('stock')" class="menuBtn">📦 Stock</button>
       <button onclick="showSection('historique')" class="menuBtn">📜 Historique</button>
       <button onclick="showSection('attente')" id="attenteBtn" class="menuBtn">⏳ Formations en attente</button>
+      <button onclick="showSection('rapport')" id="rapportBtn" class="menuBtn">📈 Rapports</button>
       <button onclick="showSection('gerants')" id="gerantBtn" class="menuBtn" style="display:none">👥 Gérants</button>
       <button onclick="showSection('salaires')" id="salaireBtn" class="menuBtn" style="display:none">💰 Salaires</button>
       <button onclick="showSection('actionsAnnee')" id="actionsAnneeBtn" class="menuBtn" style="display:none">📅 Actions par Année</button>
@@ -1498,10 +1499,28 @@ function agpDevImPayer(btn){
             <button onclick="addNewServiceType()" class="bg-orange-500 text-white px-4 py-2 rounded-xl font-bold text-sm">Ajouter</button>
           </div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mb-4">
-          <select id="serviceSelect" class="inp"></select>
-          <input type="number" id="servicePrice" placeholder="Montant (GNF)" class="inp">
-          <button onclick="addService()" class="btn-primary">Enregistrer</button>
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-4 mb-4">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Service</label>
+              <select id="serviceSelect" class="inp" onchange="majApercuService()"></select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Montant unitaire (GNF)</label>
+              <input type="number" id="servicePrice" placeholder="ex: 5000" class="inp" oninput="majApercuService()">
+            </div>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Quantité</label>
+              <input type="number" id="serviceQty" value="1" min="1" class="inp" oninput="majApercuService()">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-600 mb-1">Total</label>
+              <div id="apercuServiceTotal" class="inp bg-white font-bold text-blue-800 text-center min-h-10 flex items-center justify-center rounded-xl border border-blue-300" style="min-height:42px">—</div>
+            </div>
+            <button onclick="addService()" class="btn-primary" style="min-height:42px">✅ Enregistrer</button>
+          </div>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm"><thead>
@@ -1681,6 +1700,53 @@ function agpDevImPayer(btn){
       </section>
 
       <!-- PARAMÈTRES PRESTATION (Fondateur seulement) -->
+      <!-- ===== SECTION RAPPORT ===== -->
+      <section id="rapport" class="section bg-white rounded-3xl shadow-xl p-6">
+        <h2 class="text-3xl font-bold text-blue-950 mb-4">📈 Rapports</h2>
+
+        <!-- Onglets Mensuel / Annuel -->
+        <div class="flex gap-2 mb-5 no-print">
+          <button onclick="setRapportMode('mensuel')" id="tabRapportMensuel"
+            class="px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white">📅 Rapport Mensuel</button>
+          <button onclick="setRapportMode('annuel')" id="tabRapportAnnuel"
+            class="px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700">📆 Rapport Annuel</button>
+        </div>
+
+        <!-- Filtres Mensuel -->
+        <div id="filtresMensuel" class="flex flex-wrap gap-3 items-end mb-5 no-print">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Mois</label>
+            <select id="rapportMois" class="inp text-sm" style="width:140px">
+              <option value="1">Janvier</option><option value="2">Février</option>
+              <option value="3">Mars</option><option value="4">Avril</option>
+              <option value="5">Mai</option><option value="6">Juin</option>
+              <option value="7">Juillet</option><option value="8">Août</option>
+              <option value="9">Septembre</option><option value="10">Octobre</option>
+              <option value="11">Novembre</option><option value="12">Décembre</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Année</label>
+            <select id="rapportAnnee" class="inp text-sm" style="width:110px"></select>
+          </div>
+          <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
+          <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
+        </div>
+
+        <!-- Filtres Annuel -->
+        <div id="filtresAnnuel" class="flex flex-wrap gap-3 items-end mb-5 no-print" style="display:none!important">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Année</label>
+            <select id="rapportAnneeAnnuel" class="inp text-sm" style="width:110px"></select>
+          </div>
+          <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
+          <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
+        </div>
+
+        <!-- Zone affichage rapport -->
+        <div id="rapportContenu"></div>
+      </section>
+
       <section id="parametres" class="section bg-white rounded-3xl shadow-xl p-6">
         <h2 class="text-3xl font-bold text-blue-950 mb-5">⚙️ Paramètres de la Prestation</h2>
         <div class="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 mb-5">
@@ -2202,6 +2268,7 @@ function showSection(id){
   if(id==='formations'){ renderFormationSelect(); renderDureeSelect(); renderCatalogueFormations(); renderHoraireTable(); renderDureeTable(); initLogiciels(); }
   if(id==='dashboard'){ setTimeout(renderCharts, 300); }
   if(id==='services'){renderServiceTable();afficherBanniereAuth();}
+  if(id==='rapport'){initRapport();}
 }
 
 function printSection(){ window.print(); }
@@ -5165,6 +5232,463 @@ document.addEventListener('DOMContentLoaded', function(){
   if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 });
 if(window._AGP_READY) loadUsers();
+
+
+// ===== RAPPORT MODULE =====
+var _rapportMode = 'mensuel';
+
+function setRapportMode(mode){
+  _rapportMode = mode;
+  var tabM = document.getElementById('tabRapportMensuel');
+  var tabA = document.getElementById('tabRapportAnnuel');
+  var filtM = document.getElementById('filtresMensuel');
+  var filtA = document.getElementById('filtresAnnuel');
+  if(mode === 'mensuel'){
+    if(tabM){ tabM.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white'; }
+    if(tabA){ tabA.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700'; }
+    if(filtM){ filtM.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;'; }
+    if(filtA){ filtA.style.cssText = 'display:none!important'; }
+  } else {
+    if(tabA){ tabA.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white'; }
+    if(tabM){ tabM.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700'; }
+    if(filtA){ filtA.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;'; }
+    if(filtM){ filtM.style.cssText = 'display:none!important'; }
+  }
+}
+
+function _remplirAnneesRapport(){
+  var annees = new Set();
+  var now = new Date().getFullYear();
+  annees.add(now);
+  if(typeof inscrits !== 'undefined'){
+    inscrits.forEach(function(i){ var d = parseDateFR(i.date); if(d && d.getFullYear()>2000) annees.add(d.getFullYear()); });
+  }
+  if(typeof servicesList !== 'undefined'){
+    servicesList.forEach(function(s){ var d = parseDateFR(s.date); if(d && d.getFullYear()>2000) annees.add(d.getFullYear()); });
+  }
+  var sorted = Array.from(annees).sort(function(a,b){return b-a;});
+  ['rapportAnnee','rapportAnneeAnnuel'].forEach(function(id){
+    var sel = document.getElementById(id);
+    if(!sel) return;
+    var cur = sel.value || String(now);
+    sel.innerHTML = sorted.map(function(a){ return '<option value="'+a+'">'+a+'</option>'; }).join('');
+    sel.value = cur;
+  });
+}
+
+function initRapport(){
+  _remplirAnneesRapport();
+  // Set current month
+  var now = new Date();
+  var selM = document.getElementById('rapportMois');
+  if(selM && !selM.value) selM.value = String(now.getMonth()+1);
+  // Default mode
+  setRapportMode(_rapportMode);
+  genererRapport();
+}
+
+function genererRapport(){
+  if(_rapportMode === 'mensuel') _genRapportMensuel();
+  else _genRapportAnnuel();
+}
+
+function _moisLabel(m){
+  return ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'][m];
+}
+
+function _isConsommable(nom){
+  var keys = ['rame','papier','bustole','reliure','cartouche','toner','encre','crayon','stylo','colle','agrafe','bostitch','ruban','adhesif'];
+  var n = nom.toLowerCase();
+  return keys.some(function(k){ return n.indexOf(k) >= 0; });
+}
+
+function _buildKpiCard(label, val, color, bg){
+  return '<div style="background:'+bg+';border-radius:14px;padding:14px 16px;text-align:center;min-width:130px;">'
+    +'<div style="font-size:11px;color:#64748b;margin-bottom:4px;font-weight:600;">'+label+'</div>'
+    +'<div style="font-size:20px;font-weight:900;color:'+color+';">'+val+'</div>'
+    +'</div>';
+}
+
+// -------- RAPPORT MENSUEL --------
+function _genRapportMensuel(){
+  var mois   = parseInt((document.getElementById('rapportMois')||{}).value || (new Date().getMonth()+1));
+  var annee  = parseInt((document.getElementById('rapportAnnee')||{}).value || new Date().getFullYear());
+  var label  = _moisLabel(mois) + ' ' + annee;
+
+  // Data
+  var ins = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
+    var d=parseDateFR(i.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;
+  });
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
+    var d=parseDateFR(s.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;
+  });
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
+    var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;
+  });
+
+  var revInscr = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+  var revSvc   = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
+  var totDep   = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var benef    = revInscr + revSvc - totDep;
+
+  // Services groupés
+  var svcMap = {};
+  svcs.forEach(function(s){
+    if(!svcMap[s.service]) svcMap[s.service]={qte:0,total:0};
+    svcMap[s.service].qte += (s.quantite||1);
+    svcMap[s.service].total += (s.montant||0);
+  });
+
+  // Stock
+  var stk = (typeof stocks!=='undefined')?stocks:{};
+  var consomItems = Object.keys(stk).filter(_isConsommable);
+  var autresItems  = Object.keys(stk).filter(function(k){return !_isConsommable(k);});
+
+  // Numéro centre
+  var nomCentre = (typeof centreNom!=='undefined'?centreNom:'');
+
+  // Build HTML
+  var html = '<div id="rapportPrintable" style="font-family:Arial,sans-serif;max-width:100%;">';
+
+  // Header
+  html += '<div style="text-align:center;padding-bottom:14px;border-bottom:3px solid #172554;margin-bottom:18px;">';
+  html += '<div style="font-size:20px;font-weight:900;color:#172554;">'+nomCentre+'</div>';
+  html += '<div style="font-size:15px;font-weight:bold;color:#f97316;margin-top:4px;">RAPPORT MENSUEL — '+label+'</div>';
+  html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Généré le '+new Date().toLocaleDateString('fr-FR')+'</div>';
+  html += '</div>';
+
+  // KPIs
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
+  html += _buildKpiCard('Inscrits', ins.length, '#172554', '#dbeafe');
+  html += _buildKpiCard('Rev. Inscriptions', revInscr.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Rev. Services', revSvc.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
+  html += _buildKpiCard('Dépenses', totDep.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
+  html += _buildKpiCard('Bénéfice Net', benef.toLocaleString()+' GNF', benef>=0?'#15803d':'#dc2626', benef>=0?'#dcfce7':'#fee2e2');
+  html += _buildKpiCard('Nb Services', svcs.length, '#7c3aed', '#ede9fe');
+  html += '</div>';
+
+  // Inscrits table
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">🎓 Inscrits du mois ('+ins.length+')</h3>';
+  if(ins.length>0){
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;">';
+    html += '<thead><tr style="background:#172554;color:white;">';
+    ['Matricule','Nom','Prénom','Formation','Total','Reste'].forEach(function(h){
+      html += '<th style="padding:6px 8px;text-align:left;">'+h+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+    ins.forEach(function(i, idx){
+      var bg = idx%2===0?'#f8fafc':'white';
+      html += '<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+i.mat+'</td>'
+        +'<td style="padding:5px 8px;">'+i.nom+'</td>'
+        +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
+        +'<td style="padding:5px 8px;">'+i.formation+'</td>'
+        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+(i.total||i.prix||0).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'
+          +(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table>';
+  } else {
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune inscription ce mois.</p>';
+  }
+
+  // Services table
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">🖨️ Services du mois ('+svcs.length+')</h3>';
+  var svcKeys = Object.keys(svcMap);
+  if(svcKeys.length>0){
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;">';
+    html += '<thead><tr style="background:#172554;color:white;"><th style="padding:6px 8px;text-align:left;">Service</th><th style="padding:6px 8px;text-align:center;">Qté</th><th style="padding:6px 8px;text-align:right;">Total</th></tr></thead><tbody>';
+    svcKeys.forEach(function(k, i){
+      var bg = i%2===0?'#f8fafc':'white';
+      html += '<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;">'+svcMap[k].qte+'</td>'
+        +'<td style="padding:5px 8px;text-align:right;color:#2563eb;font-weight:bold;">'+svcMap[k].total.toLocaleString()+' GNF</td>'
+        +'</tr>';
+    });
+    html += '<tr style="background:#172554;color:white;font-weight:bold;">'
+      +'<td style="padding:6px 8px;">TOTAL</td><td></td>'
+      +'<td style="padding:6px 8px;text-align:right;">'+revSvc.toLocaleString()+' GNF</td>'
+      +'</tr></tbody></table>';
+  } else {
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucun service ce mois.</p>';
+  }
+
+  // Stock / Consommables
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">📦 Stock & Consommables</h3>';
+  if(consomItems.length>0){
+    html += '<div style="font-size:12px;font-weight:bold;color:#7c3aed;margin-bottom:6px;">🗂️ Consommables</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px;">';
+    html += '<thead><tr style="background:#7c3aed;color:white;"><th style="padding:5px 8px;text-align:left;">Article</th><th style="padding:5px 8px;text-align:center;">Qté en stock</th><th style="padding:5px 8px;text-align:center;">État</th></tr></thead><tbody>';
+    consomItems.forEach(function(k, i){
+      var qty = parseInt(stk[k])||0;
+      var bg  = i%2===0?'#f8fafc':'white';
+      var etat = qty<=0?'<span style="color:#dc2626;font-weight:bold;">⚠️ Épuisé</span>'
+                :qty<=3?'<span style="color:#f97316;font-weight:bold;">🟡 Faible</span>'
+                :'<span style="color:#15803d;">✅ OK</span>';
+      html += '<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;font-weight:bold;">'+qty+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;">'+etat+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  if(autresItems.length>0){
+    html += '<div style="font-size:12px;font-weight:bold;color:#172554;margin-bottom:6px;">📦 Autres articles</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;">';
+    html += '<thead><tr style="background:#172554;color:white;"><th style="padding:5px 8px;text-align:left;">Article</th><th style="padding:5px 8px;text-align:center;">Qté en stock</th></tr></thead><tbody>';
+    autresItems.forEach(function(k, i){
+      var bg = i%2===0?'#f8fafc':'white';
+      html += '<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;">'+k+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;font-weight:bold;">'+(parseInt(stk[k])||0)+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table>';
+  }
+  if(consomItems.length===0&&autresItems.length===0){
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucun article en stock.</p>';
+  }
+
+  // Graphiques
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:12px;">📊 Graphiques</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">';
+  html += '<div><canvas id="rChart1" height="220"></canvas></div>';
+  html += '<div><canvas id="rChart2" height="220"></canvas></div>';
+  html += '</div>';
+
+  // Footer
+  html += '<div style="font-size:10px;text-align:center;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px;">Document officiel — '+nomCentre+' — '+label+'</div>';
+  html += '</div>'; // end rapportPrintable
+
+  document.getElementById('rapportContenu').innerHTML = html;
+
+  // Draw charts
+  setTimeout(function(){
+    _drawMensuelCharts(revInscr, revSvc, totDep, benef, svcMap);
+  }, 80);
+}
+
+function _drawMensuelCharts(revInscr, revSvc, totDep, benef, svcMap){
+  if(typeof Chart === 'undefined') return;
+  // Chart 1: finances bar
+  var c1 = document.getElementById('rChart1');
+  if(c1){
+    new Chart(c1, {
+      type:'bar',
+      data:{
+        labels:['Rev.Inscr.','Rev.Services','Dépenses','Bénéfice'],
+        datasets:[{
+          label:'GNF',
+          data:[revInscr, revSvc, totDep, benef],
+          backgroundColor:['#22c55e','#3b82f6','#ef4444', benef>=0?'#f97316':'#dc2626'],
+          borderRadius:8
+        }]
+      },
+      options:{responsive:true,plugins:{legend:{display:false},title:{display:true,text:'Finances du mois',font:{size:13,weight:'bold'}}},
+        scales:{y:{ticks:{callback:function(v){return (v/1000).toFixed(0)+'k';}}}}}
+    });
+  }
+  // Chart 2: services doughnut
+  var c2 = document.getElementById('rChart2');
+  var svcKeys = Object.keys(svcMap);
+  if(c2 && svcKeys.length>0){
+    var colors=['#3b82f6','#8b5cf6','#f97316','#22c55e','#ef4444','#06b6d4','#f59e0b','#ec4899'];
+    new Chart(c2, {
+      type:'doughnut',
+      data:{
+        labels:svcKeys,
+        datasets:[{data:svcKeys.map(function(k){return svcMap[k].total;}),backgroundColor:colors,borderWidth:2}]
+      },
+      options:{responsive:true,plugins:{legend:{position:'bottom'},title:{display:true,text:'Répartition Services',font:{size:13,weight:'bold'}},
+        tooltip:{callbacks:{label:function(c){return c.label+': '+c.raw.toLocaleString()+' GNF';}}}}}
+    });
+  } else if(c2){
+    c2.parentElement.innerHTML='<div style="text-align:center;color:#94a3b8;padding:40px;font-size:12px;">Aucun service ce mois</div>';
+  }
+}
+
+// -------- RAPPORT ANNUEL --------
+function _genRapportAnnuel(){
+  var annee = parseInt((document.getElementById('rapportAnneeAnnuel')||{}).value || new Date().getFullYear());
+  var moisNoms = ['Jan','Fév','Mar','Avr','Mai','Juin','Juil','Août','Sep','Oct','Nov','Déc'];
+
+  // Données par mois
+  var parMois = [];
+  for(var m=1; m<=12; m++){
+    var ins2 = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
+      var d=parseDateFR(i.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===m;
+    });
+    var svcs2 = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
+      var d=parseDateFR(s.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===m;
+    });
+    var deps2 = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
+      var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===m;
+    });
+    var rI = ins2.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+    var rS = svcs2.reduce(function(s,sv){return s+(sv.montant||0);},0);
+    var dep = deps2.reduce(function(s,d){return s+(d.montant||0);},0);
+    parMois.push({mois:m,label:moisNoms[m-1],nbIns:ins2.length,rI:rI,rS:rS,dep:dep,ben:rI+rS-dep});
+  }
+
+  var totNbIns = parMois.reduce(function(s,m){return s+m.nbIns;},0);
+  var totRI   = parMois.reduce(function(s,m){return s+m.rI;},0);
+  var totRS   = parMois.reduce(function(s,m){return s+m.rS;},0);
+  var totDep  = parMois.reduce(function(s,m){return s+m.dep;},0);
+  var totBen  = totRI + totRS - totDep;
+
+  var stk = (typeof stocks!=='undefined')?stocks:{};
+  var consomItems = Object.keys(stk).filter(_isConsommable);
+  var autresItems  = Object.keys(stk).filter(function(k){return !_isConsommable(k);});
+  var nomCentre = (typeof centreNom!=='undefined'?centreNom:'');
+
+  var html = '<div id="rapportPrintable" style="font-family:Arial,sans-serif;max-width:100%;">';
+
+  // Header
+  html += '<div style="text-align:center;padding-bottom:14px;border-bottom:3px solid #172554;margin-bottom:18px;">';
+  html += '<div style="font-size:20px;font-weight:900;color:#172554;">'+nomCentre+'</div>';
+  html += '<div style="font-size:15px;font-weight:bold;color:#f97316;margin-top:4px;">RAPPORT ANNUEL — '+annee+'</div>';
+  html += '<div style="font-size:11px;color:#94a3b8;margin-top:2px;">Généré le '+new Date().toLocaleDateString('fr-FR')+'</div>';
+  html += '</div>';
+
+  // KPIs
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
+  html += _buildKpiCard('Total Inscrits', totNbIns, '#172554', '#dbeafe');
+  html += _buildKpiCard('Rev. Inscriptions', totRI.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Rev. Services', totRS.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
+  html += _buildKpiCard('Total Dépenses', totDep.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
+  html += _buildKpiCard('Bénéfice Annuel', totBen.toLocaleString()+' GNF', totBen>=0?'#15803d':'#dc2626', totBen>=0?'#dcfce7':'#fee2e2');
+  html += '</div>';
+
+  // Récap mensuel table
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">📅 Récapitulatif mensuel '+annee+'</h3>';
+  html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:18px;">';
+  html += '<thead><tr style="background:#172554;color:white;">'
+    +'<th style="padding:6px 8px;text-align:left;">Mois</th>'
+    +'<th style="padding:6px 8px;text-align:center;">Inscrits</th>'
+    +'<th style="padding:6px 8px;text-align:right;">Rev.Inscr.</th>'
+    +'<th style="padding:6px 8px;text-align:right;">Rev.Svcs</th>'
+    +'<th style="padding:6px 8px;text-align:right;">Dépenses</th>'
+    +'<th style="padding:6px 8px;text-align:right;">Bénéfice</th>'
+    +'</tr></thead><tbody>';
+  parMois.forEach(function(m, i){
+    var bg = i%2===0?'#f8fafc':'white';
+    var hasData = m.nbIns>0||m.rI>0||m.rS>0||m.dep>0;
+    var opac = hasData?'1':'0.45';
+    html += '<tr style="background:'+bg+';opacity:'+opac+';">'
+      +'<td style="padding:5px 8px;font-weight:bold;">'+m.label+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;">'+m.nbIns+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#15803d;">'+m.rI.toLocaleString()+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#2563eb;">'+m.rS.toLocaleString()+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#dc2626;">'+m.dep.toLocaleString()+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;font-weight:bold;color:'+(m.ben>=0?'#15803d':'#dc2626')+';">'+m.ben.toLocaleString()+'</td>'
+      +'</tr>';
+  });
+  html += '<tr style="background:#172554;color:white;font-weight:bold;">'
+    +'<td style="padding:6px 8px;">TOTAL</td>'
+    +'<td style="padding:6px 8px;text-align:center;">'+totNbIns+'</td>'
+    +'<td style="padding:6px 8px;text-align:right;">'+totRI.toLocaleString()+'</td>'
+    +'<td style="padding:6px 8px;text-align:right;">'+totRS.toLocaleString()+'</td>'
+    +'<td style="padding:6px 8px;text-align:right;">'+totDep.toLocaleString()+'</td>'
+    +'<td style="padding:6px 8px;text-align:right;">'+totBen.toLocaleString()+'</td>'
+    +'</tr></tbody></table>';
+
+  // Stock
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">📦 État du Stock</h3>';
+  if(consomItems.length>0){
+    html += '<div style="font-size:12px;font-weight:bold;color:#7c3aed;margin-bottom:6px;">🗂️ Consommables</div>';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px;">';
+    html += '<thead><tr style="background:#7c3aed;color:white;"><th style="padding:5px 8px;text-align:left;">Article</th><th style="padding:5px 8px;text-align:center;">Stock</th><th style="padding:5px 8px;text-align:center;">État</th></tr></thead><tbody>';
+    consomItems.forEach(function(k,i){
+      var qty=parseInt(stk[k])||0;
+      var bg=i%2===0?'#f8fafc':'white';
+      var etat=qty<=0?'<span style="color:#dc2626;font-weight:bold;">⚠️ Épuisé</span>':qty<=3?'<span style="color:#f97316;font-weight:bold;">🟡 Faible</span>':'<span style="color:#15803d;">✅ OK</span>';
+      html+='<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;font-weight:bold;">'+qty+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;">'+etat+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table>';
+  }
+
+  // Graphiques
+  html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:12px;">📊 Graphiques Annuels '+annee+'</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px;">';
+  html += '<div><canvas id="rAChart1" height="220"></canvas></div>';
+  html += '<div><canvas id="rAChart2" height="220"></canvas></div>';
+  html += '</div>';
+
+  // Footer
+  html += '<div style="font-size:10px;text-align:center;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:8px;margin-top:8px;">Document officiel — '+nomCentre+' — Rapport Annuel '+annee+'</div>';
+  html += '</div>';
+
+  document.getElementById('rapportContenu').innerHTML = html;
+
+  setTimeout(function(){ _drawAnnuelCharts(parMois); }, 80);
+}
+
+function _drawAnnuelCharts(parMois){
+  if(typeof Chart==='undefined') return;
+  var labels = parMois.map(function(m){return m.label;});
+
+  var c1 = document.getElementById('rAChart1');
+  if(c1){
+    new Chart(c1,{
+      type:'bar',
+      data:{
+        labels:labels,
+        datasets:[
+          {label:'Rev.Inscr.',data:parMois.map(function(m){return m.rI;}),backgroundColor:'#22c55e',borderRadius:5},
+          {label:'Rev.Svcs', data:parMois.map(function(m){return m.rS;}),backgroundColor:'#3b82f6',borderRadius:5},
+          {label:'Dépenses',data:parMois.map(function(m){return m.dep;}),backgroundColor:'#ef4444',borderRadius:5}
+        ]
+      },
+      options:{responsive:true,plugins:{legend:{position:'bottom'},title:{display:true,text:'Revenus & Dépenses par mois',font:{size:13,weight:'bold'}}},
+        scales:{y:{ticks:{callback:function(v){return (v/1000).toFixed(0)+'k';}}}}}
+    });
+  }
+  var c2 = document.getElementById('rAChart2');
+  if(c2){
+    new Chart(c2,{
+      type:'line',
+      data:{
+        labels:labels,
+        datasets:[
+          {label:'Inscrits',data:parMois.map(function(m){return m.nbIns;}),borderColor:'#f97316',backgroundColor:'rgba(249,115,22,0.12)',fill:true,tension:0.4,pointRadius:5},
+          {label:'Bénéfice (k)',data:parMois.map(function(m){return Math.round(m.ben/1000);}),borderColor:'#15803d',backgroundColor:'rgba(21,128,61,0.08)',fill:false,tension:0.4,pointRadius:4,yAxisID:'y2'}
+        ]
+      },
+      options:{responsive:true,plugins:{legend:{position:'bottom'},title:{display:true,text:'Inscrits & Bénéfice mensuel',font:{size:13,weight:'bold'}}},
+        scales:{y:{ticks:{callback:function(v){return v;}}},y2:{position:'right',ticks:{callback:function(v){return v+'k';}},grid:{drawOnChartArea:false}}}}
+    });
+  }
+}
+
+// -------- IMPRESSION A4 --------
+function imprimerRapport(){
+  var el = document.getElementById('rapportPrintable');
+  if(!el){ alert('Veuillez d\'abord générer un rapport.'); return; }
+  var w = window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
+  w.document.write('<title>Rapport</title>');
+  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+  w.document.write('<style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 14mm 12mm 14mm;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
+  w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
+  w.document.write('#rapportPrintable{width:182mm;margin:0 auto;}');
+  w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
+  w.document.write('th,td{padding:4px 6px;}');
+  w.document.write('canvas{max-width:100%!important;height:auto!important;}');
+  w.document.write('</style></head><body>');
+  w.document.write(el.outerHTML);
+  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('</body></html>');
+  w.document.close();
+}
 
 </script>
 
