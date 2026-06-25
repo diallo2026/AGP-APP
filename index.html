@@ -3017,7 +3017,7 @@ function genererPDF(){
   w.document.write('div{font-size:14px;}li{font-size:14px;margin-bottom:3px;}');
   w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -6029,7 +6029,7 @@ function imprimerRapport(){
   var w = window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Rapport — '+(p.nom||'')+'</title>');
-  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></'+'script>');
   w.document.write('<style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 14mm 12mm 14mm;}');
   w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
@@ -6040,7 +6040,7 @@ function imprimerRapport(){
   w.document.write('img{max-width:100%;}');
   w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -6274,12 +6274,12 @@ function _drawDbmCharts(revI,revS,dep,ben,svcMap){
 
 function imprimerDashboardMensuel(){
   var el=document.getElementById('dbmPrintable');
-  if(!el){alert('Veuillez d'abord générer le tableau de bord mensuel.');return;}
+  if(!el){alert('Veuillez d\'abord g\u00e9n\u00e9rer le tableau de bord mensuel.');return;}
   var p=_getPrestInfo();
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Tableau de Bord Mensuel</title>');
-  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></'+'script>');
   w.document.write('<style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 14mm;}');
   w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
@@ -6289,7 +6289,7 @@ function imprimerDashboardMensuel(){
   w.document.write('canvas{max-width:100%!important;height:auto!important;}');
   w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -6492,7 +6492,7 @@ function _buildRJTableDepenses(deps,total){
 
 function imprimerRapportJournalier(){
   var el=document.getElementById('rjPrintable');
-  if(!el){alert('Veuillez d'abord générer le rapport.');return;}
+  if(!el){alert('Veuillez d\'abord g\u00e9n\u00e9rer le rapport.');return;}
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Rapport Journalier</title>');
@@ -6504,7 +6504,7 @@ function imprimerRapportJournalier(){
   w.document.write('th,td{padding:4px 6px;}');
   w.document.write('</style></head><body>');
   w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
