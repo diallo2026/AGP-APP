@@ -1189,6 +1189,8 @@ function agpDevImPayer(btn){
       <button onclick="showSection('historique')" class="menuBtn">📜 Historique</button>
       <button onclick="showSection('attente')" id="attenteBtn" class="menuBtn">⏳ Formations en attente</button>
       <button onclick="showSection('rapport')" id="rapportBtn" class="menuBtn">📈 Rapports</button>
+      <button onclick="showSection('dashboardMensuel')" id="dashboardMensuelBtn" class="menuBtn" style="display:none">📅 Tableau Mensuel</button>
+      <button onclick="showSection('rapportJournalier')" id="rapportJournalierBtn" class="menuBtn" style="display:none">📋 Rapport Journalier</button>
       <button onclick="showSection('gerants')" id="gerantBtn" class="menuBtn" style="display:none">👥 Gérants</button>
       <button onclick="showSection('salaires')" id="salaireBtn" class="menuBtn" style="display:none">💰 Salaires</button>
       <button onclick="showSection('actionsAnnee')" id="actionsAnneeBtn" class="menuBtn" style="display:none">📅 Actions par Année</button>
@@ -1763,6 +1765,73 @@ function agpDevImPayer(btn){
         <div id="rapportContenu"></div>
       </section>
 
+      <!-- ===== TABLEAU DE BORD MENSUEL ===== -->
+      <section id="dashboardMensuel" class="section bg-white rounded-3xl shadow-xl p-6">
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+          <h2 class="text-3xl font-bold text-blue-950">📅 Tableau de Bord Mensuel</h2>
+          <div class="flex flex-wrap gap-2 items-end no-print">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">Mois</label>
+              <select id="dbmMois" onchange="renderDashboardMensuel()" class="inp text-sm" style="width:140px">
+                <option value="1">Janvier</option><option value="2">Février</option>
+                <option value="3">Mars</option><option value="4">Avril</option>
+                <option value="5">Mai</option><option value="6">Juin</option>
+                <option value="7">Juillet</option><option value="8">Août</option>
+                <option value="9">Septembre</option><option value="10">Octobre</option>
+                <option value="11">Novembre</option><option value="12">Décembre</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">Année</label>
+              <select id="dbmAnnee" onchange="renderDashboardMensuel()" class="inp text-sm" style="width:110px">
+              </select>
+            </div>
+            <button onclick="renderDashboardMensuel()" class="bg-blue-950 text-white px-4 py-2 rounded-xl font-bold text-sm mt-5">🔄 Actualiser</button>
+            <button onclick="imprimerDashboardMensuel()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-sm mt-5">🖨️ Imprimer A4</button>
+          </div>
+        </div>
+        <div id="dashboardMensuelContenu"></div>
+      </section>
+
+      <!-- ===== RAPPORT JOURNALIER ===== -->
+      <section id="rapportJournalier" class="section bg-white rounded-3xl shadow-xl p-6">
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+          <h2 class="text-3xl font-bold text-blue-950">📋 Rapport Journalier</h2>
+          <div class="flex flex-wrap gap-2 items-end no-print">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">Type</label>
+              <select id="rjType" onchange="renderRapportJournalier()" class="inp text-sm" style="width:160px">
+                <option value="jour">📅 Rapport du Jour</option>
+                <option value="mois">📆 Rapport du Mois</option>
+              </select>
+            </div>
+            <div id="rjDateZone">
+              <label class="block text-xs font-bold text-slate-500 mb-1">Date</label>
+              <input type="date" id="rjDate" onchange="renderRapportJournalier()" class="inp text-sm" style="width:150px">
+            </div>
+            <div id="rjMoisZone" style="display:none">
+              <label class="block text-xs font-bold text-slate-500 mb-1">Mois</label>
+              <select id="rjMois" onchange="renderRapportJournalier()" class="inp text-sm" style="width:130px">
+                <option value="1">Janvier</option><option value="2">Février</option>
+                <option value="3">Mars</option><option value="4">Avril</option>
+                <option value="5">Mai</option><option value="6">Juin</option>
+                <option value="7">Juillet</option><option value="8">Août</option>
+                <option value="9">Septembre</option><option value="10">Octobre</option>
+                <option value="11">Novembre</option><option value="12">Décembre</option>
+              </select>
+            </div>
+            <div id="rjAnneeZone" style="display:none">
+              <label class="block text-xs font-bold text-slate-500 mb-1">Année</label>
+              <select id="rjAnnee" onchange="renderRapportJournalier()" class="inp text-sm" style="width:110px">
+              </select>
+            </div>
+            <button onclick="renderRapportJournalier()" class="bg-blue-950 text-white px-4 py-2 rounded-xl font-bold text-sm mt-5">🔄 Générer</button>
+            <button onclick="imprimerRapportJournalier()" class="bg-red-600 text-white px-4 py-2 rounded-xl font-bold text-sm mt-5">🖨️ Imprimer A4</button>
+          </div>
+        </div>
+        <div id="rapportJournalierContenu"></div>
+      </section>
+
       <section id="parametres" class="section bg-white rounded-3xl shadow-xl p-6">
         <h2 class="text-3xl font-bold text-blue-950 mb-5">⚙️ Paramètres de la Prestation</h2>
         <div class="bg-yellow-50 border-2 border-yellow-300 rounded-2xl p-4 mb-5">
@@ -2200,6 +2269,8 @@ function login(){
     if(parametresBtn)parametresBtn.style.display='block';
     var aab=document.getElementById('actionsAnneeBtn');if(aab)aab.style.display='block';
     var cgb=document.getElementById('comparaisonGrapheBtn');if(cgb)cgb.style.display='block';
+    var dbmBtn=document.getElementById('dashboardMensuelBtn');if(dbmBtn)dbmBtn.style.display='block';
+    var rjBtn=document.getElementById('rapportJournalierBtn');if(rjBtn)rjBtn.style.display='block';
     showSection('dashboard');
   } else {
     if(dashboardBtn)dashboardBtn.style.display='none';
@@ -2226,6 +2297,8 @@ function logout(){
   document.getElementById('btnReinit').style.display='none';
   var aab3=document.getElementById('actionsAnneeBtn');if(aab3)aab3.style.display='none';
   var cgb3=document.getElementById('comparaisonGrapheBtn');if(cgb3)cgb3.style.display='none';
+  var dbmBtn3=document.getElementById('dashboardMensuelBtn');if(dbmBtn3)dbmBtn3.style.display='none';
+  var rjBtn3=document.getElementById('rapportJournalierBtn');if(rjBtn3)rjBtn3.style.display='none';
   var dashBtn=document.getElementById('dashboardBtn');if(dashBtn)dashBtn.style.display='block';
   var pBtn=document.getElementById('parametresBtn');if(pBtn)pBtn.style.display='none';
   document.querySelectorAll('.section').forEach(function(s){s.classList.remove('active');});
@@ -2255,6 +2328,8 @@ function showSection(id){
   document.getElementById(id).classList.add('active');
   if(id==='dashboard') verifierEcheances();
   if(id==='attente') renderAttente();
+  if(id==='dashboardMensuel'){ initDashboardMensuel(); renderDashboardMensuel(); }
+  if(id==='rapportJournalier'){ initRapportJournalier(); renderRapportJournalier(); }
   if(id==='parametres') chargerApercuParametres();
   if(id==='gerants'){
     renderManagerList();
@@ -5959,7 +6034,256 @@ function imprimerRapport(){
   w.document.write('@page{size:A4 portrait;margin:12mm 14mm 12mm 14mm;}');
   w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
-  w.document.write('#rapportPrintable{width:182mm;margin:0 auto;}');
+  w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
+  w.document.write('th,td{padding:4px 6px;}');
+  w.document.write('canvas{max-width:100%!important;height:auto!important;}');
+  w.document.write('img{max-width:100%;}');
+  w.document.write('</style></head><body>');
+  w.document.write(el.outerHTML);
+  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('</body></html>');
+  w.document.close();
+}
+
+// ============================================================
+// ===== TABLEAU DE BORD MENSUEL =====
+// ============================================================
+function initDashboardMensuel(){
+  // Remplir sélecteur années
+  var sel = document.getElementById('dbmAnnee');
+  if(!sel) return;
+  var annees = new Set();
+  for(var y=2020;y<=2040;y++) annees.add(y);
+  if(typeof inscrits!=='undefined') inscrits.forEach(function(i){var d=parseDateFR(i.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+  if(typeof servicesList!=='undefined') servicesList.forEach(function(s){var d=parseDateFR(s.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+  var now = new Date();
+  var cur = sel.value || String(now.getFullYear());
+  sel.innerHTML = Array.from(annees).sort(function(a,b){return b-a;}).map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
+  sel.value = cur;
+  // Mois courant par défaut
+  var selM = document.getElementById('dbmMois');
+  if(selM && !selM.value) selM.value = String(now.getMonth()+1);
+  else if(selM && selM.value==='0') selM.value = String(now.getMonth()+1);
+}
+
+function renderDashboardMensuel(){
+  if(currentRole!=='FONDATEUR') return;
+  var mois  = parseInt((document.getElementById('dbmMois')||{}).value || (new Date().getMonth()+1));
+  var annee = parseInt((document.getElementById('dbmAnnee')||{}).value || new Date().getFullYear());
+  var MOIS_NOM = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var label = MOIS_NOM[mois] + ' ' + annee;
+
+  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
+
+  var revInscrVerse = ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revInscrDu    = ins.reduce(function(s,i){return s+(i.total||0);},0);
+  var revInscrReste = ins.reduce(function(s,i){return s+(i.resteAPayer||0);},0);
+  var revSvc  = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
+  var totDep  = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var totalEntrees = revInscrVerse + revSvc;
+  var benefNet = totalEntrees - totDep;
+
+  // Grouper services par type
+  var svcMap = {};
+  svcs.forEach(function(s){
+    var k=s.service||'Autre';
+    if(!svcMap[k]){svcMap[k]={qte:0,total:0};}
+    svcMap[k].qte+=(s.quantite||1);
+    svcMap[k].total+=(s.montant||0);
+  });
+
+  // Inscrits par formation
+  var formMap = {};
+  ins.forEach(function(i){
+    var k=i.formation||'N/A';
+    if(!formMap[k]){formMap[k]={nb:0,total:0,verse:0,reste:0};}
+    formMap[k].nb++;
+    formMap[k].total+=(i.total||0);
+    formMap[k].verse+=(i.montantPaye||0);
+    formMap[k].reste+=(i.resteAPayer||0);
+  });
+
+  function kpi(label,val,color,bg){
+    return '<div style="background:'+bg+';border-radius:14px;padding:16px 14px;text-align:center;flex:1;min-width:120px;">'
+      +'<div style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.04em;margin-bottom:5px;">'+label+'</div>'
+      +'<div style="font-size:20px;font-weight:900;color:'+color+';">'+val+'</div>'
+      +'</div>';
+  }
+
+  var html = '<div id="dbmPrintable">';
+  html += _buildRapportHeader('TABLEAU DE BORD — ' + label.toUpperCase());
+
+  // KPIs
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px;">';
+  html += kpi('Inscrits', ins.length, '#172554', '#dbeafe');
+  html += kpi('Rev. Versé Inscr.', revInscrVerse.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += kpi('Dettes Inscr.', revInscrReste.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
+  html += kpi('Rev. Services', revSvc.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
+  html += kpi('Total Entrées', totalEntrees.toLocaleString()+' GNF', '#0369a1', '#e0f2fe');
+  html += kpi('Dépenses', totDep.toLocaleString()+' GNF', '#b45309', '#fef3c7');
+  html += kpi('Bénéfice Net', benefNet.toLocaleString()+' GNF', benefNet>=0?'#15803d':'#dc2626', benefNet>=0?'#dcfce7':'#fee2e2');
+  html += kpi('Nb Services', svcs.length, '#7c3aed', '#ede9fe');
+  html += '</div>';
+
+  // Tableau inscrits du mois
+  html += '<h3 style="font-size:14px;font-weight:800;color:#172554;border-left:4px solid #2563eb;padding-left:10px;margin-bottom:10px;">🎓 Inscriptions du mois ('+ins.length+')</h3>';
+  if(ins.length>0){
+    html += '<div style="overflow-x:auto;margin-bottom:20px;">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#172554;color:white;">';
+    ['Matricule','Nom','Prénom','Formation','Total Dû','Versé','Reste','Date'].forEach(function(h){
+      html += '<th style="padding:7px 8px;text-align:left;">'+h+'</th>';
+    });
+    html += '</tr></thead><tbody>';
+    ins.forEach(function(i,idx){
+      var bg=idx%2===0?'#f8fafc':'white';
+      var rColor=i.resteAPayer>0?'#dc2626':'#15803d';
+      html += '<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;color:#172554;">'+i.mat+'</td>'
+        +'<td style="padding:5px 8px;">'+i.nom+'</td>'
+        +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
+        +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:'+rColor+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+        +'<td style="padding:5px 8px;font-size:10px;color:#64748b;">'+i.date+'</td>'
+        +'</tr>';
+    });
+    // Ligne totaux
+    html += '<tr style="background:#1e3a8a;color:white;font-weight:800;">'
+      +'<td colspan="4" style="padding:7px 8px;">TOTAUX</td>'
+      +'<td style="padding:7px 8px;">'+revInscrDu.toLocaleString()+' GNF</td>'
+      +'<td style="padding:7px 8px;">'+revInscrVerse.toLocaleString()+' GNF</td>'
+      +'<td style="padding:7px 8px;color:'+(revInscrReste>0?'#fca5a5':'#86efac')+';">'+revInscrReste.toLocaleString()+' GNF</td>'
+      +'<td></td></tr>';
+    html += '</tbody></table></div>';
+
+    // Récap par formation
+    if(Object.keys(formMap).length>0){
+      html += '<h4 style="font-size:12px;font-weight:700;color:#7c3aed;margin-bottom:6px;">📊 Récap par Formation</h4>';
+      html += '<div style="overflow-x:auto;margin-bottom:20px;">';
+      html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+      html += '<thead><tr style="background:#7c3aed;color:white;"><th style="padding:6px 8px;text-align:left;">Formation</th><th style="padding:6px 8px;text-align:center;">Inscrits</th><th style="padding:6px 8px;text-align:right;">Total Dû</th><th style="padding:6px 8px;text-align:right;">Versé</th><th style="padding:6px 8px;text-align:right;">Reste</th></tr></thead><tbody>';
+      Object.keys(formMap).forEach(function(k,i){
+        var d=formMap[k];
+        html += '<tr style="background:'+(i%2===0?'#f8fafc':'white')+'">'
+          +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+          +'<td style="padding:5px 8px;text-align:center;font-weight:bold;color:#172554;">'+d.nb+'</td>'
+          +'<td style="padding:5px 8px;text-align:right;font-weight:bold;">'+d.total.toLocaleString()+' GNF</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:#15803d;font-weight:bold;">'+d.verse.toLocaleString()+' GNF</td>'
+          +'<td style="padding:5px 8px;text-align:right;color:'+(d.reste>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(d.reste>0?d.reste.toLocaleString()+' GNF':'✅')+'</td>'
+          +'</tr>';
+      });
+      html += '</tbody></table></div>';
+    }
+  } else {
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune inscription ce mois.</p>';
+  }
+
+  // Tableau services du mois
+  html += '<h3 style="font-size:14px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:10px;">🖨️ Services du mois ('+svcs.length+')</h3>';
+  if(Object.keys(svcMap).length>0){
+    html += '<div style="overflow-x:auto;margin-bottom:20px;">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#7c3aed;color:white;"><th style="padding:7px 8px;text-align:left;">Service</th><th style="padding:7px 8px;text-align:center;">Quantité</th><th style="padding:7px 8px;text-align:right;">Revenus</th></tr></thead><tbody>';
+    Object.keys(svcMap).forEach(function(k,i){
+      var d=svcMap[k];
+      html += '<tr style="background:'+(i%2===0?'#f8fafc':'white')+'">'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;font-weight:bold;">'+d.qte+'</td>'
+        +'<td style="padding:5px 8px;text-align:right;color:#7c3aed;font-weight:bold;">'+d.total.toLocaleString()+' GNF</td>'
+        +'</tr>';
+    });
+    html += '<tr style="background:#7c3aed;color:white;font-weight:800;">'
+      +'<td style="padding:7px 8px;">TOTAL SERVICES</td><td></td>'
+      +'<td style="padding:7px 8px;text-align:right;">'+revSvc.toLocaleString()+' GNF</td></tr>';
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucun service ce mois.</p>';
+  }
+
+  // Dépenses du mois
+  html += '<h3 style="font-size:14px;font-weight:800;color:#172554;border-left:4px solid #dc2626;padding-left:10px;margin-bottom:10px;">💸 Dépenses du mois ('+deps.length+')</h3>';
+  if(deps.length>0){
+    html += '<div style="overflow-x:auto;margin-bottom:20px;">';
+    html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#dc2626;color:white;"><th style="padding:7px 8px;text-align:left;">Description</th><th style="padding:7px 8px;text-align:right;">Montant</th><th style="padding:7px 8px;text-align:center;">Date</th></tr></thead><tbody>';
+    deps.forEach(function(d,i){
+      html += '<tr style="background:'+(i%2===0?'#fef2f2':'white')+'">'
+        +'<td style="padding:5px 8px;">'+d.nom+'</td>'
+        +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+d.date+'</td>'
+        +'</tr>';
+    });
+    html += '<tr style="background:#dc2626;color:white;font-weight:800;">'
+      +'<td style="padding:7px 8px;">TOTAL DÉPENSES</td>'
+      +'<td style="padding:7px 8px;text-align:right;">'+totDep.toLocaleString()+' GNF</td>'
+      +'<td></td></tr>';
+    html += '</tbody></table></div>';
+  } else {
+    html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune dépense ce mois.</p>';
+  }
+
+  // Graphiques
+  html += '<h3 style="font-size:14px;font-weight:800;color:#172554;border-left:4px solid #f97316;padding-left:10px;margin-bottom:12px;">📊 Graphiques</h3>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px;">';
+  html += '<div><canvas id="dbmChart1" height="220"></canvas></div>';
+  html += '<div><canvas id="dbmChart2" height="220"></canvas></div>';
+  html += '</div>';
+
+  html += _buildRapportFooter(label);
+  html += '</div>';
+
+  document.getElementById('dashboardMensuelContenu').innerHTML = html;
+  setTimeout(function(){ _drawDbmCharts(revInscrVerse,revSvc,totDep,benefNet,svcMap); }, 100);
+}
+
+function _drawDbmCharts(revI,revS,dep,ben,svcMap){
+  if(typeof Chart==='undefined') return;
+  var c1=document.getElementById('dbmChart1');
+  if(c1){
+    if(c1._chartInst){try{c1._chartInst.destroy();}catch(e){}}
+    c1._chartInst=new Chart(c1,{
+      type:'doughnut',
+      data:{
+        labels:['Rev. Inscr. Versé','Rev. Services','Dépenses'],
+        datasets:[{data:[revI,revS,dep],backgroundColor:['#22c55e','#3b82f6','#ef4444'],hoverOffset:8,borderWidth:2,borderColor:'#fff'}]
+      },
+      options:{responsive:true,plugins:{legend:{position:'bottom'},title:{display:true,text:'Répartition Financière',font:{size:13,weight:'bold'}}}}
+    });
+  }
+  var c2=document.getElementById('dbmChart2');
+  if(c2){
+    if(c2._chartInst){try{c2._chartInst.destroy();}catch(e){}}
+    var svcKeys=Object.keys(svcMap);
+    var svcVals=svcKeys.map(function(k){return svcMap[k].total;});
+    var colors=['#3b82f6','#7c3aed','#f97316','#22c55e','#ef4444','#14b8a6','#f59e0b','#8b5cf6'];
+    c2._chartInst=new Chart(c2,{
+      type:'bar',
+      data:{
+        labels:svcKeys.length?svcKeys:['Aucun service'],
+        datasets:[{label:'Revenus par service',data:svcKeys.length?svcVals:[0],backgroundColor:svcKeys.map(function(_,i){return colors[i%colors.length];}),borderRadius:6}]
+      },
+      options:{responsive:true,plugins:{legend:{display:false},title:{display:true,text:'Services du mois',font:{size:13,weight:'bold'}}},
+        scales:{y:{ticks:{callback:function(v){return (v/1000).toFixed(0)+'k';}}}}}
+    });
+  }
+}
+
+function imprimerDashboardMensuel(){
+  var el=document.getElementById('dbmPrintable');
+  if(!el){alert('Veuillez d'abord générer le tableau de bord mensuel.');return;}
+  var p=_getPrestInfo();
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
+  w.document.write('<title>Tableau de Bord Mensuel</title>');
+  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"><\/script>');
+  w.document.write('<style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 14mm;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
+  w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
   w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
   w.document.write('th,td{padding:4px 6px;}');
   w.document.write('canvas{max-width:100%!important;height:auto!important;}');
@@ -5969,6 +6293,225 @@ function imprimerRapport(){
   w.document.write('</body></html>');
   w.document.close();
 }
+
+// ============================================================
+// ===== RAPPORT JOURNALIER =====
+// ============================================================
+function initRapportJournalier(){
+  // Date du jour par défaut
+  var dEl=document.getElementById('rjDate');
+  if(dEl&&!dEl.value){
+    var now=new Date();
+    var pad=function(n){return String(n).padStart(2,'0');};
+    dEl.value=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  }
+  // Mois courant par défaut
+  var mEl=document.getElementById('rjMois');
+  if(mEl&&!mEl.value) mEl.value=String(new Date().getMonth()+1);
+  // Années
+  var aEl=document.getElementById('rjAnnee');
+  if(aEl){
+    var annees=new Set();
+    for(var y=2020;y<=2040;y++) annees.add(y);
+    if(typeof inscrits!=='undefined') inscrits.forEach(function(i){var d=parseDateFR(i.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+    var curA=aEl.value||String(new Date().getFullYear());
+    aEl.innerHTML=Array.from(annees).sort(function(a,b){return b-a;}).map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
+    aEl.value=curA;
+  }
+}
+
+function _rjToggleMode(){
+  var type=(document.getElementById('rjType')||{}).value||'jour';
+  var jz=document.getElementById('rjDateZone');
+  var mz=document.getElementById('rjMoisZone');
+  var az=document.getElementById('rjAnneeZone');
+  if(type==='jour'){
+    if(jz)jz.style.display='';
+    if(mz)mz.style.display='none';
+    if(az)az.style.display='none';
+  } else {
+    if(jz)jz.style.display='none';
+    if(mz)mz.style.display='';
+    if(az)az.style.display='';
+  }
+}
+
+function renderRapportJournalier(){
+  _rjToggleMode();
+  var type=(document.getElementById('rjType')||{}).value||'jour';
+  if(type==='jour') _renderRJJour();
+  else _renderRJMois();
+}
+
+function _rjParseDateInput(val){
+  if(!val) return null;
+  var parts=val.split('-');
+  if(parts.length!==3) return null;
+  return new Date(parseInt(parts[0]),parseInt(parts[1])-1,parseInt(parts[2]));
+}
+
+function _renderRJJour(){
+  var dateVal=(document.getElementById('rjDate')||{}).value||'';
+  var dateObj=_rjParseDateInput(dateVal);
+  if(!dateObj){document.getElementById('rapportJournalierContenu').innerHTML='<p class="text-red-500 font-bold">Sélectionnez une date valide.</p>';return;}
+  var dateLabel=dateObj.toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  var d=dateObj.getDate(), m=dateObj.getMonth()+1, a=dateObj.getFullYear();
+
+  function sameDay(dateStr){
+    var dd=parseDateFR(dateStr);
+    return dd&&dd.getDate()===d&&dd.getMonth()+1===m&&dd.getFullYear()===a;
+  }
+
+  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(dp){return sameDay(dp.date);});
+
+  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
+  var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
+  var ben=revIns+revSvc-totDep;
+
+  var html='<div id="rjPrintable">';
+  html+=_buildRapportHeader('RAPPORT JOURNALIER — '+dateLabel.toUpperCase());
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJTableInscrits(ins);
+  html+=_buildRJTableServices(svcs,revSvc);
+  html+=_buildRJTableDepenses(deps,totDep);
+  html+=_buildRapportFooter('Rapport du '+dateLabel);
+  html+='</div>';
+  document.getElementById('rapportJournalierContenu').innerHTML=html;
+}
+
+function _renderRJMois(){
+  var mois=parseInt((document.getElementById('rjMois')||{}).value||(new Date().getMonth()+1));
+  var annee=parseInt((document.getElementById('rjAnnee')||{}).value||new Date().getFullYear());
+  var MOIS_NOM=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var label=MOIS_NOM[mois]+' '+annee;
+
+  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
+
+  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
+  var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
+  var ben=revIns+revSvc-totDep;
+
+  var html='<div id="rjPrintable">';
+  html+=_buildRapportHeader('RAPPORT MENSUEL — '+label.toUpperCase());
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJTableInscrits(ins);
+  html+=_buildRJTableServices(svcs,revSvc);
+  html+=_buildRJTableDepenses(deps,totDep);
+  html+=_buildRapportFooter('Rapport de '+label);
+  html+='</div>';
+  document.getElementById('rapportJournalierContenu').innerHTML=html;
+}
+
+function _buildRJKpis(nbIns,nbSvc,revIns,revSvc,totDep,ben){
+  function kpi(label,val,color,bg){
+    return '<div style="background:'+bg+';border-radius:13px;padding:14px 12px;text-align:center;flex:1;min-width:115px;">'
+      +'<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">'+label+'</div>'
+      +'<div style="font-size:18px;font-weight:900;color:'+color+';">'+val+'</div>'
+      +'</div>';
+  }
+  return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">'
+    +kpi('Inscriptions',nbIns,'#172554','#dbeafe')
+    +kpi('Services',nbSvc,'#7c3aed','#ede9fe')
+    +kpi('Rev. Inscr.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7')
+    +kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff')
+    +kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2')
+    +kpi('Bénéfice Net',ben.toLocaleString()+' GNF',ben>=0?'#15803d':'#dc2626',ben>=0?'#dcfce7':'#fee2e2')
+    +'</div>';
+}
+
+function _buildRJTableInscrits(ins){
+  var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #2563eb;padding-left:10px;margin-bottom:8px;">🎓 Inscriptions ('+ins.length+')</h3>';
+  if(!ins.length) return h+'<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucune inscription.</p>';
+  h+='<div style="overflow-x:auto;margin-bottom:18px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h+='<thead><tr style="background:#172554;color:white;">';
+  ['Mat.','Nom','Prénom','Formation','Total Dû','Versé','Reste'].forEach(function(th){h+='<th style="padding:6px 8px;text-align:left;">'+th+'</th>';});
+  h+='</tr></thead><tbody>';
+  ins.forEach(function(i,idx){
+    var bg=idx%2===0?'#f8fafc':'white';
+    h+='<tr style="background:'+bg+';">'
+      +'<td style="padding:5px 8px;font-weight:bold;color:#172554;">'+i.mat+'</td>'
+      +'<td style="padding:5px 8px;">'+i.nom+'</td>'
+      +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
+      +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
+      +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+      +'</tr>';
+  });
+  h+='</tbody></table></div>';
+  return h;
+}
+
+function _buildRJTableServices(svcs,total){
+  var svcMap={};
+  svcs.forEach(function(s){
+    var k=s.service||'Autre';
+    if(!svcMap[k]){svcMap[k]={qte:0,total:0};}
+    svcMap[k].qte+=(s.quantite||1);
+    svcMap[k].total+=(s.montant||0);
+  });
+  var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:8px;">🖨️ Services ('+svcs.length+')</h3>';
+  if(!svcs.length) return h+'<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucun service.</p>';
+  h+='<div style="overflow-x:auto;margin-bottom:18px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h+='<thead><tr style="background:#7c3aed;color:white;"><th style="padding:6px 8px;text-align:left;">Service</th><th style="padding:6px 8px;text-align:center;">Qté</th><th style="padding:6px 8px;text-align:right;">Revenus</th></tr></thead><tbody>';
+  Object.keys(svcMap).forEach(function(k,i){
+    var d=svcMap[k];
+    h+='<tr style="background:'+(i%2===0?'#f5f3ff':'white')+'">'
+      +'<td style="padding:5px 8px;font-weight:bold;">'+k+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-weight:bold;">'+d.qte+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#7c3aed;font-weight:bold;">'+d.total.toLocaleString()+' GNF</td>'
+      +'</tr>';
+  });
+  h+='<tr style="background:#7c3aed;color:white;font-weight:800;"><td style="padding:7px 8px;">TOTAL</td><td></td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td></tr>';
+  h+='</tbody></table></div>';
+  return h;
+}
+
+function _buildRJTableDepenses(deps,total){
+  var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #dc2626;padding-left:10px;margin-bottom:8px;">💸 Dépenses ('+deps.length+')</h3>';
+  if(!deps.length) return h+'<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucune dépense.</p>';
+  h+='<div style="overflow-x:auto;margin-bottom:18px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h+='<thead><tr style="background:#dc2626;color:white;"><th style="padding:6px 8px;text-align:left;">Description</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Date</th></tr></thead><tbody>';
+  deps.forEach(function(d,i){
+    h+='<tr style="background:'+(i%2===0?'#fef2f2':'white')+'">'
+      +'<td style="padding:5px 8px;">'+d.nom+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+d.date+'</td>'
+      +'</tr>';
+  });
+  h+='<tr style="background:#dc2626;color:white;font-weight:800;"><td style="padding:7px 8px;">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td><td></td></tr>';
+  h+='</tbody></table></div>';
+  return h;
+}
+
+function imprimerRapportJournalier(){
+  var el=document.getElementById('rjPrintable');
+  if(!el){alert('Veuillez d'abord générer le rapport.');return;}
+  var w=window.open('','_blank');
+  w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
+  w.document.write('<title>Rapport Journalier</title>');
+  w.document.write('<style>');
+  w.document.write('@page{size:A4 portrait;margin:12mm 14mm;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
+  w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
+  w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
+  w.document.write('th,td{padding:4px 6px;}');
+  w.document.write('</style></head><body>');
+  w.document.write(el.outerHTML);
+  w.document.write('<script>window.onload=function(){window.print();};<\/script>');
+  w.document.write('</body></html>');
+  w.document.close();
+}
+
+// ============================================================
+// Mise à jour imprimerRapport existant avec en-tête complet
+// ============================================================
 
 
 </script>
