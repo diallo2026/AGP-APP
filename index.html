@@ -1209,17 +1209,33 @@ function agpDevImPayer(btn){
             <div>
               <label class="block text-xs font-bold text-slate-500 mb-1">Mois</label>
               <select id="dashMois" onchange="updateDashboard()" class="inp text-sm" style="width:130px">
-                <option value="1">Janvier</option><option value="2">Février</option>
-                <option value="3">Mars</option><option value="4">Avril</option>
-                <option value="5">Mai</option><option value="6">Juin</option>
-                <option value="7">Juillet</option><option value="8">Août</option>
-                <option value="9">Septembre</option><option value="10">Octobre</option>
-                <option value="11">Novembre</option><option value="12">Décembre</option>
+                <option value="1">Janvier</option><option value="2">Février</option><option value="3">Mars</option><option value="4">Avril</option><option value="5">Mai</option><option value="6" selected>Juin</option><option value="7">Juillet</option><option value="8">Août</option><option value="9">Septembre</option><option value="10">Octobre</option><option value="11">Novembre</option><option value="12">Décembre</option>
               </select>
             </div>
             <div>
               <label class="block text-xs font-bold text-slate-500 mb-1">Année</label>
               <select id="dashAnnee" onchange="updateDashboard()" class="inp text-sm" style="width:100px">
+                <option value="2040">2040</option>
+                <option value="2039">2039</option>
+                <option value="2038">2038</option>
+                <option value="2037">2037</option>
+                <option value="2036">2036</option>
+                <option value="2035">2035</option>
+                <option value="2034">2034</option>
+                <option value="2033">2033</option>
+                <option value="2032">2032</option>
+                <option value="2031">2031</option>
+                <option value="2030">2030</option>
+                <option value="2029">2029</option>
+                <option value="2028">2028</option>
+                <option value="2027">2027</option>
+                <option value="2026" selected>2026</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+                <option value="2022">2022</option>
+                <option value="2021">2021</option>
+                <option value="2020">2020</option>
               </select>
             </div>
             <button onclick="resetDashFiltre()" class="bg-slate-300 px-3 py-2 rounded-xl text-xs font-bold mt-5">↺ Mois actuel</button>
@@ -2250,10 +2266,14 @@ function getBenefices(){
 
 function updateDashboard(){
   // ── Calcul filtré mois/année selon les sélecteurs du tableau de bord ──
+  var _now = new Date();
   var selM = document.getElementById('dashMois');
   var selA = document.getElementById('dashAnnee');
-  var filtMois  = selM ? parseInt(selM.value)  : new Date().getMonth()+1;
-  var filtAnnee = selA ? parseInt(selA.value)  : new Date().getFullYear();
+  var filtMois  = (selM && selM.value) ? parseInt(selM.value)  : _now.getMonth()+1;
+  var filtAnnee = (selA && selA.value) ? parseInt(selA.value)  : _now.getFullYear();
+  // Sécurité anti-NaN : fallback sur date courante
+  if(isNaN(filtMois)  || filtMois<1  || filtMois>12)  filtMois  = _now.getMonth()+1;
+  if(isNaN(filtAnnee) || filtAnnee<2000)               filtAnnee = _now.getFullYear();
   var MOIS_NOM = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var periodeLabel = document.getElementById('dashPeriodeLabel');
   if(periodeLabel) periodeLabel.textContent = '📅 Période affichée : '+MOIS_NOM[filtMois]+' '+filtAnnee;
@@ -3432,9 +3452,10 @@ function _initDashFiltre(){
   var curVal = sel.value || String(now.getFullYear());
   sel.innerHTML = sorted.map(function(a){return '<option value="'+a+'"'+(a===now.getFullYear()?' selected':'')+'>'+a+'</option>';}).join('');
   // Forcer le mois et l'année courants si pas encore choisis
-  if(!sel.value || !sorted.includes(parseInt(sel.value))) sel.value = String(now.getFullYear());
+  // Toujours forcer l'année courante si rien de valide
+  sel.value = String(now.getFullYear());
   var selM = document.getElementById('dashMois');
-  if(selM && (!selM.value || selM.value==='0')) selM.value = String(now.getMonth()+1);
+  if(selM) selM.value = String(now.getMonth()+1);
   updateDashboard();
 }
 
@@ -3442,8 +3463,13 @@ function resetDashFiltre(){
   var now = new Date();
   var selM = document.getElementById('dashMois');
   var selA = document.getElementById('dashAnnee');
-  if(selM) selM.value = String(now.getMonth()+1);
-  if(selA) selA.value = String(now.getFullYear());
+  if(selM){ selM.value = String(now.getMonth()+1); }
+  if(selA){
+    // Si l'année courante n'est pas dans les options, l'ajouter
+    var optExists = Array.from(selA.options).some(function(o){return parseInt(o.value)===now.getFullYear();});
+    if(!optExists){ var o=document.createElement('option'); o.value=String(now.getFullYear()); o.textContent=String(now.getFullYear()); selA.appendChild(o); }
+    selA.value = String(now.getFullYear());
+  }
   updateDashboard();
 }
 
