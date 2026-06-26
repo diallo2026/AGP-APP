@@ -1202,18 +1202,38 @@ function agpDevImPayer(btn){
 
       <!-- DASHBOARD -->
       <section id="dashboard" class="section active bg-white rounded-3xl shadow-xl p-6">
-        <div class="flex justify-between items-center mb-5">
+        <div class="flex flex-wrap justify-between items-center mb-4 gap-3">
           <h2 class="text-3xl font-bold text-blue-950">Tableau de Bord</h2>
-          <span id="roleText" class="bg-blue-950 text-white px-4 py-2 rounded-xl font-bold text-sm"></span>
+          <div class="flex flex-wrap gap-2 items-end no-print">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">Mois</label>
+              <select id="dashMois" onchange="updateDashboard()" class="inp text-sm" style="width:130px">
+                <option value="1">Janvier</option><option value="2">Février</option>
+                <option value="3">Mars</option><option value="4">Avril</option>
+                <option value="5">Mai</option><option value="6">Juin</option>
+                <option value="7">Juillet</option><option value="8">Août</option>
+                <option value="9">Septembre</option><option value="10">Octobre</option>
+                <option value="11">Novembre</option><option value="12">Décembre</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1">Année</label>
+              <select id="dashAnnee" onchange="updateDashboard()" class="inp text-sm" style="width:100px">
+              </select>
+            </div>
+            <button onclick="resetDashFiltre()" class="bg-slate-300 px-3 py-2 rounded-xl text-xs font-bold mt-5">↺ Mois actuel</button>
+            <span id="roleText" class="bg-blue-950 text-white px-4 py-2 rounded-xl font-bold text-sm mt-5"></span>
+          </div>
         </div>
+        <p id="dashPeriodeLabel" class="text-xs font-bold text-blue-700 mb-3"></p>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">REVENUS BRUTS</p><p id="revenuText" class="text-2xl font-bold text-green-600 mt-1">0 GNF</p></div>
-          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">DÉPENSES</p><p id="depenseText" class="text-2xl font-bold text-red-500 mt-1">0 GNF</p></div>
+          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">REVENUS DU MOIS</p><p id="revenuText" class="text-2xl font-bold text-green-600 mt-1">0 GNF</p></div>
+          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">DÉPENSES DU MOIS</p><p id="depenseText" class="text-2xl font-bold text-red-500 mt-1">0 GNF</p></div>
           <div class="card text-center"><p class="text-slate-500 text-xs font-bold">BÉNÉFICES NETS</p><p id="beneficeText" class="text-2xl font-bold text-blue-600 mt-1">0 GNF</p></div>
-          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">ÉTUDIANTS</p><p id="studentText" class="text-2xl font-bold text-orange-500 mt-1">0</p></div>
+          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">INSCRITS DU MOIS</p><p id="studentText" class="text-2xl font-bold text-orange-500 mt-1">0</p></div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">SERVICES</p><p id="serviceText" class="text-2xl font-bold text-purple-600 mt-1">0</p></div>
+          <div class="card text-center"><p class="text-slate-500 text-xs font-bold">SERVICES DU MOIS</p><p id="serviceText" class="text-2xl font-bold text-purple-600 mt-1">0</p></div>
           <div class="card text-center"><p class="text-slate-500 text-xs font-bold">DATE</p><p id="dateText" class="text-sm font-bold text-slate-700 mt-1"></p></div>
         </div>
         <!-- ALERTES ÉCHÉANCES -->
@@ -1706,12 +1726,14 @@ function agpDevImPayer(btn){
       <section id="rapport" class="section bg-white rounded-3xl shadow-xl p-6">
         <h2 class="text-3xl font-bold text-blue-950 mb-4">📈 Rapports</h2>
 
-        <!-- Onglets Mensuel / Annuel -->
-        <div class="flex gap-2 mb-5 no-print">
+        <!-- Onglets Mensuel / Annuel / Journalier -->
+        <div class="flex gap-2 mb-5 no-print flex-wrap">
           <button onclick="setRapportMode('mensuel')" id="tabRapportMensuel"
             class="px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white">📅 Rapport Mensuel</button>
           <button onclick="setRapportMode('annuel')" id="tabRapportAnnuel"
             class="px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700">📆 Rapport Annuel</button>
+          <button onclick="setRapportMode('journalier')" id="tabRapportJournalier"
+            class="px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700">📋 Rapport Journalier</button>
         </div>
 
         <!-- Filtres Mensuel -->
@@ -1756,6 +1778,16 @@ function agpDevImPayer(btn){
               <option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option>
               <option value="2022">2022</option><option value="2021">2021</option><option value="2020">2020</option>
             </select>
+          </div>
+          <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
+          <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
+        </div>
+
+        <!-- Filtres Journalier -->
+        <div id="filtresJournalier" class="flex flex-wrap gap-3 items-end mb-5 no-print" style="display:none!important">
+          <div>
+            <label class="block text-xs font-bold text-slate-600 mb-1">Date</label>
+            <input type="date" id="rapportJour" class="inp text-sm" style="width:160px">
           </div>
           <button onclick="genererRapport()" class="bg-blue-950 text-white px-5 py-2 rounded-xl font-bold text-sm">🔄 Générer</button>
           <button onclick="imprimerRapport()" class="bg-red-600 text-white px-5 py-2 rounded-xl font-bold text-sm">🖨️ Imprimer A4</button>
@@ -2137,8 +2169,9 @@ function renderCharts(){
   // -- Top 10 Services du mois --
   var ctxTop = document.getElementById('chartTopServices');
   if(ctxTop){
-    var now = new Date();
-    var moisCur = now.getMonth(); var anCur = now.getFullYear();
+    var selMA=document.getElementById('dashMois'); var selAA=document.getElementById('dashAnnee');
+    var moisCur=(selMA?parseInt(selMA.value):new Date().getMonth()+1)-1;
+    var anCur=selAA?parseInt(selAA.value):new Date().getFullYear();
     var svcMois = servicesList.filter(function(s){
       var d=parseDateFR(s.date);
       return d && d.getFullYear()===anCur && d.getMonth()===moisCur;
@@ -2176,7 +2209,9 @@ function renderCharts(){
   // -- Services par type (mois) --
   var ctxS = document.getElementById('chartServices');
   if(ctxS){
-    var now2=new Date(); var m2=now2.getMonth(); var a2=now2.getFullYear();
+    var selMB=document.getElementById('dashMois'); var selAB=document.getElementById('dashAnnee');
+    var m2=(selMB?parseInt(selMB.value):new Date().getMonth()+1)-1;
+    var a2=selAB?parseInt(selAB.value):new Date().getFullYear();
     var svcM2=servicesList.filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===a2&&d.getMonth()===m2;});
     var typeMap={};
     svcM2.forEach(function(s){typeMap[s.service]=(typeMap[s.service]||0)+s.montant;});
@@ -2203,16 +2238,38 @@ function getBenefices(){
 }
 
 function updateDashboard(){
-  document.getElementById('revenuText').innerText=revenu.toLocaleString()+' GNF';
-  document.getElementById('depenseText').innerText=totalDepenses.toLocaleString()+' GNF';
-  const b=getBenefices();
-  const el=document.getElementById('beneficeText');
-  el.innerText=b.toLocaleString()+' GNF';
-  el.className='text-2xl font-bold mt-1 '+(b>=0?'text-blue-600':'text-red-600');
-  document.getElementById('studentText').innerText=totalStudents;
-  document.getElementById('serviceText').innerText=totalServices;
+  // ── Calcul filtré mois/année selon les sélecteurs du tableau de bord ──
+  var selM = document.getElementById('dashMois');
+  var selA = document.getElementById('dashAnnee');
+  var filtMois  = selM ? parseInt(selM.value)  : new Date().getMonth()+1;
+  var filtAnnee = selA ? parseInt(selA.value)  : new Date().getFullYear();
+  var MOIS_NOM = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  var periodeLabel = document.getElementById('dashPeriodeLabel');
+  if(periodeLabel) periodeLabel.textContent = '📅 Période affichée : '+MOIS_NOM[filtMois]+' '+filtAnnee;
+  // Revenus inscrits filtrés
+  var insFiltr = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
+    var d=parseDateFR(i.date); return d&&d.getFullYear()===filtAnnee&&d.getMonth()+1===filtMois;
+  });
+  var svcFiltr = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
+    var d=parseDateFR(s.date); return d&&d.getFullYear()===filtAnnee&&d.getMonth()+1===filtMois;
+  });
+  var depFiltr = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
+    var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===filtAnnee&&dt.getMonth()+1===filtMois;
+  });
+  var revFilt  = insFiltr.reduce(function(s,i){return s+(i.montantPaye||0);},0)
+               + svcFiltr.reduce(function(s,v){return s+(v.montant||0);},0);
+  var depFilt  = depFiltr.reduce(function(s,d){return s+(d.montant||0);},0);
+  var benFilt  = revFilt - depFilt;
+  // Affichage
+  document.getElementById('revenuText').innerText=revFilt.toLocaleString()+' GNF';
+  document.getElementById('depenseText').innerText=depFilt.toLocaleString()+' GNF';
+  var el=document.getElementById('beneficeText');
+  el.innerText=benFilt.toLocaleString()+' GNF';
+  el.className='text-2xl font-bold mt-1 '+(benFilt>=0?'text-blue-600':'text-red-600');
+  document.getElementById('studentText').innerText=insFiltr.length;
+  document.getElementById('serviceText').innerText=svcFiltr.length;
   verifierEcheances();
-  const dt=document.getElementById('dateText');
+  var dt=document.getElementById('dateText');
   if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'short',year:'numeric',month:'long',day:'numeric'});
   // Mettre à jour les graphiques (différé pour ne pas bloquer le rendu)
   setTimeout(renderCharts, 200);
@@ -2271,6 +2328,7 @@ function login(){
     var cgb=document.getElementById('comparaisonGrapheBtn');if(cgb)cgb.style.display='block';
     var dbmBtn=document.getElementById('dashboardMensuelBtn');if(dbmBtn)dbmBtn.style.display='block';
     var rjBtn=document.getElementById('rapportJournalierBtn');if(rjBtn)rjBtn.style.display='block';
+    _initDashFiltre();
     showSection('dashboard');
   } else {
     if(dashboardBtn)dashboardBtn.style.display='none';
@@ -3342,6 +3400,129 @@ function _imprimerBadgeAvecCouleurs(ins, logoSrc, COL1, COL2, COLTXT){
   w.document.close();
 }
 
+function _initDashFiltre(){
+  // Remplir sélecteur années du tableau de bord
+  var sel = document.getElementById('dashAnnee');
+  if(!sel) return;
+  var now = new Date();
+  var annees = new Set();
+  for(var y=2020;y<=2040;y++) annees.add(y);
+  if(typeof inscrits!=='undefined') inscrits.forEach(function(i){var d=parseDateFR(i.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+  if(typeof servicesList!=='undefined') servicesList.forEach(function(s){var d=parseDateFR(s.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+  var sorted = Array.from(annees).sort(function(a,b){return b-a;});
+  sel.innerHTML = sorted.map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
+  sel.value = String(now.getFullYear());
+  // Mois courant
+  var selM = document.getElementById('dashMois');
+  if(selM) selM.value = String(now.getMonth()+1);
+  updateDashboard();
+}
+
+function resetDashFiltre(){
+  var now = new Date();
+  var selM = document.getElementById('dashMois');
+  var selA = document.getElementById('dashAnnee');
+  if(selM) selM.value = String(now.getMonth()+1);
+  if(selA) selA.value = String(now.getFullYear());
+  updateDashboard();
+}
+
+// ── Rapport Journalier intégré dans l'onglet Rapport ──
+function _genRapportJournalier(){
+  var dateVal = (document.getElementById('rapportJour')||{}).value||'';
+  var parts = dateVal.split('-');
+  if(parts.length!==3){
+    document.getElementById('rapportContenu').innerHTML='<p style="color:#ef4444;font-weight:bold;padding:20px;">Sélectionnez une date valide.</p>';
+    return;
+  }
+  var annee=parseInt(parts[0]), moisNum=parseInt(parts[1]), jour=parseInt(parts[2]);
+  var dateObj = new Date(annee, moisNum-1, jour);
+  var dateLabel = dateObj.toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+
+  function sameDay(dateStr){
+    var d=parseDateFR(dateStr);
+    return d&&d.getDate()===jour&&d.getMonth()+1===moisNum&&d.getFullYear()===annee;
+  }
+
+  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){return sameDay(d.date);});
+
+  var revIns = ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revSvc = svcs.reduce(function(s,v){return s+(v.montant||0);},0);
+  var totDep = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var benef  = revIns+revSvc-totDep;
+
+  // Grouper services
+  var svcMap={};
+  svcs.forEach(function(s){var k=s.service||'Autre';if(!svcMap[k]){svcMap[k]={qte:0,tot:0};}svcMap[k].qte+=(s.quantite||1);svcMap[k].tot+=(s.montant||0);});
+
+  var html = '<div id="rapportPrintable">';
+  html += _buildRapportHeader('RAPPORT JOURNALIER — '+dateLabel.toUpperCase());
+
+  // KPIs
+  html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
+  function kpi(l,v,c,bg){return '<div style="background:'+bg+';border-radius:12px;padding:12px 14px;text-align:center;flex:1;min-width:110px;"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">'+l+'</div><div style="font-size:18px;font-weight:900;color:'+c+';">'+v+'</div></div>';}
+  html += kpi('Inscriptions',ins.length,'#172554','#dbeafe');
+  html += kpi('Services',svcs.length,'#7c3aed','#ede9fe');
+  html += kpi('Rev. Inscrits',revIns.toLocaleString()+' GNF','#15803d','#dcfce7');
+  html += kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff');
+  html += kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2');
+  html += kpi('Bénéfice Net',benef.toLocaleString()+' GNF',benef>=0?'#15803d':'#dc2626',benef>=0?'#dcfce7':'#fee2e2');
+  html += '</div>';
+
+  // Inscrits du jour
+  html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #2563eb;padding-left:10px;margin-bottom:8px;">🎓 Inscriptions du jour ('+ins.length+')</h3>';
+  if(ins.length){
+    html += '<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#172554;color:#fff;">';
+    ['Matricule','Nom','Prénom','Formation','Total Dû','Versé','Reste'].forEach(function(h){html+='<th style="padding:6px 8px;text-align:left;">'+h+'</th>';});
+    html += '</tr></thead><tbody>';
+    ins.forEach(function(i,idx){
+      var bg=idx%2===0?'#f8fafc':'#fff';
+      html+='<tr style="background:'+bg+';">'
+        +'<td style="padding:5px 8px;font-weight:bold;color:#172554;">'+i.mat+'</td>'
+        +'<td style="padding:5px 8px;">'+i.nom+'</td>'
+        +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
+        +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
+        +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+        +'</tr>';
+    });
+    html += '</tbody></table></div>';
+  } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucune inscription ce jour.</p>'; }
+
+  // Services du jour
+  html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:8px;">🖨️ Services du jour ('+svcs.length+')</h3>';
+  if(Object.keys(svcMap).length){
+    html += '<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#7c3aed;color:#fff;"><th style="padding:6px 8px;text-align:left;">Service</th><th style="padding:6px 8px;text-align:center;">Qté</th><th style="padding:6px 8px;text-align:right;">Revenus</th></tr></thead><tbody>';
+    Object.keys(svcMap).forEach(function(k,i){
+      var d=svcMap[k];
+      html+='<tr style="background:'+(i%2===0?'#f5f3ff':'#fff')+'"><td style="padding:5px 8px;font-weight:bold;">'+k+'</td><td style="padding:5px 8px;text-align:center;">'+d.qte+'</td><td style="padding:5px 8px;text-align:right;color:#7c3aed;font-weight:bold;">'+d.tot.toLocaleString()+' GNF</td></tr>';
+    });
+    html += '<tr style="background:#7c3aed;color:#fff;font-weight:800;"><td style="padding:7px 8px;">TOTAL</td><td></td><td style="padding:7px 8px;text-align:right;">'+revSvc.toLocaleString()+' GNF</td></tr>';
+    html += '</tbody></table></div>';
+  } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucun service ce jour.</p>'; }
+
+  // Dépenses du jour
+  html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #dc2626;padding-left:10px;margin-bottom:8px;">💸 Dépenses du jour ('+deps.length+')</h3>';
+  if(deps.length){
+    html += '<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+    html += '<thead><tr style="background:#dc2626;color:#fff;"><th style="padding:6px 8px;text-align:left;">Description</th><th style="padding:6px 8px;text-align:right;">Montant</th></tr></thead><tbody>';
+    deps.forEach(function(d,i){
+      html+='<tr style="background:'+(i%2===0?'#fef2f2':'#fff')+'"><td style="padding:5px 8px;">'+d.nom+'</td><td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td></tr>';
+    });
+    html += '<tr style="background:#dc2626;color:#fff;font-weight:800;"><td style="padding:7px 8px;">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+totDep.toLocaleString()+' GNF</td></tr>';
+    html += '</tbody></table></div>';
+  } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucune dépense ce jour.</p>'; }
+
+  html += _buildRapportFooter('Rapport du '+dateLabel);
+  html += '</div>';
+  document.getElementById('rapportContenu').innerHTML = html;
+}
+
 function parseDateFR(dateStr){
   // Parse dd/mm/yyyy -> Date
   if(!dateStr) return new Date(0);
@@ -3593,9 +3774,25 @@ function modifierMatricule(idx){
   }
   var ancien=ins.mat;
   inscrits[idx].mat=nouveau.trim().toUpperCase();
+  // Recalculer le compteur de matricule à partir du maximum existant
+  _recalcMatricule();
   renderInscrits();
   sauvegarder();
   ajouterHistorique('Modif matricule: '+ancien+' -> '+inscrits[idx].mat);
+}
+
+function _recalcMatricule(){
+  // Parcourt tous les matricules existants et fixe la variable globale
+  // au numéro suivant le plus grand trouvé, pour éviter les doublons
+  var max = 0;
+  var prefix = getMatriculePrefix();
+  inscrits.forEach(function(ins){
+    if(!ins.mat) return;
+    var parts = ins.mat.split('-');
+    var num = parseInt(parts[parts.length-1]);
+    if(!isNaN(num) && num > max) max = num;
+  });
+  if(max >= matricule) matricule = max + 1;
 }
 
 function imprimerRecuDirect(ins, logoSrc){
@@ -5624,21 +5821,22 @@ function _buildRapportFooter(label){
 
 function setRapportMode(mode){
   _rapportMode = mode;
-  var tabM = document.getElementById('tabRapportMensuel');
-  var tabA = document.getElementById('tabRapportAnnuel');
+  var tabM  = document.getElementById('tabRapportMensuel');
+  var tabA  = document.getElementById('tabRapportAnnuel');
+  var tabJ  = document.getElementById('tabRapportJournalier');
   var filtM = document.getElementById('filtresMensuel');
   var filtA = document.getElementById('filtresAnnuel');
-  if(mode === 'mensuel'){
-    if(tabM){ tabM.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white'; }
-    if(tabA){ tabA.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700'; }
-    if(filtM){ filtM.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;'; }
-    if(filtA){ filtA.style.cssText = 'display:none!important'; }
-  } else {
-    if(tabA){ tabA.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white'; }
-    if(tabM){ tabM.className = 'px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700'; }
-    if(filtA){ filtA.style.cssText = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;'; }
-    if(filtM){ filtM.style.cssText = 'display:none!important'; }
-  }
+  var filtJ = document.getElementById('filtresJournalier');
+  var ACTIVE = 'px-5 py-2 rounded-xl font-bold text-sm bg-blue-950 text-white';
+  var INACT  = 'px-5 py-2 rounded-xl font-bold text-sm bg-slate-200 text-slate-700';
+  if(tabM) tabM.className = (mode==='mensuel')    ? ACTIVE : INACT;
+  if(tabA) tabA.className = (mode==='annuel')     ? ACTIVE : INACT;
+  if(tabJ) tabJ.className = (mode==='journalier') ? ACTIVE : INACT;
+  var showFlex = 'display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:20px;';
+  var showNone = 'display:none!important';
+  if(filtM) filtM.style.cssText = (mode==='mensuel')    ? showFlex : showNone;
+  if(filtA) filtA.style.cssText = (mode==='annuel')     ? showFlex : showNone;
+  if(filtJ) filtJ.style.cssText = (mode==='journalier') ? showFlex : showNone;
 }
 
 function _remplirAnneesRapport(){
@@ -5670,13 +5868,20 @@ function initRapport(){
   var now = new Date();
   var selM = document.getElementById('rapportMois');
   if(selM && !selM.value) selM.value = String(now.getMonth()+1);
+  // Initialiser la date du jour pour le rapport journalier
+  var rjEl = document.getElementById('rapportJour');
+  if(rjEl && !rjEl.value){
+    var pad = function(n){ return String(n).padStart(2,'0'); };
+    rjEl.value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+  }
   setRapportMode(_rapportMode);
   genererRapport();
 }
 
 function genererRapport(){
-  if(_rapportMode === 'mensuel') _genRapportMensuel();
-  else _genRapportAnnuel();
+  if(_rapportMode === 'mensuel')    _genRapportMensuel();
+  else if(_rapportMode === 'annuel') _genRapportAnnuel();
+  else if(_rapportMode === 'journalier') _genRapportJournalier();
 }
 
 function _moisLabel(m){
