@@ -164,6 +164,7 @@ window.agpLoadData = function(prest) {
       try{ renderDepenses(); }catch(e){}
       try{ verifierEcheances(); }catch(e){}
       try{ renderAttente(); }catch(e){}
+      try{ _initDashFiltre(); }catch(e){}
       var dt=document.getElementById('dateText');
       if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     },400);
@@ -2117,17 +2118,26 @@ var _charts = {};
 function renderCharts(){
   if(typeof Chart === 'undefined') return;
 
-  // -- Graphique Finances (barres) --
+  // -- Graphique Finances (barres) — données filtrées mois/année --
   var ctxF = document.getElementById('chartFinance');
   if(ctxF){
+    var selMF=document.getElementById('dashMois'); var selAF=document.getElementById('dashAnnee');
+    var filtMF=selMF?parseInt(selMF.value):new Date().getMonth()+1;
+    var filtAF=selAF?parseInt(selAF.value):new Date().getFullYear();
+    var insFilt=(typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
+    var svcFilt=(typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
+    var depFilt=(typeof depenses!=='undefined'?depenses:[]).filter(function(dp){var d=parseDateFR(dp.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
+    var rF=insFilt.reduce(function(s,i){return s+(i.montantPaye||0);},0)+svcFilt.reduce(function(s,v){return s+(v.montant||0);},0);
+    var dF=depFilt.reduce(function(s,dp){return s+(dp.montant||0);},0);
+    var bF=rF-dF;
     if(_charts.finance) _charts.finance.destroy();
     _charts.finance = new Chart(ctxF, {
       type: 'bar',
       data: {
-        labels: ['Revenus Bruts', 'Dépenses', 'Bénéfices Nets'],
+        labels: ['Revenus', 'Dépenses', 'Bénéfice Net'],
         datasets: [{
           label: 'GNF',
-          data: [revenu, totalDepenses, getBenefices()],
+          data: [rF, dF, bF],
           backgroundColor: ['#22c55e','#ef4444','#3b82f6'],
           borderRadius: 8
         }]
@@ -2139,11 +2149,12 @@ function renderCharts(){
     });
   }
 
-  // -- Graphique Inscrits par mois --
+  // -- Graphique Inscrits par mois (année du filtre) --
   var ctxI = document.getElementById('chartInscrits');
   if(ctxI){
     var moisLabels=['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
-    var annee = new Date().getFullYear();
+    var selAI=document.getElementById('dashAnnee');
+    var annee = selAI?parseInt(selAI.value):new Date().getFullYear();
     var parMois = new Array(12).fill(0);
     inscrits.forEach(function(ins){
       var d = parseDateFR(ins.date);
@@ -3401,20 +3412,29 @@ function _imprimerBadgeAvecCouleurs(ins, logoSrc, COL1, COL2, COLTXT){
 }
 
 function _initDashFiltre(){
-  // Remplir sélecteur années du tableau de bord
+  // Remplir sélecteur années du tableau de bord avec toutes les années des données
   var sel = document.getElementById('dashAnnee');
   if(!sel) return;
   var now = new Date();
   var annees = new Set();
   for(var y=2020;y<=2040;y++) annees.add(y);
-  if(typeof inscrits!=='undefined') inscrits.forEach(function(i){var d=parseDateFR(i.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
-  if(typeof servicesList!=='undefined') servicesList.forEach(function(s){var d=parseDateFR(s.date);if(d&&d.getFullYear()>2000)annees.add(d.getFullYear());});
+  // Parcourir toutes les données pour trouver toutes les années réelles
+  if(typeof inscrits!=='undefined') inscrits.forEach(function(i){
+    var d=parseDateFR(i.date); if(d&&d.getFullYear()>2000) annees.add(d.getFullYear());
+  });
+  if(typeof servicesList!=='undefined') servicesList.forEach(function(s){
+    var d=parseDateFR(s.date); if(d&&d.getFullYear()>2000) annees.add(d.getFullYear());
+  });
+  if(typeof depenses!=='undefined') depenses.forEach(function(dp){
+    var d=parseDateFR(dp.date); if(d&&d.getFullYear()>2000) annees.add(d.getFullYear());
+  });
   var sorted = Array.from(annees).sort(function(a,b){return b-a;});
-  sel.innerHTML = sorted.map(function(a){return '<option value="'+a+'">'+a+'</option>';}).join('');
-  sel.value = String(now.getFullYear());
-  // Mois courant
+  var curVal = sel.value || String(now.getFullYear());
+  sel.innerHTML = sorted.map(function(a){return '<option value="'+a+'"'+(a===now.getFullYear()?' selected':'')+'>'+a+'</option>';}).join('');
+  // Forcer le mois et l'année courants si pas encore choisis
+  if(!sel.value || !sorted.includes(parseInt(sel.value))) sel.value = String(now.getFullYear());
   var selM = document.getElementById('dashMois');
-  if(selM) selM.value = String(now.getMonth()+1);
+  if(selM && (!selM.value || selM.value==='0')) selM.value = String(now.getMonth()+1);
   updateDashboard();
 }
 
@@ -3524,11 +3544,22 @@ function _genRapportJournalier(){
 }
 
 function parseDateFR(dateStr){
-  // Parse dd/mm/yyyy -> Date
-  if(!dateStr) return new Date(0);
-  const p=dateStr.split('/');
-  if(p.length===3) return new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0]));
-  return new Date(dateStr);
+  // Parse dd/mm/yyyy -> Date  (retourne null si invalide)
+  if(!dateStr) return null;
+  var s = String(dateStr).trim();
+  var p = s.split('/');
+  if(p.length===3){
+    var d=new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0]));
+    return isNaN(d.getTime())?null:d;
+  }
+  // Tenter ISO yyyy-mm-dd
+  var iso = s.split('-');
+  if(iso.length===3 && iso[0].length===4){
+    var d2=new Date(parseInt(iso[0]),parseInt(iso[1])-1,parseInt(iso[2]));
+    return isNaN(d2.getTime())?null:d2;
+  }
+  var d3=new Date(s);
+  return isNaN(d3.getTime())?null:d3;
 }
 
 function remplirFiltreAnnees(){
@@ -6227,25 +6258,43 @@ function _drawAnnuelCharts(parMois){
 }
 
 // -------- IMPRESSION A4 --------
+function _canvasToImgInEl(el){
+  // Clone l'élément et remplace chaque <canvas> par une <img> PNG
+  var cloned = el.cloneNode(true);
+  var origCanvases = el.querySelectorAll('canvas');
+  var clonCanvases = cloned.querySelectorAll('canvas');
+  origCanvases.forEach(function(orig, i){
+    try{
+      var dataUrl = orig.toDataURL('image/png');
+      var img = document.createElement('img');
+      img.src = dataUrl;
+      img.style.cssText = 'max-width:100%;height:auto;display:block;';
+      if(clonCanvases[i] && clonCanvases[i].parentNode){
+        clonCanvases[i].parentNode.replaceChild(img, clonCanvases[i]);
+      }
+    }catch(e){}
+  });
+  return cloned;
+}
+
 function imprimerRapport(){
   var el = document.getElementById('rapportPrintable');
-  if(!el){ alert('Veuillez d\'abord générer un rapport.'); return; }
+  if(!el){ alert('Veuillez d\'abord g\u00e9n\u00e9rer un rapport.'); return; }
   var p = _getPrestInfo();
+  var elPrint = _canvasToImgInEl(el);
   var w = window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Rapport — '+(p.nom||'')+'</title>');
-  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></'+'script>');
   w.document.write('<style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 14mm 12mm 14mm;}');
   w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
   w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
   w.document.write('th,td{padding:4px 6px;}');
-  w.document.write('canvas{max-width:100%!important;height:auto!important;}');
-  w.document.write('img{max-width:100%;}');
+  w.document.write('img{max-width:100%;height:auto;}');
   w.document.write('</style></head><body>');
-  w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
+  w.document.write(elPrint.outerHTML);
+  w.document.write('<'+'script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -6480,21 +6529,20 @@ function _drawDbmCharts(revI,revS,dep,ben,svcMap){
 function imprimerDashboardMensuel(){
   var el=document.getElementById('dbmPrintable');
   if(!el){alert('Veuillez d\'abord g\u00e9n\u00e9rer le tableau de bord mensuel.');return;}
-  var p=_getPrestInfo();
+  var elPrint = _canvasToImgInEl(el);
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Tableau de Bord Mensuel</title>');
-  w.document.write('<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></'+'script>');
   w.document.write('<style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 14mm;}');
   w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;}');
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
   w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
   w.document.write('th,td{padding:4px 6px;}');
-  w.document.write('canvas{max-width:100%!important;height:auto!important;}');
+  w.document.write('img{max-width:100%;height:auto;}');
   w.document.write('</style></head><body>');
-  w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
+  w.document.write(elPrint.outerHTML);
+  w.document.write('<'+'script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
@@ -6698,6 +6746,7 @@ function _buildRJTableDepenses(deps,total){
 function imprimerRapportJournalier(){
   var el=document.getElementById('rjPrintable');
   if(!el){alert('Veuillez d\'abord g\u00e9n\u00e9rer le rapport.');return;}
+  var elPrint = _canvasToImgInEl(el);
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8">');
   w.document.write('<title>Rapport Journalier</title>');
@@ -6707,9 +6756,10 @@ function imprimerRapportJournalier(){
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:11px;color:#111;}');
   w.document.write('table{width:100%;border-collapse:collapse;font-size:10px;}');
   w.document.write('th,td{padding:4px 6px;}');
+  w.document.write('img{max-width:100%;height:auto;}');
   w.document.write('</style></head><body>');
-  w.document.write(el.outerHTML);
-  w.document.write('<script>window.onload=function(){window.print();};</'+'script>');
+  w.document.write(elPrint.outerHTML);
+  w.document.write('<'+'script>window.onload=function(){window.print();};</'+'script>');
   w.document.write('</body></html>');
   w.document.close();
 }
