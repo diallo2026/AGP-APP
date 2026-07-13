@@ -3556,11 +3556,11 @@ function _genRapportJournalier(){
   html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #dc2626;padding-left:10px;margin-bottom:8px;">💸 Dépenses du jour ('+deps.length+')</h3>';
   if(deps.length){
     html += '<div style="overflow-x:auto;margin-bottom:16px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
-    html += '<thead><tr style="background:#dc2626;color:#fff;"><th style="padding:6px 8px;text-align:left;">Description</th><th style="padding:6px 8px;text-align:right;">Montant</th></tr></thead><tbody>';
+    html += '<thead><tr style="background:#dc2626;color:#fff;"><th style="padding:6px 8px;text-align:left;">Désignation</th><th style="padding:6px 8px;text-align:left;">Catégorie</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Saisi par</th></tr></thead><tbody>';
     deps.forEach(function(d,i){
-      html+='<tr style="background:'+(i%2===0?'#fef2f2':'#fff')+'"><td style="padding:5px 8px;">'+d.nom+'</td><td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td></tr>';
+      html+='<tr style="background:'+(i%2===0?'#fef2f2':'#fff')+'"><td style="padding:5px 8px;">'+(d.motif||'')+'</td><td style="padding:5px 8px;">'+(d.categorie||'')+'</td><td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+(d.montant||0).toLocaleString()+' GNF</td><td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+(d.par||'')+'</td></tr>';
     });
-    html += '<tr style="background:#dc2626;color:#fff;font-weight:800;"><td style="padding:7px 8px;">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+totDep.toLocaleString()+' GNF</td></tr>';
+    html += '<tr style="background:#dc2626;color:#fff;font-weight:800;"><td style="padding:7px 8px;" colspan="2">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+totDep.toLocaleString()+' GNF</td><td></td></tr>';
     html += '</tbody></table></div>';
   } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucune dépense ce jour.</p>'; }
 
@@ -5542,12 +5542,16 @@ function verifierEcheances(){
       : (diff===0 ? "ECHEANCE AUJOURD'HUI !" : 'Echeance dans '+diff+' jour(s)');
     const couleur = depasse ? '#dc2626' : (diff<=3 ? '#f97316' : '#d97706');
 
-    // Message WhatsApp de rappel
+    // Message WhatsApp de rappel — nom de la prestation courante (pas le nom generique par defaut)
+    var nomPrestRappel=centreNom;
+    if(window._AGP_MODE && window._agpCurrentPrest && window._agpCurrentPrest.centreNom){
+      nomPrestRappel=window._agpCurrentPrest.centreNom;
+    }
     const msgWA = 'Bonjour '+ins.prenom+' '+ins.nom
       +',%0ANous vous rappelons que le solde restant de votre formation ('
       +ins.formation+') est de '+ins.resteAPayer.toLocaleString()+' GNF.'
       +'%0ADate echeance: '+ech.toLocaleDateString("fr-FR")
-      +'%0AMerci de regulariser votre situation.%0A '+centreNom;
+      +'%0AMerci de regulariser votre situation.%0A '+nomPrestRappel;
 
     const div = document.createElement('div');
     div.style.cssText='background:white;border:2px solid '+couleur+';border-radius:12px;padding:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;';
@@ -6489,18 +6493,20 @@ function renderDashboardMensuel(){
   if(deps.length>0){
     html += '<div style="overflow-x:auto;margin-bottom:20px;">';
     html += '<table style="width:100%;border-collapse:collapse;font-size:11px;">';
-    html += '<thead><tr style="background:#dc2626;color:white;"><th style="padding:7px 8px;text-align:left;">Description</th><th style="padding:7px 8px;text-align:right;">Montant</th><th style="padding:7px 8px;text-align:center;">Date</th></tr></thead><tbody>';
+    html += '<thead><tr style="background:#dc2626;color:white;"><th style="padding:7px 8px;text-align:left;">Désignation</th><th style="padding:7px 8px;text-align:left;">Catégorie</th><th style="padding:7px 8px;text-align:right;">Montant</th><th style="padding:7px 8px;text-align:center;">Saisi par</th><th style="padding:7px 8px;text-align:center;">Date</th></tr></thead><tbody>';
     deps.forEach(function(d,i){
       html += '<tr style="background:'+(i%2===0?'#fef2f2':'white')+'">'
-        +'<td style="padding:5px 8px;">'+d.nom+'</td>'
-        +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td>'
-        +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+d.date+'</td>'
+        +'<td style="padding:5px 8px;">'+(d.motif||'')+'</td>'
+        +'<td style="padding:5px 8px;">'+(d.categorie||'')+'</td>'
+        +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+(d.montant||0).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+(d.par||'')+'</td>'
+        +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+(d.date||'')+'</td>'
         +'</tr>';
     });
     html += '<tr style="background:#dc2626;color:white;font-weight:800;">'
-      +'<td style="padding:7px 8px;">TOTAL DÉPENSES</td>'
+      +'<td style="padding:7px 8px;" colspan="2">TOTAL DÉPENSES</td>'
       +'<td style="padding:7px 8px;text-align:right;">'+totDep.toLocaleString()+' GNF</td>'
-      +'<td></td></tr>';
+      +'<td colspan="2"></td></tr>';
     html += '</tbody></table></div>';
   } else {
     html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune dépense ce mois.</p>';
