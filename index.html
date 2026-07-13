@@ -6756,15 +6756,17 @@ function _buildRJTableDepenses(deps,total){
   var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #dc2626;padding-left:10px;margin-bottom:8px;">💸 Dépenses ('+deps.length+')</h3>';
   if(!deps.length) return h+'<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucune dépense.</p>';
   h+='<div style="overflow-x:auto;margin-bottom:18px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
-  h+='<thead><tr style="background:#dc2626;color:white;"><th style="padding:6px 8px;text-align:left;">Description</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Date</th></tr></thead><tbody>';
+  h+='<thead><tr style="background:#dc2626;color:white;"><th style="padding:6px 8px;text-align:left;">Désignation</th><th style="padding:6px 8px;text-align:left;">Catégorie</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Saisi par</th><th style="padding:6px 8px;text-align:center;">Date</th></tr></thead><tbody>';
   deps.forEach(function(d,i){
     h+='<tr style="background:'+(i%2===0?'#fef2f2':'white')+'">'
-      +'<td style="padding:5px 8px;">'+d.nom+'</td>'
-      +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+d.montant.toLocaleString()+' GNF</td>'
-      +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+d.date+'</td>'
+      +'<td style="padding:5px 8px;">'+(d.motif||'')+'</td>'
+      +'<td style="padding:5px 8px;">'+(d.categorie||'')+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#dc2626;font-weight:bold;">'+(d.montant||0).toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+(d.par||'')+'</td>'
+      +'<td style="padding:5px 8px;text-align:center;color:#64748b;font-size:10px;">'+(d.date||'')+'</td>'
       +'</tr>';
   });
-  h+='<tr style="background:#dc2626;color:white;font-weight:800;"><td style="padding:7px 8px;">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td><td></td></tr>';
+  h+='<tr style="background:#dc2626;color:white;font-weight:800;"><td style="padding:7px 8px;" colspan="2">TOTAL DÉPENSES</td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td><td colspan="2"></td></tr>';
   h+='</tbody></table></div>';
   return h;
 }
