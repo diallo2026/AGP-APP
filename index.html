@@ -1184,6 +1184,7 @@ function agpDevImPayer(btn){
       <button onclick="showSection('dashboard')" id="dashboardBtn" class="menuBtn">📊 Tableau de Bord</button>
       <button onclick="showSection('formations')" class="menuBtn">🎓 Inscription</button>
       <button onclick="showSection('inscrits')" class="menuBtn">📋 Liste Inscrits</button>
+      <button onclick="showSection('emploiTemps')" id="emploiTempsBtn" class="menuBtn">🗓️ Emplois du Temps</button>
       <button onclick="showSection('services')" class="menuBtn">🖨️ Services</button>
       <button onclick="showSection('depenses')" class="menuBtn">💸 Dépenses</button>
       <button onclick="showSection('stock')" class="menuBtn">📦 Stock</button>
@@ -1330,8 +1331,11 @@ function agpDevImPayer(btn){
               </div>
               <!-- Statut Paiement Inscription -->
               <div id="inscriptionStatutZone" class="bg-blue-50 border border-blue-200 p-2 rounded-xl">
-                <p class="text-xs font-bold text-slate-600 mb-1">🎫 Frais d'inscription <span id="inscriptionPrixLabel" class="text-blue-600"></span></p>
-                <div class="flex gap-3 items-center">
+                <label class="flex items-center gap-2 cursor-pointer mb-1">
+                  <input type="checkbox" id="inscriptionActive" checked onchange="toggleInscriptionActive()" style="width:17px;height:17px;cursor:pointer;">
+                  <span class="text-xs font-bold text-slate-600">🎫 Appliquer les frais d'inscription <span id="inscriptionPrixLabel" class="text-blue-600"></span></span>
+                </label>
+                <div id="inscriptionRadioZone" class="flex gap-3 items-center">
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="inscriptionOpt" id="inscriptionPaye" value="paye" onchange="majCalculPaiement()">
                     <span class="text-sm font-bold text-green-700">✅ Payés</span>
@@ -1736,6 +1740,31 @@ function agpDevImPayer(btn){
           📌 Cet onglet affiche tous les élèves inscrits avec leurs cours et horaires, classés par heure de passage — pour connaître les cours qui arrivent à chaque instant.
         </div>
         <div id="attenteContent" class="space-y-3"></div>
+      </section>
+
+      <!-- EMPLOIS DU TEMPS -->
+      <section id="emploiTemps" class="section bg-white rounded-3xl shadow-xl p-6">
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+          <h2 class="text-3xl font-bold text-blue-950">🗓️ Emplois du Temps</h2>
+          <div class="flex flex-wrap gap-2 no-print">
+            <select id="filtreEmploiJour" onchange="renderEmploiTemps()" class="inp text-sm" style="width:130px">
+              <option value="">Tous jours</option>
+              <option value="Lundi">Lundi</option>
+              <option value="Mardi">Mardi</option>
+              <option value="Mercredi">Mercredi</option>
+              <option value="Jeudi">Jeudi</option>
+              <option value="Vendredi">Vendredi</option>
+              <option value="Samedi">Samedi</option>
+              <option value="Dimanche">Dimanche</option>
+            </select>
+            <button onclick="renderEmploiTemps()" class="bg-blue-950 text-white px-3 py-2 rounded-xl text-xs font-bold">🔄 Actualiser</button>
+            <button onclick="imprimerEmploiTemps()" class="bg-green-600 text-white px-3 py-2 rounded-xl text-xs font-bold">🖨️ Imprimer / PDF</button>
+          </div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 text-sm text-blue-800 font-bold">
+          📌 Tous les élèves ayant le même créneau horaire sont regroupés ensemble. Un élève marqué "Terminé" (onglet Formations en attente) est automatiquement retiré de cette liste.
+        </div>
+        <div id="emploiTempsContent" class="space-y-3"></div>
       </section>
 
       <!-- PARAMÈTRES PRESTATION (Fondateur seulement) -->
@@ -2417,6 +2446,7 @@ function showSection(id){
   document.getElementById(id).classList.add('active');
   if(id==='dashboard') verifierEcheances();
   if(id==='attente') renderAttente();
+  if(id==='emploiTemps') renderEmploiTemps();
   if(id==='dashboardMensuel'){ initDashboardMensuel(); renderDashboardMensuel(); }
   if(id==='rapportJournalier'){ initRapportJournalier(); renderRapportJournalier(); }
   if(id==='parametres') chargerApercuParametres();
@@ -2905,15 +2935,17 @@ function registerStudent(){
   const brochurePrix = lgcList.reduce(function(s,l){ return s + (l.brochure>0 ? l.brochure : 0); }, 0); // total possible
   const brochurePayee = brochureTotalePayee > 0;
   const brochureIncluse = brochureTotalePayee;
-  // Frais d'inscription = frais globaux de la prestation (défini dans Paramètres)
-  const fraisInscription = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
+  // Frais d'inscription = frais globaux de la prestation (défini dans Paramètres), uniquement si la case "Appliquer les frais d'inscription" est cochée
+  const inscActiveEl=document.getElementById('inscriptionActive');
+  const inscriptionActive=inscActiveEl?inscActiveEl.checked:true;
+  const fraisInscription = inscriptionActive?((typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000):0;
   // Prix modifie (rabais) ?
   const pmEl=document.getElementById('prixModifie');
   const prix=(pmEl&&pmEl.value&&parseInt(pmEl.value)>0)?parseInt(pmEl.value):prixNormal;
   const rabais=prixNormal-prix;
-  // Frais d'inscription payés ou non (statut uniquement, toujours inclus dans le total)
+  // Frais d'inscription payés ou non (statut uniquement, toujours inclus dans le total quand applicable)
   const inscrPayeEl=document.getElementById('inscriptionPaye');
-  const inscriptionPayee=inscrPayeEl&&inscrPayeEl.checked;
+  const inscriptionPayee=inscriptionActive?(inscrPayeEl&&inscrPayeEl.checked):true;
   const totalDu=prix+fraisInscription+brochureIncluse;
   // Sauvegarder la liste des logiciels dans l'inscrit
   const logicielsList = lgcList;
@@ -2952,6 +2984,7 @@ function registerStudent(){
   ['nom','prenom','tuteur','telephone','montantPaye','echeancePaiement','prixModifie'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
   const dsel=document.getElementById('dureeSelect'); if(dsel) dsel.value='';
   const insImp=document.getElementById('inscriptionImpaye'); if(insImp) insImp.checked=true;
+  const insAct=document.getElementById('inscriptionActive'); if(insAct){ insAct.checked=true; toggleInscriptionActive(); }
   const rc=document.getElementById('resumeCalcul'); if(rc){rc.classList.add('hidden');rc.textContent='';}
   document.getElementById('photo').value='';
   // Réinitialiser les logiciels
@@ -5249,13 +5282,24 @@ function renderComparaisonGraphe(){
 }
 
 // ===== CALCUL PAIEMENT EN TEMPS REEL =====
+function toggleInscriptionActive(){
+  var actEl=document.getElementById('inscriptionActive');
+  var zone=document.getElementById('inscriptionRadioZone');
+  var actif=actEl?actEl.checked:true;
+  if(zone) zone.style.display=actif?'flex':'none';
+  majCalculPaiement();
+}
+
 function majCalculPaiement(){
   // Calculer le prix total de tous les logiciels sélectionnés
   var lgcList = (typeof getLogicielsSelectionnes === 'function') ? getLogicielsSelectionnes() : [];
   var prixNormalMulti = lgcList.reduce(function(s,l){return s+l.prix;},0);
   // Somme de toutes les brochures cochées
   var brochureTotalePayee = lgcList.reduce(function(s,l){ return s + (l.brochurePayee && l.brochure>0 ? l.brochure : 0); }, 0);
-  var fraisInscMulti = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
+  // Frais d'inscription appliqués uniquement si la case "Appliquer les frais d'inscription" est cochée
+  var inscActiveEl=document.getElementById('inscriptionActive');
+  var inscriptionActive=inscActiveEl?inscActiveEl.checked:true;
+  var fraisInscMulti = inscriptionActive?((typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000):0;
   // Si aucun logiciel sélectionné, essayer le select caché (fallback)
   if(prixNormalMulti===0){
     const sel=document.getElementById('formationSelect');
@@ -5281,7 +5325,7 @@ function majCalculPaiement(){
   const rc=document.getElementById('resumeCalcul');
   if(rc){
     rc.classList.remove('hidden');
-    let txt='Inscription: '+fraisInsc.toLocaleString()+' GNF  |  Formation(s): ';
+    let txt=(inscriptionActive?('Inscription: '+fraisInsc.toLocaleString()+' GNF'):'Inscription: non appliqués')+'  |  Formation(s): ';
     if(lgcList.length>1){
       txt+=lgcList.map(function(l){return l.nom;}).join(' + ')+' = '+prixNormal.toLocaleString()+' GNF';
     } else if(rabais>0){
@@ -5665,6 +5709,112 @@ function renderAttente(){
     block.innerHTML+='</div>';
     cont.appendChild(block);
   });
+}
+
+// ===== EMPLOIS DU TEMPS =====
+function _getSeancesActives(filtreJour){
+  var seances=[];
+  inscrits.forEach(function(ins){
+    var statut=ins.statut||'en_cours';
+    // Un élève terminé ou abandonné est automatiquement retiré des créneaux
+    if(statut==='termine'||statut==='abandonne') return;
+    if(!ins.jours||!ins.jours.length) return;
+    ins.jours.forEach(function(joursStr){
+      var parts=joursStr.split(' ');
+      var jour=parts[0]||'';
+      var horaire=parts.slice(1).join(' ')||'';
+      if(filtreJour&&jour!==filtreJour) return;
+      seances.push({ins:ins,jour:jour,horaire:horaire});
+    });
+  });
+  var ordreJours={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
+  seances.sort(function(a,b){
+    if(a.horaire<b.horaire) return -1;
+    if(a.horaire>b.horaire) return 1;
+    return (ordreJours[a.jour]||9)-(ordreJours[b.jour]||9);
+  });
+  var groupes={};
+  seances.forEach(function(s){
+    var k=s.horaire||'Sans horaire';
+    if(!groupes[k]) groupes[k]=[];
+    groupes[k].push(s);
+  });
+  return groupes;
+}
+
+function renderEmploiTemps(){
+  const cont=document.getElementById('emploiTempsContent');
+  if(!cont) return;
+  const filtreJour=(document.getElementById('filtreEmploiJour')||{}).value||'';
+  const groupes=_getSeancesActives(filtreJour);
+  const cles=Object.keys(groupes).sort();
+  if(!cles.length){
+    cont.innerHTML='<div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-gray-400 italic">Aucun élève actif à afficher pour ce créneau.</div>';
+    return;
+  }
+  var totalSeances=0; cles.forEach(function(k){totalSeances+=groupes[k].length;});
+  cont.innerHTML='<p class="text-sm text-slate-500 mb-3 font-bold">'+totalSeances+' séance(s) active(s) — '+cles.length+' créneau(x)</p>';
+  cles.forEach(function(hor){
+    const gSeances=groupes[hor];
+    const block=document.createElement('div');
+    block.className='mb-4';
+    block.innerHTML='<div class="bg-blue-950 text-white px-4 py-2 rounded-t-2xl font-bold text-sm flex items-center gap-2">'
+      +'<span>🕐 '+hor+'</span>'
+      +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gSeances.length+' élève(s)</span>'
+      +'</div>'
+      +'<div class="border-2 border-blue-950 border-t-0 rounded-b-2xl overflow-hidden">';
+    gSeances.forEach(function(s,idx){
+      const ins=s.ins;
+      const rowBg=idx%2===0?'background:#f8fafc':'background:white';
+      block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
+        +'<div>'
+        +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
+        +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
+        +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
+        +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
+        +'</div>'
+        +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
+        +'</div>';
+    });
+    block.innerHTML+='</div>';
+    cont.appendChild(block);
+  });
+}
+
+function imprimerEmploiTemps(){
+  const filtreJour=(document.getElementById('filtreEmploiJour')||{}).value||'';
+  const groupes=_getSeancesActives(filtreJour);
+  const cles=Object.keys(groupes).sort();
+  var nomPrest=centreNom;
+  if(window._AGP_MODE&&window._agpCurrentPrest) nomPrest=window._agpCurrentPrest.centreNom||centreNom;
+  var dateGen=new Date().toLocaleDateString('fr-FR');
+  var contenu='<div style="max-width:900px;margin:0 auto;font-family:Arial,sans-serif;">';
+  contenu+='<div style="text-align:center;border-bottom:2px solid #172554;padding-bottom:12px;margin-bottom:16px;">';
+  contenu+='<div style="font-size:20px;font-weight:900;color:#172554;">'+nomPrest+'</div>';
+  contenu+='<div style="font-size:14px;font-weight:bold;color:#f97316;margin-top:2px;">EMPLOI DU TEMPS'+(filtreJour?(' — '+filtreJour):'')+'</div>';
+  contenu+='<div style="font-size:11px;color:#64748b;">Généré le '+dateGen+'</div>';
+  contenu+='</div>';
+  if(!cles.length){
+    contenu+='<p style="text-align:center;color:#94a3b8;font-style:italic;">Aucun élève actif à afficher.</p>';
+  }
+  cles.forEach(function(hor){
+    const gSeances=groupes[hor];
+    contenu+='<div style="background:#172554;color:white;padding:8px 14px;border-radius:10px 10px 0 0;font-weight:bold;font-size:14px;">🕐 '+hor+' — '+gSeances.length+' élève(s)</div>';
+    contenu+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;">';
+    contenu+='<thead><tr style="background:#dbeafe;"><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Matricule</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Nom &amp; Prénom</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Formation</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Jour</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Téléphone</th></tr></thead><tbody>';
+    gSeances.forEach(function(s){
+      const ins=s.ins;
+      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.formation+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+s.jour+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
+    });
+    contenu+='</tbody></table>';
+  });
+  contenu+='</div>';
+  var w=window.open('','_blank');
+  w.document.write('<html><head><title>Emploi du Temps — '+nomPrest+'</title><style>body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
+  w.document.write(contenu);
+  w.document.write('<div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#172554;color:white;padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ Imprimer / Enregistrer en PDF</button></div>');
+  w.document.write('</body></html>');
+  w.document.close();
 }
 
 // ===== PARAMÈTRES PRESTATION =====
