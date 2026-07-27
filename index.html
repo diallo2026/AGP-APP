@@ -5725,9 +5725,19 @@ function _getSeancesActives(filtreJour){
     if(statut==='termine'||statut==='abandonne') return;
     if(!ins.jours||!ins.jours.length) return;
     ins.jours.forEach(function(joursStr){
-      var parts=joursStr.split(' ');
-      var jour=parts[0]||'';
-      var horaire=parts.slice(1).join(' ')||'';
+      // Format attendu: "Jour : Heure" (ex: "Lundi : 08h-10h").
+      // On coupe sur le separateur " : " pour eviter qu'un ':' residuel
+      // ne pollue le creneau horaire (regroupement propre et professionnel).
+      var jour='', horaire='';
+      var idxSep=joursStr.indexOf(' : ');
+      if(idxSep>=0){
+        jour=joursStr.slice(0,idxSep).trim();
+        horaire=joursStr.slice(idxSep+3).trim();
+      } else {
+        var parts=joursStr.split(' ');
+        jour=parts[0]||'';
+        horaire=parts.slice(1).join(' ').replace(/^:\s*/,'').trim();
+      }
       if(filtreJour&&jour!==filtreJour) return;
       var k=horaire||'Sans horaire';
       if(!parCreneau[k]) parCreneau[k]={};
