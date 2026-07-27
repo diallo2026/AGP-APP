@@ -5712,8 +5712,13 @@ function renderAttente(){
 }
 
 // ===== EMPLOIS DU TEMPS =====
+// Regroupe par créneau horaire, puis fusionne les jours d'un même élève
+// (ex: Lundi + Mercredi + Vendredi à 14h -> une seule ligne "Lundi, Mercredi, Vendredi")
+// afin d'avoir un rendu professionnel et compact (moins de pages à l'impression).
+var _ordreJoursAGP={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
+
 function _getSeancesActives(filtreJour){
-  var seances=[];
+  var parCreneau={}; // horaire -> { matricule: {ins, jours:[...]} }
   inscrits.forEach(function(ins){
     var statut=ins.statut||'en_cours';
     // Un élève terminé ou abandonné est automatiquement retiré des créneaux
@@ -5724,20 +5729,25 @@ function _getSeancesActives(filtreJour){
       var jour=parts[0]||'';
       var horaire=parts.slice(1).join(' ')||'';
       if(filtreJour&&jour!==filtreJour) return;
-      seances.push({ins:ins,jour:jour,horaire:horaire});
+      var k=horaire||'Sans horaire';
+      if(!parCreneau[k]) parCreneau[k]={};
+      var matKey=ins.mat||(ins.nom+'_'+ins.prenom);
+      if(!parCreneau[k][matKey]) parCreneau[k][matKey]={ins:ins,jours:[]};
+      if(parCreneau[k][matKey].jours.indexOf(jour)===-1) parCreneau[k][matKey].jours.push(jour);
     });
   });
-  var ordreJours={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
-  seances.sort(function(a,b){
-    if(a.horaire<b.horaire) return -1;
-    if(a.horaire>b.horaire) return 1;
-    return (ordreJours[a.jour]||9)-(ordreJours[b.jour]||9);
-  });
   var groupes={};
-  seances.forEach(function(s){
-    var k=s.horaire||'Sans horaire';
-    if(!groupes[k]) groupes[k]=[];
-    groupes[k].push(s);
+  Object.keys(parCreneau).forEach(function(hor){
+    var liste=Object.keys(parCreneau[hor]).map(function(m){return parCreneau[hor][m];});
+    liste.forEach(function(item){
+      item.jours.sort(function(a,b){return (_ordreJoursAGP[a]||9)-(_ordreJoursAGP[b]||9);});
+    });
+    liste.sort(function(a,b){
+      var na=((a.ins.nom||'')+' '+(a.ins.prenom||'')).trim();
+      var nb=((b.ins.nom||'')+' '+(b.ins.prenom||'')).trim();
+      return na.localeCompare(nb,'fr');
+    });
+    groupes[hor]=liste;
   });
   return groupes;
 }
@@ -5752,19 +5762,20 @@ function renderEmploiTemps(){
     cont.innerHTML='<div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-gray-400 italic">Aucun élève actif à afficher pour ce créneau.</div>';
     return;
   }
-  var totalSeances=0; cles.forEach(function(k){totalSeances+=groupes[k].length;});
-  cont.innerHTML='<p class="text-sm text-slate-500 mb-3 font-bold">'+totalSeances+' séance(s) active(s) — '+cles.length+' créneau(x)</p>';
+  var totalEleves=0; cles.forEach(function(k){totalEleves+=groupes[k].length;});
+  cont.innerHTML='<p class="text-sm text-slate-500 mb-3 font-bold">'+totalEleves+' élève(s) actif(s) — '+cles.length+' créneau(x)</p>';
   cles.forEach(function(hor){
-    const gSeances=groupes[hor];
+    const gEleves=groupes[hor];
     const block=document.createElement('div');
     block.className='mb-4';
     block.innerHTML='<div class="bg-blue-950 text-white px-4 py-2 rounded-t-2xl font-bold text-sm flex items-center gap-2">'
       +'<span>🕐 '+hor+'</span>'
-      +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gSeances.length+' élève(s)</span>'
+      +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gEleves.length+' élève(s)</span>'
       +'</div>'
       +'<div class="border-2 border-blue-950 border-t-0 rounded-b-2xl overflow-hidden">';
-    gSeances.forEach(function(s,idx){
-      const ins=s.ins;
+    gEleves.forEach(function(item,idx){
+      const ins=item.ins;
+      const joursTxt=item.jours.join(', ');
       const rowBg=idx%2===0?'background:#f8fafc':'background:white';
       block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
         +'<div>'
@@ -5773,7 +5784,7 @@ function renderEmploiTemps(){
         +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
         +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
         +'</div>'
-        +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
+        +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+joursTxt+'</span>'
         +'</div>';
     });
     block.innerHTML+='</div>';
@@ -5798,13 +5809,14 @@ function imprimerEmploiTemps(){
     contenu+='<p style="text-align:center;color:#94a3b8;font-style:italic;">Aucun élève actif à afficher.</p>';
   }
   cles.forEach(function(hor){
-    const gSeances=groupes[hor];
-    contenu+='<div style="background:#172554;color:white;padding:8px 14px;border-radius:10px 10px 0 0;font-weight:bold;font-size:14px;">🕐 '+hor+' — '+gSeances.length+' élève(s)</div>';
+    const gEleves=groupes[hor];
+    contenu+='<div style="background:#172554;color:white;padding:8px 14px;border-radius:10px 10px 0 0;font-weight:bold;font-size:14px;">🕐 '+hor+' — '+gEleves.length+' élève(s)</div>';
     contenu+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;">';
-    contenu+='<thead><tr style="background:#dbeafe;"><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Matricule</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Nom &amp; Prénom</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Formation</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Jour</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Téléphone</th></tr></thead><tbody>';
-    gSeances.forEach(function(s){
-      const ins=s.ins;
-      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.formation+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+s.jour+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
+    contenu+='<thead><tr style="background:#dbeafe;"><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Matricule</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Nom &amp; Prénom</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Formation</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Jour(s)</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Téléphone</th></tr></thead><tbody>';
+    gEleves.forEach(function(item){
+      const ins=item.ins;
+      const joursTxt=item.jours.join(', ');
+      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.formation+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+joursTxt+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
     });
     contenu+='</tbody></table>';
   });
