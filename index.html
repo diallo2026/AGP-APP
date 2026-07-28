@@ -3115,7 +3115,7 @@ function imprimerRecu(){
   const w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Recu A4</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
   w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
   w.document.write('h1,h2,.total{font-size:20px!important;}');
@@ -3133,7 +3133,7 @@ function genererPDF(){
   const w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>PDF Recu A4</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
   w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
   w.document.write('div{font-size:14px;}li{font-size:14px;margin-bottom:3px;}');
@@ -4029,7 +4029,7 @@ function imprimerRecuDirect(ins, logoSrc){
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Reçu '+ins.mat+'</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}');
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;width:180mm;min-height:257mm;color:#111;}');
   w.document.write('.recu{max-width:180mm;margin:0 auto;padding:0;}');
   w.document.write('.header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #172554;padding-bottom:12px;margin-bottom:16px;}');
@@ -4883,7 +4883,7 @@ function imprimerBulletin(){
   const el=document.getElementById('bulletinGerant');
   if(!el){alert('Aucun bulletin à imprimer');return;}
   const w=window.open('','_blank');
-  w.document.write('<html><head><title>Bulletin de Paie</title><style>body{font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
+  w.document.write('<html><head><title>Bulletin de Paie</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
   w.document.write(el.outerHTML);
   w.document.write('</body></html>');
   w.document.close();
@@ -4991,7 +4991,7 @@ function genererBulletinAuto(idx, moisCible){
 
   // Ouvrir dans une nouvelle fenêtre pour impression
   var w=window.open('','_blank');
-  w.document.write('<html><head><title>Bulletin de Paie — '+u.nom+'</title><style>body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
+  w.document.write('<html><head><title>Bulletin de Paie — '+u.nom+'</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
   w.document.write(contenu);
   w.document.write('<div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#172554;color:white;padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ Imprimer</button></div>');
   w.document.write('</body></html>');
@@ -5892,6 +5892,20 @@ function _getSeancesActives(filtreJour){
   return groupes;
 }
 
+// Construit l'affichage "Formation" pour l'emploi du temps: si plusieurs logiciels ont ete
+// enregistres ensemble, montre chacun avec un symbole indiquant son propre statut
+// (✅ Terminé / 📚 En cours / 🚫 Abandonné). Sinon, affiche la formation telle quelle (inchangé).
+function _formationAvecStatutsHtml(ins, forPrint){
+  if(!(ins.logicielsList && ins.logicielsList.length>1)){
+    return ins.formation;
+  }
+  var sep = forPrint ? '<br>' : '<br>';
+  return ins.logicielsList.map(function(l){
+    var si=_statutInfo(l.statut||'en_cours');
+    return '<span style="white-space:nowrap;">'+l.nom+' <span style="font-size:10px;font-weight:bold;color:'+si.color+';">'+si.label+'</span></span>';
+  }).join(sep);
+}
+
 function renderEmploiTemps(){
   const cont=document.getElementById('emploiTempsContent');
   if(!cont) return;
@@ -5921,7 +5935,7 @@ function renderEmploiTemps(){
         +'<div>'
         +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
         +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
-        +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
+        +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+_formationAvecStatutsHtml(ins,false)+'</span>'
         +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
         +'</div>'
         +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+joursTxt+'</span>'
@@ -5956,13 +5970,13 @@ function imprimerEmploiTemps(){
     gEleves.forEach(function(item){
       const ins=item.ins;
       const joursTxt=item.jours.join(', ');
-      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.formation+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+joursTxt+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
+      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+_formationAvecStatutsHtml(ins,true)+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+joursTxt+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
     });
     contenu+='</tbody></table>';
   });
   contenu+='</div>';
   var w=window.open('','_blank');
-  w.document.write('<html><head><title>Emploi du Temps — '+nomPrest+'</title><style>body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
+  w.document.write('<html><head><title>Emploi du Temps — '+nomPrest+'</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
   w.document.write(contenu);
   w.document.write('<div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#172554;color:white;padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ Imprimer / Enregistrer en PDF</button></div>');
   w.document.write('</body></html>');
