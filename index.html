@@ -3913,6 +3913,46 @@ function changerStatutInscrit(mat, statut){
   ajouterHistorique('Statut formation: '+inscrits[idx].nom+' '+inscrits[idx].prenom+' -> '+statut);
 }
 
+// ===== STATUT PAR LOGICIEL (cas des inscriptions groupant plusieurs logiciels/formations) =====
+// N'ajoute qu'un champ optionnel "statut" sur chaque element deja existant de logicielsList
+// (aucune nouvelle collection, aucune donnee existante modifiee ou supprimee).
+function _statutInfo(statut){
+  if(statut==='termine') return {label:'✅ Terminé',color:'#15803d',bg:'#dcfce7'};
+  if(statut==='abandonne') return {label:'🚫 Abandonné',color:'#dc2626',bg:'#fee2e2'};
+  return {label:'📚 En cours',color:'#2563eb',bg:'#dbeafe'};
+}
+function changerStatutLogiciel(mat, logIdx, statut){
+  var idx = inscrits.findIndex(function(i){ return i.mat===mat; });
+  if(idx<0) return;
+  var ins = inscrits[idx];
+  if(!ins.logicielsList || !ins.logicielsList[logIdx]) return;
+  ins.logicielsList[logIdx].statut = statut;
+  // Le statut global de l'inscrit se deduit automatiquement de l'etat de chacun de ses logiciels:
+  // encore "en cours" si au moins un logiciel est en cours, sinon "termine" (ou "abandonne" si tous abandonnes).
+  var enCours = ins.logicielsList.some(function(l){return (l.statut||'en_cours')==='en_cours';});
+  if(enCours){
+    ins.statut='en_cours';
+  } else {
+    var tousAbandonnes = ins.logicielsList.every(function(l){return (l.statut||'en_cours')==='abandonne';});
+    ins.statut = tousAbandonnes?'abandonne':'termine';
+  }
+  renderAttente();
+  sauvegarder();
+  ajouterHistorique('Statut cours '+(ins.logicielsList[logIdx].nom||'')+' de '+ins.nom+' '+ins.prenom+' -> '+statut);
+}
+// Raccourci: applique le meme statut a tous les logiciels du bloc d'un coup (ex: abandon complet)
+function changerStatutTousLogiciels(mat, statut){
+  var idx = inscrits.findIndex(function(i){ return i.mat===mat; });
+  if(idx<0) return;
+  var ins = inscrits[idx];
+  if(!ins.logicielsList || !ins.logicielsList.length) return;
+  ins.logicielsList.forEach(function(l){ l.statut = statut; });
+  ins.statut = statut;
+  renderAttente();
+  sauvegarder();
+  ajouterHistorique('Statut (tous les cours) de '+ins.nom+' '+ins.prenom+' -> '+statut);
+}
+
 function modifierMatricule(idx){
   if(!peutModifier()){alert('Non autorisé');return;}
   var ins=inscrits[idx];
@@ -5742,32 +5782,59 @@ function renderAttente(){
     gSeances.forEach(function(s,idx){
       const ins=s.ins;
       const rowBg=idx%2===0?'background:#f8fafc':'background:white';
-      // Statut formation
+      // Statut formation (global, deduit automatiquement si plusieurs logiciels)
       var statut=ins.statut||'en_cours';
-      var statutLabel,statutColor,statutBg;
-      if(statut==='termine'){statutLabel='✅ Terminé';statutColor='#15803d';statutBg='#dcfce7';}
-      else if(statut==='abandonne'){statutLabel='🚫 Abandonné';statutColor='#dc2626';statutBg='#fee2e2';}
-      else{statutLabel='📚 En cours';statutColor='#2563eb';statutBg='#dbeafe';}
+      var si=_statutInfo(statut);
+      var statutLabel=si.label, statutColor=si.color, statutBg=si.bg;
 
       var mat=ins.mat;
+      var multiLogiciels = ins.logicielsList && ins.logicielsList.length>1;
+
       block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
         +'<div>'
         +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
         +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
         +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
         +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
-        +'<br><span style="font-size:11px;background:'+statutBg+';color:'+statutColor+';padding:2px 8px;border-radius:8px;font-weight:bold;margin-top:3px;display:inline-block;">'+statutLabel+'</span>'
+        +'<br><span style="font-size:11px;background:'+statutBg+';color:'+statutColor+';padding:2px 8px;border-radius:8px;font-weight:bold;margin-top:3px;display:inline-block;">'+statutLabel+(multiLogiciels?' (global)':'')+'</span>'
         +'</div>'
         +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
         +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
         +((ins.resteAPayer&&ins.resteAPayer>0)?'<span style="font-size:11px;color:#dc2626;font-weight:bold;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
-        +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+        +(multiLogiciels?
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">'
+        +'<span style="font-size:9px;color:#94a3b8;font-weight:bold;">Tout:</span>'
+        +'<button data-mat="'+mat+'" data-statut="en_cours" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:white;color:#2563eb;cursor:pointer;font-weight:bold;">En cours</button>'
+        +'<button data-mat="'+mat+'" data-statut="termine" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:white;color:#15803d;cursor:pointer;font-weight:bold;">Terminé</button>'
+        +'<button data-mat="'+mat+'" data-statut="abandonne" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:white;color:#dc2626;cursor:pointer;font-weight:bold;">Abandonné</button>'
+        +'</div>':
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;">'
         +'<button data-mat="'+mat+'" data-statut="en_cours" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(statut==='en_cours'?'#2563eb':'white')+';color:'+(statut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
         +'<button data-mat="'+mat+'" data-statut="termine" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(statut==='termine'?'#15803d':'white')+';color:'+(statut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
         +'<button data-mat="'+mat+'" data-statut="abandonne" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(statut==='abandonne'?'#dc2626':'white')+';color:'+(statut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
-        +'</div>'
+        +'</div>')
         +'</div>'
         +'</div>';
+
+      // Détail par logiciel : permet de marquer chaque cours du bloc comme terminé/abandonné/en cours
+      // indépendamment des autres, quand plusieurs logiciels ont été enregistrés ensemble pour cet élève.
+      if(multiLogiciels){
+        block.innerHTML+='<div style="'+rowBg+';padding:6px 14px 12px 26px;border-top:1px dashed #e2e8f0;">';
+        ins.logicielsList.forEach(function(l,li){
+          var lStatut=l.statut||'en_cours';
+          var lsi=_statutInfo(lStatut);
+          block.innerHTML+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;padding:4px 0;'+(li>0?'border-top:1px solid #f1f5f9;':'')+'">'
+            +'<div><span style="font-size:12px;font-weight:700;color:#334155;">↳ '+l.nom+'</span>'
+            +'<span style="font-size:10px;background:'+lsi.bg+';color:'+lsi.color+';padding:1px 7px;border-radius:7px;font-weight:bold;margin-left:8px;">'+lsi.label+'</span></div>'
+            +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="en_cours" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(lStatut==='en_cours'?'#2563eb':'white')+';color:'+(lStatut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="termine" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(lStatut==='termine'?'#15803d':'white')+';color:'+(lStatut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="abandonne" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(lStatut==='abandonne'?'#dc2626':'white')+';color:'+(lStatut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
+            +'</div>'
+            +'</div>';
+        });
+        block.innerHTML+='</div>';
+      }
     });
     block.innerHTML+='</div>';
     cont.appendChild(block);
