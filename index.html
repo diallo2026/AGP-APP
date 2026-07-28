@@ -288,7 +288,7 @@ function agpShowLogin(prest){
     +'<button id="agp-l-agent-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter - Agent</button>'
     +'</div></div></div>'
     +'<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center">'
-    +'<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP - Neindig</p>'
+    +'<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP - Souleymane</p>'
     +'<button id="agp-l-change" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#475569;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;padding:5px 12px">Changer de prestation</button>'
     +'</div></div>';
 
@@ -1025,12 +1025,12 @@ function agpDevImPayer(btn){
   <div style="position:fixed;bottom:0;left:0;right:0;background:rgba(3,10,26,0.97);border-top:1px solid rgba(37,99,235,0.1);backdrop-filter:blur(10px)">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 22px;border-bottom:1px solid rgba(255,255,255,0.04)">
       <p style="font-size:10px;color:#1e3a5f;margin:0">2026 App AGP - Concu pour les entrepreneurs africains</p>
-      <button onclick="agpConcepteur()" style="background:none;border:none;color:#334155;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='#334155'">Espace Concepteur</button>
+      <button onclick="agpConcepteur()" style="background:none;border:none;color:#334155;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='#334155'">Souleymane</button>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 22px;flex-wrap:wrap;gap:8px">
       <div>
         <span style="font-size:13px;font-weight:700;color:#94a3b8">Developpe par </span>
-        <span style="font-size:13px;font-weight:800;color:#60a5fa">Neindig</span>
+        <span style="font-size:13px;font-weight:800;color:#60a5fa">Souleymane</span>
         <div style="font-size:10px;color:#334155;margin-top:1px">Contacter le concepteur pour assistance</div>
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">
@@ -3526,11 +3526,13 @@ function _genRapportJournalier(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){return sameDay(d.date);});
+  var versementsJour = _listerVersementsPeriode(function(d){return d.getDate()===jour&&d.getMonth()+1===moisNum&&d.getFullYear()===annee;});
 
-  var revIns = ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers = versementsJour.reduce(function(s,v){return s+v.montant;},0);
   var revSvc = svcs.reduce(function(s,v){return s+(v.montant||0);},0);
   var totDep = deps.reduce(function(s,d){return s+(d.montant||0);},0);
-  var benef  = revIns+revSvc-totDep;
+  var benef  = revIns+revVers+revSvc-totDep;
 
   // Grouper services
   var svcMap={};
@@ -3544,7 +3546,8 @@ function _genRapportJournalier(){
   function kpi(l,v,c,bg){return '<div style="background:'+bg+';border-radius:12px;padding:12px 14px;text-align:center;flex:1;min-width:110px;"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">'+l+'</div><div style="font-size:18px;font-weight:900;color:'+c+';">'+v+'</div></div>';}
   html += kpi('Inscriptions',ins.length,'#172554','#dbeafe');
   html += kpi('Services',svcs.length,'#7c3aed','#ede9fe');
-  html += kpi('Rev. Inscrits',revIns.toLocaleString()+' GNF','#15803d','#dcfce7');
+  html += kpi('Rev. Nouv. Inscript.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7');
+  html += kpi('Versements Reçus',revVers.toLocaleString()+' GNF','#16a34a','#dcfce7');
   html += kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff');
   html += kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2');
   html += kpi('Bénéfice Net',benef.toLocaleString()+' GNF',benef>=0?'#15803d':'#dc2626',benef>=0?'#dcfce7':'#fee2e2');
@@ -3571,6 +3574,9 @@ function _genRapportJournalier(){
     });
     html += '</tbody></table></div>';
   } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucune inscription ce jour.</p>'; }
+
+  // Versements du jour (toutes échéances confondues, quel que soit le mois d'inscription)
+  html += _buildVersementsSection(versementsJour, 'Versements reçus ce jour').html;
 
   // Services du jour
   html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:8px;">🖨️ Services du jour ('+svcs.length+')</h3>';
@@ -3619,6 +3625,63 @@ function parseDateFR(dateStr){
   }
   var d3=new Date(s);
   return isNaN(d3.getTime())?null:d3;
+}
+
+// ===== VERSEMENTS — utilitaires pour les rapports (lecture seule, ne modifie aucune donnée) =====
+// ins.montantPaye est cumulatif (mis à jour à chaque versement, voir enregistrerVersement).
+// Le "montant initial" verse le jour de l'inscription = montantPaye - somme des versements ulterieurs.
+function _montantInitialInscrit(ins){
+  var totVers=(ins.versements||[]).reduce(function(s,v){return s+(v.montant||0);},0);
+  return Math.max(0,(ins.montantPaye||0)-totVers);
+}
+// Parcourt tous les versements de tous les inscrits et retourne ceux dont la date (de versement)
+// correspond a matchFn(dateObj). Marque "arriere" si le versement a ete encaisse un mois/annee
+// different (posterieur) du mois d'inscription de l'eleve, pour expliquer les ecarts mensuels.
+function _listerVersementsPeriode(matchFn){
+  var out=[];
+  (typeof inscrits!=='undefined'?inscrits:[]).forEach(function(ins){
+    (ins.versements||[]).forEach(function(v){
+      var d=parseDateFR(v.date);
+      if(d&&matchFn(d)){
+        var di=parseDateFR(ins.date);
+        var arriere = di ? (d.getFullYear()>di.getFullYear() || (d.getFullYear()===di.getFullYear()&&d.getMonth()>di.getMonth())) : false;
+        out.push({ins:ins,montant:v.montant||0,date:v.date,dateObj:d,arriere:arriere});
+      }
+    });
+  });
+  out.sort(function(a,b){return a.dateObj-b.dateObj;});
+  return out;
+}
+// Construit le tableau HTML "Versements recus" + l'encart d'explication des arrieres.
+// Renvoie {html, total, arrieres} pour reutilisation dans les KPI/bénéfice.
+function _buildVersementsSection(versements, titre){
+  var total=versements.reduce(function(s,v){return s+v.montant;},0);
+  var arrieresTotal=versements.filter(function(v){return v.arriere;}).reduce(function(s,v){return s+v.montant;},0);
+  var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #16a34a;padding-left:10px;margin-bottom:8px;">💰 '+titre+' ('+versements.length+')</h3>';
+  if(!versements.length){
+    h+='<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucun versement enregistré sur cette période.</p>';
+    return {html:h,total:total,arrieres:arrieresTotal};
+  }
+  h+='<div style="overflow-x:auto;margin-bottom:10px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h+='<thead><tr style="background:#16a34a;color:#fff;"><th style="padding:6px 8px;text-align:left;">Matricule</th><th style="padding:6px 8px;text-align:left;">Nom &amp; Prénom</th><th style="padding:6px 8px;text-align:left;">Date versement</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Origine</th></tr></thead><tbody>';
+  versements.forEach(function(v,i){
+    h+='<tr style="background:'+(i%2===0?'#f0fdf4':'#fff')+';">'
+      +'<td style="padding:5px 8px;font-weight:bold;color:#172554;">'+v.ins.mat+'</td>'
+      +'<td style="padding:5px 8px;">'+v.ins.nom+' '+v.ins.prenom+'</td>'
+      +'<td style="padding:5px 8px;">'+v.date+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#16a34a;font-weight:bold;">'+v.montant.toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-size:10px;'+(v.arriere?'color:#f97316;font-weight:bold;':'color:#94a3b8;')+'">'+(v.arriere?'⚠️ Mois antérieur':'Mois en cours')+'</td>'
+      +'</tr>';
+  });
+  h+='<tr style="background:#16a34a;color:#fff;font-weight:800;"><td style="padding:7px 8px;" colspan="3">TOTAL VERSEMENTS</td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td><td></td></tr>';
+  h+='</tbody></table></div>';
+  if(arrieresTotal>0){
+    h+='<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#9a3412;">'
+      +'<strong>ℹ️ Explication de l\'écart:</strong> '+arrieresTotal.toLocaleString()+' GNF de ces versements correspondent à des paiements dus sur des inscriptions de mois antérieurs, encaissés sur cette période (règlement d\'arriérés). Ce montant explique une partie de l\'écart entre la valeur des nouvelles inscriptions de la période et le revenu réellement encaissé.</div>';
+  } else {
+    h+='<div style="margin-bottom:16px;"></div>';
+  }
+  return {html:h,total:total,arrieres:arrieresTotal};
 }
 
 function remplirFiltreAnnees(){
@@ -6150,9 +6213,13 @@ function _genRapportMensuel(){
     var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;
   });
 
-  var revInscr = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+  var revInscrDu     = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+  var revInscrEncaisse = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var versementsMois = _listerVersementsPeriode(function(d){return d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var revVersements  = versementsMois.reduce(function(s,v){return s+v.montant;},0);
   var revSvc   = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep   = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var revInscr = revInscrEncaisse + revVersements; // revenu inscriptions reellement encaisse ce mois
   var benef    = revInscr + revSvc - totDep;
 
   var svcMap = {};
@@ -6172,10 +6239,12 @@ function _genRapportMensuel(){
   // KPIs
   html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
   html += _buildKpiCard('Inscrits', ins.length, '#172554', '#dbeafe');
-  html += _buildKpiCard('Rev. Inscriptions', revInscr.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Valeur Nouv. Inscript. (dû)', revInscrDu.toLocaleString()+' GNF', '#334155', '#f1f5f9');
+  html += _buildKpiCard('Encaissé Nouv. Inscript.', revInscrEncaisse.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Versements Reçus', revVersements.toLocaleString()+' GNF', '#16a34a', '#dcfce7');
   html += _buildKpiCard('Rev. Services', revSvc.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
   html += _buildKpiCard('Dépenses', totDep.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
-  html += _buildKpiCard('Bénéfice Net', benef.toLocaleString()+' GNF', benef>=0?'#15803d':'#dc2626', benef>=0?'#dcfce7':'#fee2e2');
+  html += _buildKpiCard('Bénéfice Net (Encaissé)', benef.toLocaleString()+' GNF', benef>=0?'#15803d':'#dc2626', benef>=0?'#dcfce7':'#fee2e2');
   html += _buildKpiCard('Nb Services', svcs.length, '#7c3aed', '#ede9fe');
   html += '</div>';
 
@@ -6204,6 +6273,9 @@ function _genRapportMensuel(){
   } else {
     html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune inscription ce mois.</p>';
   }
+
+  // Versements du mois (toutes echeances confondues, y compris pour des inscriptions de mois anterieurs)
+  html += _buildVersementsSection(versementsMois, 'Versements reçus ce mois').html;
 
   // Services
   html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">🖨️ Services du mois ('+svcs.length+')</h3>';
@@ -6822,16 +6894,19 @@ function _renderRJJour(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(dp){return sameDay(dp.date);});
+  var versements=_listerVersementsPeriode(function(dd){return dd.getDate()===d&&dd.getMonth()+1===m&&dd.getFullYear()===a;});
 
-  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
   var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
-  var ben=revIns+revSvc-totDep;
+  var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
   html+=_buildRapportHeader('RAPPORT JOURNALIER — '+dateLabel.toUpperCase());
-  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revVers,revSvc,totDep,ben);
   html+=_buildRJTableInscrits(ins);
+  html+=_buildVersementsSection(versements,'Versements reçus ce jour').html;
   html+=_buildRJTableServices(svcs,revSvc);
   html+=_buildRJTableDepenses(deps,totDep);
   html+=_buildRapportFooter('Rapport du '+dateLabel);
@@ -6848,16 +6923,19 @@ function _renderRJMois(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
+  var versements=_listerVersementsPeriode(function(dd){return dd.getFullYear()===annee&&dd.getMonth()+1===mois;});
 
-  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
   var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
-  var ben=revIns+revSvc-totDep;
+  var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
   html+=_buildRapportHeader('RAPPORT MENSUEL — '+label.toUpperCase());
-  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revVers,revSvc,totDep,ben);
   html+=_buildRJTableInscrits(ins);
+  html+=_buildVersementsSection(versements,'Versements reçus ce mois').html;
   html+=_buildRJTableServices(svcs,revSvc);
   html+=_buildRJTableDepenses(deps,totDep);
   html+=_buildRapportFooter('Rapport de '+label);
@@ -6865,7 +6943,7 @@ function _renderRJMois(){
   document.getElementById('rapportJournalierContenu').innerHTML=html;
 }
 
-function _buildRJKpis(nbIns,nbSvc,revIns,revSvc,totDep,ben){
+function _buildRJKpis(nbIns,nbSvc,revIns,revVers,revSvc,totDep,ben){
   function kpi(label,val,color,bg){
     return '<div style="background:'+bg+';border-radius:13px;padding:14px 12px;text-align:center;flex:1;min-width:115px;">'
       +'<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">'+label+'</div>'
@@ -6875,7 +6953,8 @@ function _buildRJKpis(nbIns,nbSvc,revIns,revSvc,totDep,ben){
   return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">'
     +kpi('Inscriptions',nbIns,'#172554','#dbeafe')
     +kpi('Services',nbSvc,'#7c3aed','#ede9fe')
-    +kpi('Rev. Inscr.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7')
+    +kpi('Rev. Nouv. Inscr.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7')
+    +kpi('Versements Reçus',revVers.toLocaleString()+' GNF','#16a34a','#dcfce7')
     +kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff')
     +kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2')
     +kpi('Bénéfice Net',ben.toLocaleString()+' GNF',ben>=0?'#15803d':'#dc2626',ben>=0?'#dcfce7':'#fee2e2')
