@@ -400,7 +400,7 @@ function agpShowLogin(prest){
     +'<button id="agp-l-agent-btn" style="width:100%;padding:12px;border:none;border-radius:9px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Se connecter - Agent</button>'
     +'</div></div></div>'
     +'<div style="padding:14px 22px;border-top:1px solid rgba(255,255,255,0.05);display:flex;justify-content:space-between;align-items:center">'
-    +'<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP - <span onclick="agpConcepteur()" style="cursor:default;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent">Souleymane</span></p>'
+    +'<p style="font-size:10px;color:#1e3a5f;margin:0">App AGP - Souleymane</p>'
     +'<button id="agp-l-change" style="background:none;border:1px solid rgba(255,255,255,0.08);border-radius:7px;color:#475569;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit;padding:5px 12px">Changer de prestation</button>'
     +'</div></div>';
 
@@ -1265,11 +1265,12 @@ function agpDevImPayer(btn){
   <div style="position:fixed;bottom:0;left:0;right:0;background:rgba(3,10,26,0.97);border-top:1px solid rgba(37,99,235,0.1);backdrop-filter:blur(10px)">
     <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 22px;border-bottom:1px solid rgba(255,255,255,0.04)">
       <p style="font-size:10px;color:#1e3a5f;margin:0">2026 App AGP - Concu pour les entrepreneurs africains</p>
+      <button onclick="agpConcepteur()" style="background:none;border:none;color:#334155;font-size:11px;font-weight:600;cursor:pointer;font-family:inherit" onmouseover="this.style.color='#60a5fa'" onmouseout="this.style.color='#334155'">Souleymane</button>
     </div>
     <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 22px;flex-wrap:wrap;gap:8px">
       <div>
         <span style="font-size:13px;font-weight:700;color:#94a3b8">Developpe par </span>
-        <span onclick="agpConcepteur()" style="font-size:13px;font-weight:800;color:#60a5fa;cursor:default;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent">Souleymane</span>
+        <span style="font-size:13px;font-weight:800;color:#60a5fa">Souleymane</span>
         <div style="font-size:10px;color:#334155;margin-top:1px">Contacter le concepteur pour assistance</div>
       </div>
       <div style="display:flex;gap:7px;flex-wrap:wrap">
@@ -1423,6 +1424,7 @@ function agpDevImPayer(btn){
       <button onclick="showSection('dashboard')" id="dashboardBtn" class="menuBtn">📊 Tableau de Bord</button>
       <button onclick="showSection('formations')" class="menuBtn">🎓 Inscription</button>
       <button onclick="showSection('inscrits')" class="menuBtn">📋 Liste Inscrits</button>
+      <button onclick="showSection('emploiTemps')" id="emploiTempsBtn" class="menuBtn">🗓️ Emplois du Temps</button>
       <button onclick="showSection('services')" class="menuBtn">🖨️ Services</button>
       <button onclick="showSection('depenses')" class="menuBtn">💸 Dépenses</button>
       <button onclick="showSection('stock')" class="menuBtn">📦 Stock</button>
@@ -1569,8 +1571,11 @@ function agpDevImPayer(btn){
               </div>
               <!-- Statut Paiement Inscription -->
               <div id="inscriptionStatutZone" class="bg-blue-50 border border-blue-200 p-2 rounded-xl">
-                <p class="text-xs font-bold text-slate-600 mb-1">🎫 Frais d'inscription <span id="inscriptionPrixLabel" class="text-blue-600"></span></p>
-                <div class="flex gap-3 items-center">
+                <label class="flex items-center gap-2 cursor-pointer mb-1">
+                  <input type="checkbox" id="inscriptionActive" checked onchange="toggleInscriptionActive()" style="width:17px;height:17px;cursor:pointer;">
+                  <span class="text-xs font-bold text-slate-600">🎫 Appliquer les frais d'inscription <span id="inscriptionPrixLabel" class="text-blue-600"></span></span>
+                </label>
+                <div id="inscriptionRadioZone" class="flex gap-3 items-center">
                   <label class="flex items-center gap-2 cursor-pointer">
                     <input type="radio" name="inscriptionOpt" id="inscriptionPaye" value="paye" onchange="majCalculPaiement()">
                     <span class="text-sm font-bold text-green-700">✅ Payés</span>
@@ -1975,6 +1980,31 @@ function agpDevImPayer(btn){
           📌 Cet onglet affiche tous les élèves inscrits avec leurs cours et horaires, classés par heure de passage — pour connaître les cours qui arrivent à chaque instant.
         </div>
         <div id="attenteContent" class="space-y-3"></div>
+      </section>
+
+      <!-- EMPLOIS DU TEMPS -->
+      <section id="emploiTemps" class="section bg-white rounded-3xl shadow-xl p-6">
+        <div class="flex flex-wrap justify-between items-center mb-5 gap-3">
+          <h2 class="text-3xl font-bold text-blue-950">🗓️ Emplois du Temps</h2>
+          <div class="flex flex-wrap gap-2 no-print">
+            <select id="filtreEmploiJour" onchange="renderEmploiTemps()" class="inp text-sm" style="width:130px">
+              <option value="">Tous jours</option>
+              <option value="Lundi">Lundi</option>
+              <option value="Mardi">Mardi</option>
+              <option value="Mercredi">Mercredi</option>
+              <option value="Jeudi">Jeudi</option>
+              <option value="Vendredi">Vendredi</option>
+              <option value="Samedi">Samedi</option>
+              <option value="Dimanche">Dimanche</option>
+            </select>
+            <button onclick="renderEmploiTemps()" class="bg-blue-950 text-white px-3 py-2 rounded-xl text-xs font-bold">🔄 Actualiser</button>
+            <button onclick="imprimerEmploiTemps()" class="bg-green-600 text-white px-3 py-2 rounded-xl text-xs font-bold">🖨️ Imprimer / PDF</button>
+          </div>
+        </div>
+        <div class="bg-blue-50 border border-blue-200 rounded-2xl p-3 mb-4 text-sm text-blue-800 font-bold">
+          📌 Tous les élèves ayant le même créneau horaire sont regroupés ensemble. Un élève marqué "Terminé" (onglet Formations en attente) est automatiquement retiré de cette liste.
+        </div>
+        <div id="emploiTempsContent" class="space-y-3"></div>
       </section>
 
       <!-- PARAMÈTRES PRESTATION (Fondateur seulement) -->
@@ -2659,6 +2689,7 @@ function showSection(id){
   document.getElementById(id).classList.add('active');
   if(id==='dashboard') verifierEcheances();
   if(id==='attente') renderAttente();
+  if(id==='emploiTemps') renderEmploiTemps();
   if(id==='dashboardMensuel'){ initDashboardMensuel(); renderDashboardMensuel(); }
   if(id==='rapportJournalier'){ initRapportJournalier(); renderRapportJournalier(); }
   if(id==='parametres') chargerApercuParametres();
@@ -3184,15 +3215,17 @@ function registerStudent(){
   const brochurePrix = lgcList.reduce(function(s,l){ return s + (l.brochure>0 ? l.brochure : 0); }, 0); // total possible
   const brochurePayee = brochureTotalePayee > 0;
   const brochureIncluse = brochureTotalePayee;
-  // Frais d'inscription = frais globaux de la prestation (défini dans Paramètres)
-  const fraisInscription = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
+  // Frais d'inscription = frais globaux de la prestation (défini dans Paramètres), uniquement si la case "Appliquer les frais d'inscription" est cochée
+  const inscActiveEl=document.getElementById('inscriptionActive');
+  const inscriptionActive=inscActiveEl?inscActiveEl.checked:true;
+  const fraisInscription = inscriptionActive?((typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000):0;
   // Prix modifie (rabais) ?
   const pmEl=document.getElementById('prixModifie');
   const prix=(pmEl&&pmEl.value&&parseInt(pmEl.value)>0)?parseInt(pmEl.value):prixNormal;
   const rabais=prixNormal-prix;
-  // Frais d'inscription payés ou non (statut uniquement, toujours inclus dans le total)
+  // Frais d'inscription payés ou non (statut uniquement, toujours inclus dans le total quand applicable)
   const inscrPayeEl=document.getElementById('inscriptionPaye');
-  const inscriptionPayee=inscrPayeEl&&inscrPayeEl.checked;
+  const inscriptionPayee=inscriptionActive?(inscrPayeEl&&inscrPayeEl.checked):true;
   const totalDu=prix+fraisInscription+brochureIncluse;
   // Sauvegarder la liste des logiciels dans l'inscrit
   const logicielsList = lgcList;
@@ -3231,6 +3264,7 @@ function registerStudent(){
   ['nom','prenom','tuteur','telephone','montantPaye','echeancePaiement','prixModifie'].forEach(function(id){const el=document.getElementById(id);if(el)el.value='';});
   const dsel=document.getElementById('dureeSelect'); if(dsel) dsel.value='';
   const insImp=document.getElementById('inscriptionImpaye'); if(insImp) insImp.checked=true;
+  const insAct=document.getElementById('inscriptionActive'); if(insAct){ insAct.checked=true; toggleInscriptionActive(); }
   const rc=document.getElementById('resumeCalcul'); if(rc){rc.classList.add('hidden');rc.textContent='';}
   document.getElementById('photo').value='';
   // Réinitialiser les logiciels
@@ -3361,7 +3395,7 @@ function imprimerRecu(){
   const w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Recu A4</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
   w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
   w.document.write('h1,h2,.total{font-size:20px!important;}');
@@ -3379,7 +3413,7 @@ function genererPDF(){
   const w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>PDF Recu A4</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;font-size:14px;}');
   w.document.write('#recuPrintable{max-width:180mm;margin:0 auto;padding:5mm;}');
   w.document.write('.no-print{display:none!important;}');
   w.document.write('div{font-size:14px;}li{font-size:14px;margin-bottom:3px;}');
@@ -3772,11 +3806,13 @@ function _genRapportJournalier(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){return sameDay(d.date);});
+  var versementsJour = _listerVersementsPeriode(function(d){return d.getDate()===jour&&d.getMonth()+1===moisNum&&d.getFullYear()===annee;});
 
-  var revIns = ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers = versementsJour.reduce(function(s,v){return s+v.montant;},0);
   var revSvc = svcs.reduce(function(s,v){return s+(v.montant||0);},0);
   var totDep = deps.reduce(function(s,d){return s+(d.montant||0);},0);
-  var benef  = revIns+revSvc-totDep;
+  var benef  = revIns+revVers+revSvc-totDep;
 
   // Grouper services
   var svcMap={};
@@ -3790,7 +3826,8 @@ function _genRapportJournalier(){
   function kpi(l,v,c,bg){return '<div style="background:'+bg+';border-radius:12px;padding:12px 14px;text-align:center;flex:1;min-width:110px;"><div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:3px;">'+l+'</div><div style="font-size:18px;font-weight:900;color:'+c+';">'+v+'</div></div>';}
   html += kpi('Inscriptions',ins.length,'#172554','#dbeafe');
   html += kpi('Services',svcs.length,'#7c3aed','#ede9fe');
-  html += kpi('Rev. Inscrits',revIns.toLocaleString()+' GNF','#15803d','#dcfce7');
+  html += kpi('Rev. Nouv. Inscript.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7');
+  html += kpi('Versements Reçus',revVers.toLocaleString()+' GNF','#16a34a','#dcfce7');
   html += kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff');
   html += kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2');
   html += kpi('Bénéfice Net',benef.toLocaleString()+' GNF',benef>=0?'#15803d':'#dc2626',benef>=0?'#dcfce7':'#fee2e2');
@@ -3817,6 +3854,9 @@ function _genRapportJournalier(){
     });
     html += '</tbody></table></div>';
   } else { html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:14px;">Aucune inscription ce jour.</p>'; }
+
+  // Versements du jour (toutes échéances confondues, quel que soit le mois d'inscription)
+  html += _buildVersementsSection(versementsJour, 'Versements reçus ce jour').html;
 
   // Services du jour
   html += '<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:8px;">🖨️ Services du jour ('+svcs.length+')</h3>';
@@ -3865,6 +3905,63 @@ function parseDateFR(dateStr){
   }
   var d3=new Date(s);
   return isNaN(d3.getTime())?null:d3;
+}
+
+// ===== VERSEMENTS — utilitaires pour les rapports (lecture seule, ne modifie aucune donnée) =====
+// ins.montantPaye est cumulatif (mis à jour à chaque versement, voir enregistrerVersement).
+// Le "montant initial" verse le jour de l'inscription = montantPaye - somme des versements ulterieurs.
+function _montantInitialInscrit(ins){
+  var totVers=(ins.versements||[]).reduce(function(s,v){return s+(v.montant||0);},0);
+  return Math.max(0,(ins.montantPaye||0)-totVers);
+}
+// Parcourt tous les versements de tous les inscrits et retourne ceux dont la date (de versement)
+// correspond a matchFn(dateObj). Marque "arriere" si le versement a ete encaisse un mois/annee
+// different (posterieur) du mois d'inscription de l'eleve, pour expliquer les ecarts mensuels.
+function _listerVersementsPeriode(matchFn){
+  var out=[];
+  (typeof inscrits!=='undefined'?inscrits:[]).forEach(function(ins){
+    (ins.versements||[]).forEach(function(v){
+      var d=parseDateFR(v.date);
+      if(d&&matchFn(d)){
+        var di=parseDateFR(ins.date);
+        var arriere = di ? (d.getFullYear()>di.getFullYear() || (d.getFullYear()===di.getFullYear()&&d.getMonth()>di.getMonth())) : false;
+        out.push({ins:ins,montant:v.montant||0,date:v.date,dateObj:d,arriere:arriere});
+      }
+    });
+  });
+  out.sort(function(a,b){return a.dateObj-b.dateObj;});
+  return out;
+}
+// Construit le tableau HTML "Versements recus" + l'encart d'explication des arrieres.
+// Renvoie {html, total, arrieres} pour reutilisation dans les KPI/bénéfice.
+function _buildVersementsSection(versements, titre){
+  var total=versements.reduce(function(s,v){return s+v.montant;},0);
+  var arrieresTotal=versements.filter(function(v){return v.arriere;}).reduce(function(s,v){return s+v.montant;},0);
+  var h='<h3 style="font-size:13px;font-weight:800;color:#172554;border-left:4px solid #16a34a;padding-left:10px;margin-bottom:8px;">💰 '+titre+' ('+versements.length+')</h3>';
+  if(!versements.length){
+    h+='<p style="color:#94a3b8;font-style:italic;margin-bottom:16px;">Aucun versement enregistré sur cette période.</p>';
+    return {html:h,total:total,arrieres:arrieresTotal};
+  }
+  h+='<div style="overflow-x:auto;margin-bottom:10px;"><table style="width:100%;border-collapse:collapse;font-size:11px;">';
+  h+='<thead><tr style="background:#16a34a;color:#fff;"><th style="padding:6px 8px;text-align:left;">Matricule</th><th style="padding:6px 8px;text-align:left;">Nom &amp; Prénom</th><th style="padding:6px 8px;text-align:left;">Date versement</th><th style="padding:6px 8px;text-align:right;">Montant</th><th style="padding:6px 8px;text-align:center;">Origine</th></tr></thead><tbody>';
+  versements.forEach(function(v,i){
+    h+='<tr style="background:'+(i%2===0?'#f0fdf4':'#fff')+';">'
+      +'<td style="padding:5px 8px;font-weight:bold;color:#172554;">'+v.ins.mat+'</td>'
+      +'<td style="padding:5px 8px;">'+v.ins.nom+' '+v.ins.prenom+'</td>'
+      +'<td style="padding:5px 8px;">'+v.date+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#16a34a;font-weight:bold;">'+v.montant.toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;text-align:center;font-size:10px;'+(v.arriere?'color:#f97316;font-weight:bold;':'color:#94a3b8;')+'">'+(v.arriere?'⚠️ Mois antérieur':'Mois en cours')+'</td>'
+      +'</tr>';
+  });
+  h+='<tr style="background:#16a34a;color:#fff;font-weight:800;"><td style="padding:7px 8px;" colspan="3">TOTAL VERSEMENTS</td><td style="padding:7px 8px;text-align:right;">'+total.toLocaleString()+' GNF</td><td></td></tr>';
+  h+='</tbody></table></div>';
+  if(arrieresTotal>0){
+    h+='<div style="background:#fff7ed;border:1px solid #fdba74;border-radius:10px;padding:10px 14px;margin-bottom:16px;font-size:12px;color:#9a3412;">'
+      +'<strong>ℹ️ Explication de l\'écart:</strong> '+arrieresTotal.toLocaleString()+' GNF de ces versements correspondent à des paiements dus sur des inscriptions de mois antérieurs, encaissés sur cette période (règlement d\'arriérés). Ce montant explique une partie de l\'écart entre la valeur des nouvelles inscriptions de la période et le revenu réellement encaissé.</div>';
+  } else {
+    h+='<div style="margin-bottom:16px;"></div>';
+  }
+  return {html:h,total:total,arrieres:arrieresTotal};
 }
 
 function remplirFiltreAnnees(){
@@ -4096,6 +4193,46 @@ function changerStatutInscrit(mat, statut){
   ajouterHistorique('Statut formation: '+inscrits[idx].nom+' '+inscrits[idx].prenom+' -> '+statut);
 }
 
+// ===== STATUT PAR LOGICIEL (cas des inscriptions groupant plusieurs logiciels/formations) =====
+// N'ajoute qu'un champ optionnel "statut" sur chaque element deja existant de logicielsList
+// (aucune nouvelle collection, aucune donnee existante modifiee ou supprimee).
+function _statutInfo(statut){
+  if(statut==='termine') return {label:'✅ Terminé',color:'#15803d',bg:'#dcfce7'};
+  if(statut==='abandonne') return {label:'🚫 Abandonné',color:'#dc2626',bg:'#fee2e2'};
+  return {label:'📚 En cours',color:'#2563eb',bg:'#dbeafe'};
+}
+function changerStatutLogiciel(mat, logIdx, statut){
+  var idx = inscrits.findIndex(function(i){ return i.mat===mat; });
+  if(idx<0) return;
+  var ins = inscrits[idx];
+  if(!ins.logicielsList || !ins.logicielsList[logIdx]) return;
+  ins.logicielsList[logIdx].statut = statut;
+  // Le statut global de l'inscrit se deduit automatiquement de l'etat de chacun de ses logiciels:
+  // encore "en cours" si au moins un logiciel est en cours, sinon "termine" (ou "abandonne" si tous abandonnes).
+  var enCours = ins.logicielsList.some(function(l){return (l.statut||'en_cours')==='en_cours';});
+  if(enCours){
+    ins.statut='en_cours';
+  } else {
+    var tousAbandonnes = ins.logicielsList.every(function(l){return (l.statut||'en_cours')==='abandonne';});
+    ins.statut = tousAbandonnes?'abandonne':'termine';
+  }
+  renderAttente();
+  sauvegarder();
+  ajouterHistorique('Statut cours '+(ins.logicielsList[logIdx].nom||'')+' de '+ins.nom+' '+ins.prenom+' -> '+statut);
+}
+// Raccourci: applique le meme statut a tous les logiciels du bloc d'un coup (ex: abandon complet)
+function changerStatutTousLogiciels(mat, statut){
+  var idx = inscrits.findIndex(function(i){ return i.mat===mat; });
+  if(idx<0) return;
+  var ins = inscrits[idx];
+  if(!ins.logicielsList || !ins.logicielsList.length) return;
+  ins.logicielsList.forEach(function(l){ l.statut = statut; });
+  ins.statut = statut;
+  renderAttente();
+  sauvegarder();
+  ajouterHistorique('Statut (tous les cours) de '+ins.nom+' '+ins.prenom+' -> '+statut);
+}
+
 function modifierMatricule(idx){
   if(!peutModifier()){alert('Non autorisé');return;}
   var ins=inscrits[idx];
@@ -4172,7 +4309,7 @@ function imprimerRecuDirect(ins, logoSrc){
   var w=window.open('','_blank');
   w.document.write('<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Reçu '+ins.mat+'</title><style>');
   w.document.write('@page{size:A4 portrait;margin:12mm 15mm 12mm 15mm;}');
-  w.document.write('*{box-sizing:border-box;}');
+  w.document.write('*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}');
   w.document.write('body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:0;width:180mm;min-height:257mm;color:#111;}');
   w.document.write('.recu{max-width:180mm;margin:0 auto;padding:0;}');
   w.document.write('.header{display:flex;align-items:center;gap:16px;border-bottom:3px solid #172554;padding-bottom:12px;margin-bottom:16px;}');
@@ -5091,7 +5228,7 @@ function imprimerBulletin(){
   const el=document.getElementById('bulletinGerant');
   if(!el){alert('Aucun bulletin à imprimer');return;}
   const w=window.open('','_blank');
-  w.document.write('<html><head><title>Bulletin de Paie</title><style>body{font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
+  w.document.write('<html><head><title>Bulletin de Paie</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:16px;}.no-print{display:none;}</style></head><body>');
   w.document.write(el.outerHTML);
   w.document.write('</body></html>');
   w.document.close();
@@ -5199,7 +5336,7 @@ function genererBulletinAuto(idx, moisCible){
 
   // Ouvrir dans une nouvelle fenêtre pour impression
   var w=window.open('','_blank');
-  w.document.write('<html><head><title>Bulletin de Paie — '+u.nom+'</title><style>body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
+  w.document.write('<html><head><title>Bulletin de Paie — '+u.nom+'</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
   w.document.write(contenu);
   w.document.write('<div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#172554;color:white;padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ Imprimer</button></div>');
   w.document.write('</body></html>');
@@ -5593,13 +5730,24 @@ function renderComparaisonGraphe(){
 }
 
 // ===== CALCUL PAIEMENT EN TEMPS REEL =====
+function toggleInscriptionActive(){
+  var actEl=document.getElementById('inscriptionActive');
+  var zone=document.getElementById('inscriptionRadioZone');
+  var actif=actEl?actEl.checked:true;
+  if(zone) zone.style.display=actif?'flex':'none';
+  majCalculPaiement();
+}
+
 function majCalculPaiement(){
   // Calculer le prix total de tous les logiciels sélectionnés
   var lgcList = (typeof getLogicielsSelectionnes === 'function') ? getLogicielsSelectionnes() : [];
   var prixNormalMulti = lgcList.reduce(function(s,l){return s+l.prix;},0);
   // Somme de toutes les brochures cochées
   var brochureTotalePayee = lgcList.reduce(function(s,l){ return s + (l.brochurePayee && l.brochure>0 ? l.brochure : 0); }, 0);
-  var fraisInscMulti = (typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000;
+  // Frais d'inscription appliqués uniquement si la case "Appliquer les frais d'inscription" est cochée
+  var inscActiveEl=document.getElementById('inscriptionActive');
+  var inscriptionActive=inscActiveEl?inscActiveEl.checked:true;
+  var fraisInscMulti = inscriptionActive?((typeof fraisInscriptionGlobal!=='undefined'&&fraisInscriptionGlobal>0)?fraisInscriptionGlobal:30000):0;
   // Si aucun logiciel sélectionné, essayer le select caché (fallback)
   if(prixNormalMulti===0){
     const sel=document.getElementById('formationSelect');
@@ -5625,7 +5773,7 @@ function majCalculPaiement(){
   const rc=document.getElementById('resumeCalcul');
   if(rc){
     rc.classList.remove('hidden');
-    let txt='Inscription: '+fraisInsc.toLocaleString()+' GNF  |  Formation(s): ';
+    let txt=(inscriptionActive?('Inscription: '+fraisInsc.toLocaleString()+' GNF'):'Inscription: non appliqués')+'  |  Formation(s): ';
     if(lgcList.length>1){
       txt+=lgcList.map(function(l){return l.nom;}).join(' + ')+' = '+prixNormal.toLocaleString()+' GNF';
     } else if(rabais>0){
@@ -5979,36 +6127,205 @@ function renderAttente(){
     gSeances.forEach(function(s,idx){
       const ins=s.ins;
       const rowBg=idx%2===0?'background:#f8fafc':'background:white';
-      // Statut formation
+      // Statut formation (global, deduit automatiquement si plusieurs logiciels)
       var statut=ins.statut||'en_cours';
-      var statutLabel,statutColor,statutBg;
-      if(statut==='termine'){statutLabel='✅ Terminé';statutColor='#15803d';statutBg='#dcfce7';}
-      else if(statut==='abandonne'){statutLabel='🚫 Abandonné';statutColor='#dc2626';statutBg='#fee2e2';}
-      else{statutLabel='📚 En cours';statutColor='#2563eb';statutBg='#dbeafe';}
+      var si=_statutInfo(statut);
+      var statutLabel=si.label, statutColor=si.color, statutBg=si.bg;
 
       var mat=ins.mat;
+      var multiLogiciels = ins.logicielsList && ins.logicielsList.length>1;
+
       block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
         +'<div>'
         +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
         +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
         +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+ins.formation+'</span>'
         +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
-        +'<br><span style="font-size:11px;background:'+statutBg+';color:'+statutColor+';padding:2px 8px;border-radius:8px;font-weight:bold;margin-top:3px;display:inline-block;">'+statutLabel+'</span>'
+        +'<br><span style="font-size:11px;background:'+statutBg+';color:'+statutColor+';padding:2px 8px;border-radius:8px;font-weight:bold;margin-top:3px;display:inline-block;">'+statutLabel+(multiLogiciels?' (global)':'')+'</span>'
         +'</div>'
         +'<div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:4px;">'
         +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+s.jour+'</span>'
         +((ins.resteAPayer&&ins.resteAPayer>0)?'<span style="font-size:11px;color:#dc2626;font-weight:bold;">Reste: '+ins.resteAPayer.toLocaleString()+' GNF</span>':'')
-        +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+        +(multiLogiciels?
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">'
+        +'<span style="font-size:9px;color:#94a3b8;font-weight:bold;">Tout:</span>'
+        +'<button data-mat="'+mat+'" data-statut="en_cours" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:white;color:#2563eb;cursor:pointer;font-weight:bold;">En cours</button>'
+        +'<button data-mat="'+mat+'" data-statut="termine" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:white;color:#15803d;cursor:pointer;font-weight:bold;">Terminé</button>'
+        +'<button data-mat="'+mat+'" data-statut="abandonne" onclick="changerStatutTousLogiciels(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:white;color:#dc2626;cursor:pointer;font-weight:bold;">Abandonné</button>'
+        +'</div>':
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;">'
         +'<button data-mat="'+mat+'" data-statut="en_cours" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(statut==='en_cours'?'#2563eb':'white')+';color:'+(statut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
         +'<button data-mat="'+mat+'" data-statut="termine" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(statut==='termine'?'#15803d':'white')+';color:'+(statut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
         +'<button data-mat="'+mat+'" data-statut="abandonne" onclick="changerStatutInscrit(this.dataset.mat,this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(statut==='abandonne'?'#dc2626':'white')+';color:'+(statut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
+        +'</div>')
         +'</div>'
+        +'</div>';
+
+      // Détail par logiciel : permet de marquer chaque cours du bloc comme terminé/abandonné/en cours
+      // indépendamment des autres, quand plusieurs logiciels ont été enregistrés ensemble pour cet élève.
+      if(multiLogiciels){
+        block.innerHTML+='<div style="'+rowBg+';padding:6px 14px 12px 26px;border-top:1px dashed #e2e8f0;">';
+        ins.logicielsList.forEach(function(l,li){
+          var lStatut=l.statut||'en_cours';
+          var lsi=_statutInfo(lStatut);
+          block.innerHTML+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;padding:4px 0;'+(li>0?'border-top:1px solid #f1f5f9;':'')+'">'
+            +'<div><span style="font-size:12px;font-weight:700;color:#334155;">↳ '+l.nom+'</span>'
+            +'<span style="font-size:10px;background:'+lsi.bg+';color:'+lsi.color+';padding:1px 7px;border-radius:7px;font-weight:bold;margin-left:8px;">'+lsi.label+'</span></div>'
+            +'<div style="display:flex;gap:4px;flex-wrap:wrap;">'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="en_cours" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #2563eb;background:'+(lStatut==='en_cours'?'#2563eb':'white')+';color:'+(lStatut==='en_cours'?'white':'#2563eb')+';cursor:pointer;font-weight:bold;">En cours</button>'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="termine" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #15803d;background:'+(lStatut==='termine'?'#15803d':'white')+';color:'+(lStatut==='termine'?'white':'#15803d')+';cursor:pointer;font-weight:bold;">Terminé</button>'
+            +'<button data-mat="'+mat+'" data-idx="'+li+'" data-statut="abandonne" onclick="changerStatutLogiciel(this.dataset.mat,parseInt(this.dataset.idx),this.dataset.statut)" style="font-size:10px;padding:2px 6px;border-radius:6px;border:1px solid #dc2626;background:'+(lStatut==='abandonne'?'#dc2626':'white')+';color:'+(lStatut==='abandonne'?'white':'#dc2626')+';cursor:pointer;font-weight:bold;">Abandonné</button>'
+            +'</div>'
+            +'</div>';
+        });
+        block.innerHTML+='</div>';
+      }
+    });
+    block.innerHTML+='</div>';
+    cont.appendChild(block);
+  });
+}
+
+// ===== EMPLOIS DU TEMPS =====
+// Regroupe par créneau horaire, puis fusionne les jours d'un même élève
+// (ex: Lundi + Mercredi + Vendredi à 14h -> une seule ligne "Lundi, Mercredi, Vendredi")
+// afin d'avoir un rendu professionnel et compact (moins de pages à l'impression).
+var _ordreJoursAGP={Lundi:1,Mardi:2,Mercredi:3,Jeudi:4,Vendredi:5,Samedi:6,Dimanche:7};
+
+function _getSeancesActives(filtreJour){
+  var parCreneau={}; // horaire -> { matricule: {ins, jours:[...]} }
+  inscrits.forEach(function(ins){
+    var statut=ins.statut||'en_cours';
+    // Un élève terminé ou abandonné est automatiquement retiré des créneaux
+    if(statut==='termine'||statut==='abandonne') return;
+    if(!ins.jours||!ins.jours.length) return;
+    ins.jours.forEach(function(joursStr){
+      // Format attendu: "Jour : Heure" (ex: "Lundi : 08h-10h").
+      // On coupe sur le separateur " : " pour eviter qu'un ':' residuel
+      // ne pollue le creneau horaire (regroupement propre et professionnel).
+      var jour='', horaire='';
+      var idxSep=joursStr.indexOf(' : ');
+      if(idxSep>=0){
+        jour=joursStr.slice(0,idxSep).trim();
+        horaire=joursStr.slice(idxSep+3).trim();
+      } else {
+        var parts=joursStr.split(' ');
+        jour=parts[0]||'';
+        horaire=parts.slice(1).join(' ').replace(/^:\s*/,'').trim();
+      }
+      if(filtreJour&&jour!==filtreJour) return;
+      var k=horaire||'Sans horaire';
+      if(!parCreneau[k]) parCreneau[k]={};
+      var matKey=ins.mat||(ins.nom+'_'+ins.prenom);
+      if(!parCreneau[k][matKey]) parCreneau[k][matKey]={ins:ins,jours:[]};
+      if(parCreneau[k][matKey].jours.indexOf(jour)===-1) parCreneau[k][matKey].jours.push(jour);
+    });
+  });
+  var groupes={};
+  Object.keys(parCreneau).forEach(function(hor){
+    var liste=Object.keys(parCreneau[hor]).map(function(m){return parCreneau[hor][m];});
+    liste.forEach(function(item){
+      item.jours.sort(function(a,b){return (_ordreJoursAGP[a]||9)-(_ordreJoursAGP[b]||9);});
+    });
+    liste.sort(function(a,b){
+      var na=((a.ins.nom||'')+' '+(a.ins.prenom||'')).trim();
+      var nb=((b.ins.nom||'')+' '+(b.ins.prenom||'')).trim();
+      return na.localeCompare(nb,'fr');
+    });
+    groupes[hor]=liste;
+  });
+  return groupes;
+}
+
+// Construit l'affichage "Formation" pour l'emploi du temps: si plusieurs logiciels ont ete
+// enregistres ensemble, montre chacun avec un symbole indiquant son propre statut
+// (✅ Terminé / 📚 En cours / 🚫 Abandonné). Sinon, affiche la formation telle quelle (inchangé).
+function _formationAvecStatutsHtml(ins, forPrint){
+  if(!(ins.logicielsList && ins.logicielsList.length>1)){
+    return ins.formation;
+  }
+  var sep = forPrint ? '<br>' : '<br>';
+  return ins.logicielsList.map(function(l){
+    var si=_statutInfo(l.statut||'en_cours');
+    return '<span style="white-space:nowrap;">'+l.nom+' <span style="font-size:10px;font-weight:bold;color:'+si.color+';">'+si.label+'</span></span>';
+  }).join(sep);
+}
+
+function renderEmploiTemps(){
+  const cont=document.getElementById('emploiTempsContent');
+  if(!cont) return;
+  const filtreJour=(document.getElementById('filtreEmploiJour')||{}).value||'';
+  const groupes=_getSeancesActives(filtreJour);
+  const cles=Object.keys(groupes).sort();
+  if(!cles.length){
+    cont.innerHTML='<div class="bg-slate-50 border border-slate-200 rounded-2xl p-8 text-center text-gray-400 italic">Aucun élève actif à afficher pour ce créneau.</div>';
+    return;
+  }
+  var totalEleves=0; cles.forEach(function(k){totalEleves+=groupes[k].length;});
+  cont.innerHTML='<p class="text-sm text-slate-500 mb-3 font-bold">'+totalEleves+' élève(s) actif(s) — '+cles.length+' créneau(x)</p>';
+  cles.forEach(function(hor){
+    const gEleves=groupes[hor];
+    const block=document.createElement('div');
+    block.className='mb-4';
+    block.innerHTML='<div class="bg-blue-950 text-white px-4 py-2 rounded-t-2xl font-bold text-sm flex items-center gap-2">'
+      +'<span>🕐 '+hor+'</span>'
+      +'<span class="bg-blue-700 text-xs px-2 py-1 rounded-full">'+gEleves.length+' élève(s)</span>'
+      +'</div>'
+      +'<div class="border-2 border-blue-950 border-t-0 rounded-b-2xl overflow-hidden">';
+    gEleves.forEach(function(item,idx){
+      const ins=item.ins;
+      const joursTxt=item.jours.join(', ');
+      const rowBg=idx%2===0?'background:#f8fafc':'background:white';
+      block.innerHTML+='<div style="'+rowBg+';padding:10px 14px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px solid #e2e8f0;">'
+        +'<div>'
+        +'<span style="font-weight:bold;font-size:13px;color:#172554;">'+ins.nom+' '+ins.prenom+'</span>'
+        +'<span style="font-size:11px;color:#64748b;margin-left:8px;">'+ins.mat+'</span>'
+        +'<br><span style="font-size:12px;color:#2563eb;font-weight:bold;">'+_formationAvecStatutsHtml(ins,false)+'</span>'
+        +(ins.tel?'<span style="font-size:11px;color:#94a3b8;margin-left:8px;">📱 '+ins.tel+'</span>':'')
         +'</div>'
+        +'<span style="font-size:12px;font-weight:bold;color:#16a34a;background:#dcfce7;padding:3px 8px;border-radius:6px;">'+joursTxt+'</span>'
         +'</div>';
     });
     block.innerHTML+='</div>';
     cont.appendChild(block);
   });
+}
+
+function imprimerEmploiTemps(){
+  const filtreJour=(document.getElementById('filtreEmploiJour')||{}).value||'';
+  const groupes=_getSeancesActives(filtreJour);
+  const cles=Object.keys(groupes).sort();
+  var nomPrest=centreNom;
+  if(window._AGP_MODE&&window._agpCurrentPrest) nomPrest=window._agpCurrentPrest.centreNom||centreNom;
+  var dateGen=new Date().toLocaleDateString('fr-FR');
+  var contenu='<div style="max-width:900px;margin:0 auto;font-family:Arial,sans-serif;">';
+  contenu+='<div style="text-align:center;border-bottom:2px solid #172554;padding-bottom:12px;margin-bottom:16px;">';
+  contenu+='<div style="font-size:20px;font-weight:900;color:#172554;">'+nomPrest+'</div>';
+  contenu+='<div style="font-size:14px;font-weight:bold;color:#f97316;margin-top:2px;">EMPLOI DU TEMPS'+(filtreJour?(' — '+filtreJour):'')+'</div>';
+  contenu+='<div style="font-size:11px;color:#64748b;">Généré le '+dateGen+'</div>';
+  contenu+='</div>';
+  if(!cles.length){
+    contenu+='<p style="text-align:center;color:#94a3b8;font-style:italic;">Aucun élève actif à afficher.</p>';
+  }
+  cles.forEach(function(hor){
+    const gEleves=groupes[hor];
+    contenu+='<div style="background:#172554;color:white;padding:8px 14px;border-radius:10px 10px 0 0;font-weight:bold;font-size:14px;">🕐 '+hor+' — '+gEleves.length+' élève(s)</div>';
+    contenu+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:18px;">';
+    contenu+='<thead><tr style="background:#dbeafe;"><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Matricule</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Nom &amp; Prénom</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Formation</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Jour(s)</th><th style="padding:6px 10px;text-align:left;border:1px solid #e2e8f0;">Téléphone</th></tr></thead><tbody>';
+    gEleves.forEach(function(item){
+      const ins=item.ins;
+      const joursTxt=item.jours.join(', ');
+      contenu+='<tr><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+ins.mat+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;font-weight:bold;">'+ins.nom+' '+ins.prenom+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+_formationAvecStatutsHtml(ins,true)+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+joursTxt+'</td><td style="padding:6px 10px;border:1px solid #e2e8f0;">'+(ins.tel||'-')+'</td></tr>';
+    });
+    contenu+='</tbody></table>';
+  });
+  contenu+='</div>';
+  var w=window.open('','_blank');
+  w.document.write('<html><head><title>Emploi du Temps — '+nomPrest+'</title><style>*{-webkit-print-color-adjust:exact;print-color-adjust:exact;color-adjust:exact;}body{font-family:Arial,sans-serif;margin:0;padding:16px;background:#f1f5f9;}@media print{body{background:white;padding:0;}}</style></head><body>');
+  w.document.write(contenu);
+  w.document.write('<div style="text-align:center;margin-top:20px;"><button onclick="window.print()" style="background:#172554;color:white;padding:10px 24px;border:none;border-radius:8px;font-size:14px;font-weight:bold;cursor:pointer;">🖨️ Imprimer / Enregistrer en PDF</button></div>');
+  w.document.write('</body></html>');
+  w.document.close();
 }
 
 // ===== PARAMÈTRES PRESTATION =====
@@ -6322,9 +6639,13 @@ function _genRapportMensuel(){
     var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;
   });
 
-  var revInscr = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+  var revInscrDu     = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
+  var revInscrEncaisse = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var versementsMois = _listerVersementsPeriode(function(d){return d.getFullYear()===annee&&d.getMonth()+1===mois;});
+  var revVersements  = versementsMois.reduce(function(s,v){return s+v.montant;},0);
   var revSvc   = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep   = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var revInscr = revInscrEncaisse + revVersements; // revenu inscriptions reellement encaisse ce mois
   var benef    = revInscr + revSvc - totDep;
 
   var svcMap = {};
@@ -6344,10 +6665,12 @@ function _genRapportMensuel(){
   // KPIs
   html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
   html += _buildKpiCard('Inscrits', ins.length, '#172554', '#dbeafe');
-  html += _buildKpiCard('Rev. Inscriptions', revInscr.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Valeur Nouv. Inscript. (dû)', revInscrDu.toLocaleString()+' GNF', '#334155', '#f1f5f9');
+  html += _buildKpiCard('Encaissé Nouv. Inscript.', revInscrEncaisse.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Versements Reçus', revVersements.toLocaleString()+' GNF', '#16a34a', '#dcfce7');
   html += _buildKpiCard('Rev. Services', revSvc.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
   html += _buildKpiCard('Dépenses', totDep.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
-  html += _buildKpiCard('Bénéfice Net', benef.toLocaleString()+' GNF', benef>=0?'#15803d':'#dc2626', benef>=0?'#dcfce7':'#fee2e2');
+  html += _buildKpiCard('Bénéfice Net (Encaissé)', benef.toLocaleString()+' GNF', benef>=0?'#15803d':'#dc2626', benef>=0?'#dcfce7':'#fee2e2');
   html += _buildKpiCard('Nb Services', svcs.length, '#7c3aed', '#ede9fe');
   html += '</div>';
 
@@ -6376,6 +6699,9 @@ function _genRapportMensuel(){
   } else {
     html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune inscription ce mois.</p>';
   }
+
+  // Versements du mois (toutes echeances confondues, y compris pour des inscriptions de mois anterieurs)
+  html += _buildVersementsSection(versementsMois, 'Versements reçus ce mois').html;
 
   // Services
   html += '<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px;">🖨️ Services du mois ('+svcs.length+')</h3>';
@@ -6994,16 +7320,19 @@ function _renderRJJour(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(dp){return sameDay(dp.date);});
+  var versements=_listerVersementsPeriode(function(dd){return dd.getDate()===d&&dd.getMonth()+1===m&&dd.getFullYear()===a;});
 
-  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
   var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
-  var ben=revIns+revSvc-totDep;
+  var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
   html+=_buildRapportHeader('RAPPORT JOURNALIER — '+dateLabel.toUpperCase());
-  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revVers,revSvc,totDep,ben);
   html+=_buildRJTableInscrits(ins);
+  html+=_buildVersementsSection(versements,'Versements reçus ce jour').html;
   html+=_buildRJTableServices(svcs,revSvc);
   html+=_buildRJTableDepenses(deps,totDep);
   html+=_buildRapportFooter('Rapport du '+dateLabel);
@@ -7020,16 +7349,19 @@ function _renderRJMois(){
   var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
+  var versements=_listerVersementsPeriode(function(dd){return dd.getFullYear()===annee&&dd.getMonth()+1===mois;});
 
-  var revIns=ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
+  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
+  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
   var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
   var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
-  var ben=revIns+revSvc-totDep;
+  var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
   html+=_buildRapportHeader('RAPPORT MENSUEL — '+label.toUpperCase());
-  html+=_buildRJKpis(ins.length,svcs.length,revIns,revSvc,totDep,ben);
+  html+=_buildRJKpis(ins.length,svcs.length,revIns,revVers,revSvc,totDep,ben);
   html+=_buildRJTableInscrits(ins);
+  html+=_buildVersementsSection(versements,'Versements reçus ce mois').html;
   html+=_buildRJTableServices(svcs,revSvc);
   html+=_buildRJTableDepenses(deps,totDep);
   html+=_buildRapportFooter('Rapport de '+label);
@@ -7037,7 +7369,7 @@ function _renderRJMois(){
   document.getElementById('rapportJournalierContenu').innerHTML=html;
 }
 
-function _buildRJKpis(nbIns,nbSvc,revIns,revSvc,totDep,ben){
+function _buildRJKpis(nbIns,nbSvc,revIns,revVers,revSvc,totDep,ben){
   function kpi(label,val,color,bg){
     return '<div style="background:'+bg+';border-radius:13px;padding:14px 12px;text-align:center;flex:1;min-width:115px;">'
       +'<div style="font-size:9px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px;">'+label+'</div>'
@@ -7047,7 +7379,8 @@ function _buildRJKpis(nbIns,nbSvc,revIns,revSvc,totDep,ben){
   return '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;">'
     +kpi('Inscriptions',nbIns,'#172554','#dbeafe')
     +kpi('Services',nbSvc,'#7c3aed','#ede9fe')
-    +kpi('Rev. Inscr.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7')
+    +kpi('Rev. Nouv. Inscr.',revIns.toLocaleString()+' GNF','#15803d','#dcfce7')
+    +kpi('Versements Reçus',revVers.toLocaleString()+' GNF','#16a34a','#dcfce7')
     +kpi('Rev. Services',revSvc.toLocaleString()+' GNF','#2563eb','#eff6ff')
     +kpi('Dépenses',totDep.toLocaleString()+' GNF','#dc2626','#fee2e2')
     +kpi('Bénéfice Net',ben.toLocaleString()+' GNF',ben>=0?'#15803d':'#dc2626',ben>=0?'#dcfce7':'#fee2e2')
