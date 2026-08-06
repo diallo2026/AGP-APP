@@ -16,7 +16,7 @@
 <!-- Firebase AGP -->
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getDatabase, ref, set, onValue, get, remove } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+import { getDatabase, ref, set, onValue, get, remove, runTransaction, update } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
 
 const firebaseConfig = {
   apiKey:            "AIzaSyD0yuNllja9RTaVV1O0ZKXW-DilPowGnss",
@@ -37,50 +37,270 @@ window._agpSet    = set;
 window._agpGet    = get;
 window._agpOnVal  = onValue;
 window._agpRemove = remove;
+window._agpTx     = runTransaction;
+window._agpUpdate = update;
 
 // ============================================================
-// SAUVEGARDE FIREBASE — mode en ligne uniquement, simple et sûr
+// MOTEUR DE SYNCHRONISATION AGP v2
+// ------------------------------------------------------------
+// Corrige de façon définitive :
+//   1) les saisies des gérants invisibles pour le fondateur
+//   2) l'écrasement mutuel des données entre appareils
+//   3) la disparition totale des données
+//
+// Principe : on n'écrase JAMAIS le bloc /data avec l'état d'un
+// appareil. Chaque enregistrement passe par une TRANSACTION
+// serveur qui fusionne, enregistrement par enregistrement,
+// l'état du serveur avec les seules modifications faites ici.
+// La structure de la base est strictement inchangée :
+// agp_prest/<uid>/data garde exactement les mêmes champs.
 // ============================================================
-// ------------------------------------------------------------------
-// Empreinte normalisée des données : sert à reconnaître l'écho de nos
-// propres écritures et à ne PAS tout recharger/redessiner pour rien.
-// ------------------------------------------------------------------
+
+const AGP_LISTES   = ['users','depenses','historique','servicesTypes','formations','horaires','durees','inscrits','servicesList'];
+const AGP_COMPTEURS= ['revenu','totalDepenses','totalStudents','totalServices'];
+const AGP_HIST_MAX = 3000;
+
+function agpArr(v){
+  if(!v) return [];
+  var a = Array.isArray(v) ? v : Object.values(v);
+  return a.filter(function(x){ return x!==null && x!==undefined; });
+}
+function agpCopie(v){ try{ return JSON.parse(JSON.stringify(v)); }catch(e){ return v; } }
+
+// Signature stable d'une valeur (ignore _id : un simple marquage
+// ne doit pas être vu comme une modification du contenu).
+function agpSig(v){
+  if(v===null||v===undefined) return 'n';
+  if(typeof v!=='object') return JSON.stringify(v);
+  if(Array.isArray(v)) return '['+v.map(agpSig).join(',')+']';
+  return '{'+Object.keys(v).filter(function(k){return k!=='_id';}).sort()
+    .map(function(k){ return JSON.stringify(k)+':'+agpSig(v[k]); }).join(',')+'}';
+}
+function agpHash(s){
+  var h1=0x811c9dc5>>>0, h2=5381>>>0;
+  for(var i=0;i<s.length;i++){
+    var c=s.charCodeAt(i);
+    h1=((h1^c)*16777619)>>>0;
+    h2=(((h2<<5)+h2)+c)>>>0;
+  }
+  return h1.toString(36)+h2.toString(36);
+}
+
+// ---- Identité d'un enregistrement --------------------------
+// Le fondateur a une clé fixe (sa fiche est reconstruite à
+// chaque chargement, elle ne doit jamais être dupliquée).
+function agpCle(it, coll){
+  if(it===null||it===undefined) return 'X';
+  if(typeof it!=='object') return 'S'+String(it);
+  if(coll==='users' && it.role==='FONDATEUR') return 'ROLE_FONDATEUR';
+  if(coll==='historique') return 'H'+(it.ts||'')+'|'+(it.label||'');
+  if(it._id) return it._id;
+  return 'L'+agpHash(coll+'|'+agpSig(it));
+}
+
+// Marquage déterministe des enregistrements venus du serveur :
+// tous les appareils calculent la MÊME clé pour le même
+// enregistrement, donc la fusion les reconnaît partout.
+function agpMarquerServeur(arr, coll){
+  if(coll==='historique') return arr;
+  var vus={};
+  for(var i=0;i<arr.length;i++){
+    var it=arr[i];
+    if(it && typeof it==='object' && !it._id && !(coll==='users'&&it.role==='FONDATEUR')){
+      var sig='L'+agpHash(coll+'|'+agpSig(it));
+      vus[sig]=(vus[sig]||0)+1;
+      it._id = sig+'#'+vus[sig];
+    }
+  }
+  return arr;
+}
+// Marquage des enregistrements créés ici : identifiant unique,
+// pour que deux saisies identiques faites par deux gérants
+// restent bien DEUX enregistrements distincts.
+var _agpSeq=0;
+function agpMarquerNouveaux(arr, coll){
+  if(coll==='historique') return arr;
+  for(var i=0;i<arr.length;i++){
+    var it=arr[i];
+    if(it && typeof it==='object' && !it._id && !(coll==='users'&&it.role==='FONDATEUR')){
+      it._id = 'N'+Date.now().toString(36)+(_agpSeq++).toString(36)+Math.random().toString(36).slice(2,7);
+    }
+  }
+  return arr;
+}
+
+function agpIndexer(arr, coll){
+  var map=Object.create(null), ordre=[];
+  for(var i=0;i<arr.length;i++){
+    var k=agpCle(arr[i],coll);
+    if(!(k in map)) ordre.push(k);
+    map[k]=arr[i];
+  }
+  return {map:map, ordre:ordre};
+}
+
+// ---- Fusion 3 voies d'une liste ----------------------------
+// base   = ce que CET appareil a reçu du serveur la dernière fois
+// local  = son état actuel (base + ses propres modifications)
+// srv    = l'état réel du serveur au moment de l'écriture
+function agpFusionListe(coll, base, local, srv){
+  var B=agpIndexer(base,coll), L=agpIndexer(local,coll), S=agpIndexer(srv,coll);
+  var out=[], pris=Object.create(null);
+  for(var i=0;i<S.ordre.length;i++){
+    var k=S.ordre[i];
+    var dansB=(k in B.map), dansL=(k in L.map);
+    if(dansB && !dansL) continue;                 // supprimé ici volontairement
+    if(dansL){
+      // si l'appareil n'a pas touché cet enregistrement, la
+      // version du serveur (peut-être modifiée ailleurs) gagne
+      if(dansB && agpSig(L.map[k])===agpSig(B.map[k])) out.push(S.map[k]);
+      else out.push(L.map[k]);
+    } else {
+      out.push(S.map[k]);                         // ajout d'un autre appareil : CONSERVÉ
+    }
+    pris[k]=1;
+  }
+  for(var j=0;j<L.ordre.length;j++){
+    var k2=L.ordre[j];
+    if(pris[k2]) continue;
+    if((k2 in B.map) && !(k2 in S.map)) continue; // supprimé par un autre appareil
+    out.push(L.map[k2]);                          // nouvelle saisie de cet appareil
+  }
+  return out;
+}
+
+function agpFusionHist(base, local, srv){
+  var tout=agpFusionListe('historique', base, local, srv);
+  var lim=Date.now()-30*24*60*60*1000;
+  tout=tout.filter(function(h){
+    if(typeof h==='string') return true;
+    return h && h.ts ? (new Date(h.ts).getTime()>=lim) : true;
+  });
+  tout.sort(function(a,b){
+    var ta=(a&&a.ts)?new Date(a.ts).getTime():0;
+    var tb=(b&&b.ts)?new Date(b.ts).getTime():0;
+    return tb-ta;
+  });
+  if(tout.length>AGP_HIST_MAX) tout=tout.slice(0,AGP_HIST_MAX);
+  return tout;
+}
+
+function agpFusionNb(base, local, srv){
+  var b=Number(base)||0, l=Number(local)||0;
+  var s=Number(srv); if(!isFinite(s)) s=b;
+  var r=s+(l-b);
+  return isFinite(r)?r:l;
+}
+function agpFusionStocks(base, local, srv){
+  base=base||{}; local=local||{}; srv=srv||{};
+  var out={}, cles={};
+  Object.keys(srv).forEach(function(k){cles[k]=1;});
+  Object.keys(local).forEach(function(k){cles[k]=1;});
+  Object.keys(cles).forEach(function(k){
+    if(!(k in local) && (k in base)) return;      // supprimé ici
+    var b=Number(base[k])||0;
+    var l=(k in local)?(Number(local[k])||0):b;
+    var s=(k in srv)?(Number(srv[k])||0):b;
+    var r=s+(l-b);
+    out[k]=isFinite(r)?r:l;
+  });
+  return out;
+}
+function agpFusionObj(base, local, srv){
+  base=base||{}; local=local||{}; srv=srv||{};
+  var out={}, cles={};
+  Object.keys(srv).forEach(function(k){cles[k]=1;});
+  Object.keys(local).forEach(function(k){cles[k]=1;});
+  Object.keys(cles).forEach(function(k){
+    var dB=(k in base), dL=(k in local), dS=(k in srv);
+    if(dB && !dL) return;                                   // supprimé ici
+    if(!dL && dS){ out[k]=srv[k]; return; }                 // ajouté ailleurs
+    if(dL && dB && dS && agpSig(local[k])===agpSig(base[k])){ out[k]=srv[k]; return; }
+    if(dL) out[k]=local[k];
+  });
+  return out;
+}
+
+function agpFusion(base, local, srv){
+  base=base||{}; local=local||{}; srv=srv||{};
+  var out={};
+  AGP_LISTES.forEach(function(c){
+    if(c==='historique') return;
+    out[c]=agpFusionListe(c, agpArr(base[c]), agpArr(local[c]), agpArr(srv[c]));
+  });
+  out.historique = agpFusionHist(agpArr(base.historique), agpArr(local.historique), agpArr(srv.historique));
+  AGP_COMPTEURS.forEach(function(c){ out[c]=agpFusionNb(base[c], local[c], srv[c]); });
+  out.stocks             = agpFusionStocks(base.stocks, local.stocks, srv.stocks);
+  out.permissionsGerants = agpFusionObj(base.permissionsGerants, local.permissionsGerants, srv.permissionsGerants);
+  out.matricule          = Math.max(Number(base.matricule)||1, Number(local.matricule)||1, Number(srv.matricule)||1);
+  var bf=base.fraisInscription, lf=local.fraisInscription, sf=srv.fraisInscription;
+  out.fraisInscription   = (lf!==bf) ? lf : (sf!=null?sf:lf);
+  if(out.fraisInscription==null) out.fraisInscription=30000;
+  // Le fondateur doit toujours exister dans users
+  if(!out.users.some(function(u){return u&&u.role==='FONDATEUR';})){
+    var f=agpArr(srv.users).find(function(u){return u&&u.role==='FONDATEUR';})
+       || agpArr(base.users).find(function(u){return u&&u.role==='FONDATEUR';});
+    var p=window._agpCurrentPrest;
+    out.users.unshift(f || {nom:'Fondateur',code:(p&&p.codeFondateur)||'1234',role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0});
+  }
+  return out;
+}
+
+// ---- GARDE-FOU ANTI-EFFACEMENT -----------------------------
+// Refuse toute écriture qui viderait ou amputerait gravement
+// une collection. C'est ce verrou qui empêche définitivement
+// la disparition massive des données.
+function agpNbRec(o,c){ return agpArr(o&&o[c]).length; }
+function agpGardeFou(srv, fusion){
+  if(!srv) return null;
+  if(window._agpAutoriserPurge) return null;
+  var critiques=['inscrits','servicesList','depenses','users','formations'];
+  for(var i=0;i<critiques.length;i++){
+    var c=critiques[i];
+    var ns=agpNbRec(srv,c), nf=agpNbRec(fusion,c);
+    if(ns>0 && nf===0) return c+' : '+ns+' → 0';
+    if(ns>=4 && nf < Math.ceil(ns*0.5)) return c+' : '+ns+' → '+nf;
+  }
+  return null;
+}
+
+// ---- Normalisation d'un instantané serveur -----------------
+function agpNormaliser(v){
+  v=v||{};
+  var o={};
+  AGP_LISTES.forEach(function(c){ o[c]=agpMarquerServeur(agpArr(agpCopie(v[c])), c); });
+  o.stocks             = Object.assign({}, v.stocks||{});
+  o.permissionsGerants = agpCopie(v.permissionsGerants||{});
+  AGP_COMPTEURS.forEach(function(c){ o[c]=Number(v[c])||0; });
+  o.matricule          = Number(v.matricule)||1;
+  o.fraisInscription   = (v.fraisInscription!=null)?v.fraisInscription:30000;
+  return o;
+}
+
+// Empreinte : sert uniquement à éviter un re-rendu inutile.
 window._agpFp = function(d){
   try{
-    const A = v => !v ? [] : (Array.isArray(v) ? v : Object.values(v));
-    const clean = function(v){
-      if(v===null||v===undefined) return undefined;
-      if(Array.isArray(v)){
-        var a=[]; for(var i=0;i<v.length;i++){var c=clean(v[i]); if(c!==undefined) a.push(c);}
-        return a.length?a:undefined;
-      }
-      if(typeof v==='object'){
-        var o={}, ks=Object.keys(v);
-        for(var j=0;j<ks.length;j++){var c2=clean(v[ks[j]]); if(c2!==undefined) o[ks[j]]=c2;}
-        return Object.keys(o).length?o:undefined;
-      }
-      return v;
-    };
-    const st = function(v){
-      if(v===undefined) return 'null';
-      if(v===null||typeof v!=='object') return JSON.stringify(v);
-      if(Array.isArray(v)) return '['+v.map(st).join(',')+']';
-      return '{'+Object.keys(v).sort().map(function(k){return JSON.stringify(k)+':'+st(v[k]);}).join(',')+'}';
-    };
-    d = d || {};
-    return st(clean([
-      A(d.users), d.stocks||{}, d.permissionsGerants||{},
-      d.matricule==null?1:d.matricule, d.revenu||0, d.totalDepenses||0, A(d.depenses),
-      d.totalStudents||0, d.totalServices||0, A(d.historique), A(d.servicesTypes),
-      A(d.formations), A(d.horaires), A(d.durees), A(d.inscrits), A(d.servicesList),
-      d.fraisInscription==null?30000:d.fraisInscription
-    ]));
+    d=d||{};
+    return agpSig([
+      agpArr(d.users), d.stocks||{}, d.permissionsGerants||{},
+      d.matricule==null?1:d.matricule, d.revenu||0, d.totalDepenses||0, agpArr(d.depenses),
+      d.totalStudents||0, d.totalServices||0, agpArr(d.historique), agpArr(d.servicesTypes),
+      agpArr(d.formations), agpArr(d.horaires), agpArr(d.durees), agpArr(d.inscrits),
+      agpArr(d.servicesList), d.fraisInscription==null?30000:d.fraisInscription
+    ]);
   }catch(e){ return null; }
 };
 
-// Construction du bloc de données (structure inchangée)
+// ---- Construction du bloc local (structure inchangée) ------
 function agpBuildData(){
-  const data = {
+  try{
+    agpMarquerNouveaux(typeof users!=='undefined'?users:[], 'users');
+    agpMarquerNouveaux(typeof depenses!=='undefined'?depenses:[], 'depenses');
+    agpMarquerNouveaux(typeof formations!=='undefined'?formations:[], 'formations');
+    agpMarquerNouveaux(typeof inscrits!=='undefined'?inscrits:[], 'inscrits');
+    agpMarquerNouveaux(typeof servicesList!=='undefined'?servicesList:[], 'servicesList');
+  }catch(e){}
+  return {
     users:              typeof users!=='undefined'?users:[],
     stocks:             typeof stocks!=='undefined'?stocks:{},
     permissionsGerants: typeof permissionsGerants!=='undefined'?permissionsGerants:{},
@@ -99,45 +319,160 @@ function agpBuildData(){
     servicesList:       typeof servicesList!=='undefined'?servicesList:[],
     fraisInscription:   typeof fraisInscriptionGlobal!=='undefined'?fraisInscriptionGlobal:30000
   };
-  return data;
 }
 
-// Écriture réelle vers Firebase
-function agpPushNow(){
-  const p = window._agpCurrentPrest;
-  if(!p || !window._AGP_READY) return;
-  const data = agpBuildData();
-  window._agpLastSaveFp   = window._agpFp(data);
-  window._agpLastPush     = Date.now();
-  window._agpPendingSave  = false;
-  set(ref(db, 'agp_prest/' + p.uid + '/data'), data).catch(e=>console.warn('Save err:',e));
-  agpFlashSync();
+// ============================================================
+// FILET DE SÉCURITÉ LOCAL
+// (agp_offline_<uid> était lu par l'outil de récupération mais
+//  n'était JAMAIS écrit : il est maintenant réellement alimenté)
+// ============================================================
+function agpVolume(d){
+  return agpNbRec(d,'inscrits')+agpNbRec(d,'servicesList')+agpNbRec(d,'depenses')+agpNbRec(d,'formations');
+}
+function agpSauvegardeLocale(uid, data){
+  if(!uid||!data) return;
+  var vol=agpVolume(data);
+  try{
+    // ne jamais remplacer une sauvegarde plus riche par une plus pauvre
+    var anc=localStorage.getItem('agp_offline_'+uid);
+    if(anc){
+      var a=JSON.parse(anc);
+      if(a && a.data && agpVolume(a.data)>vol && (Date.now()-(a.ts||0))<48*3600*1000) return;
+    }
+    localStorage.setItem('agp_offline_'+uid, JSON.stringify({ts:Date.now(), data:data}));
+  }catch(e){ agpPurgerSnaps(); }
+  if(vol<=0) return;
+  try{
+    var jour=new Date().toISOString().slice(0,10);
+    var cle='agp_snap_'+uid+'_'+jour;
+    var ex=localStorage.getItem(cle);
+    if(ex){ var e2=JSON.parse(ex); if(e2&&e2.data&&agpVolume(e2.data)>vol) return; }
+    localStorage.setItem(cle, JSON.stringify({ts:Date.now(), data:data}));
+    agpPurgerSnaps(uid);
+  }catch(e){ agpPurgerSnaps(); }
+}
+function agpPurgerSnaps(uid){
+  try{
+    var cles=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k && k.indexOf('agp_snap_')===0 && (!uid || k.indexOf('agp_snap_'+uid+'_')===0)) cles.push(k);
+    }
+    cles.sort();
+    while(cles.length>7){ localStorage.removeItem(cles.shift()); }
+  }catch(e){}
 }
 
-// SAUVEGARDE : le premier clic écrit tout de suite (aucun délai).
-// Seuls les clics très rapprochés sont regroupés en une seule écriture.
-window.agpSaveFirebase = function() {
+// ============================================================
+// SAUVEGARDE SERVEUR DU JOUR (nœud additionnel, /data intact)
+// agp_prest/<uid>/sauvegardes/<AAAA-MM-JJ>
+// ============================================================
+function agpSauvegardeServeur(uid, data){
+  if(!uid || !data || agpVolume(data)<=0) return;
+  if(window._agpSnapFait===uid) return;
+  window._agpSnapFait=uid;
+  var jour=new Date().toISOString().slice(0,10);
+  get(ref(db,'agp_prest/'+uid+'/sauvegardes')).then(function(sn){
+    var v=sn.val()||{};
+    if(!v[jour] || agpVolume(v[jour])<agpVolume(data)){
+      set(ref(db,'agp_prest/'+uid+'/sauvegardes/'+jour), data).catch(function(){});
+    }
+    var jours=Object.keys(v).sort();
+    while(jours.length>10){ remove(ref(db,'agp_prest/'+uid+'/sauvegardes/'+jours.shift())).catch(function(){}); }
+  }).catch(function(){});
+}
+
+// ============================================================
+// ÉCRITURE : transaction serveur, jamais d'écrasement global
+// ============================================================
+function agpEcrire(){
   const p = window._agpCurrentPrest;
-  if(!p || !window._AGP_READY) return;
+  if(!p || !p.uid) return;
+  // Verrou absolu : aucune écriture tant que l'état du serveur
+  // n'a pas été reçu pour CETTE prestation.
+  if(!window._AGP_READY || !window._agpBase) return;
+
+  const base  = window._agpBase;
+  const local = agpCopie(agpBuildData());
+  window._agpPendingSave = false;
+  window._agpLastPush    = Date.now();
+  window._agpEnCours     = true;
+  var refus = null;
+
+  runTransaction(ref(db,'agp_prest/'+p.uid+'/data'), function(courant){
+    var srv = courant || {};
+    var fus = agpFusion(base, local, srv);
+    var pb  = agpGardeFou(courant, fus);
+    if(pb){ refus = pb; return; }   // annule la transaction
+    return fus;
+  }, {applyLocally:false}).then(function(res){
+    window._agpEnCours = false;
+    if(res && res.committed && res.snapshot){
+      var v = res.snapshot.val() || {};
+      window._agpBase       = agpNormaliser(v);
+      window._agpLastSaveFp = window._agpFp(v);
+      window._agpEchecs     = 0;
+      agpSauvegardeLocale(p.uid, v);
+      agpSauvegardeServeur(p.uid, v);
+      agpFlashSync();
+    } else if(refus){
+      agpAlerteProtection(refus);
+    }
+  }).catch(function(e){
+    window._agpEnCours = false;
+    console.warn('AGP sauvegarde:', e);
+    agpSyncErreur();
+    window._agpEchecs = (window._agpEchecs||0)+1;
+    if(window._agpEchecs<6){
+      clearTimeout(window._agpRetryT);
+      window._agpRetryT = setTimeout(function(){ if(window._AGP_READY) agpEcrire(); }, 2500*window._agpEchecs);
+    }
+  });
+}
+
+// Premier clic : écriture immédiate. Clics rapprochés : regroupés.
+window.agpSaveFirebase = function(){
+  const p = window._agpCurrentPrest;
+  if(!p || !window._AGP_READY || !window._agpBase) return;
   const now = Date.now();
   if(!window._agpLastPush || (now - window._agpLastPush) > 400){
     if(window._agpSaveT){ clearTimeout(window._agpSaveT); window._agpSaveT=null; }
-    agpPushNow();
+    agpEcrire();
     return;
   }
   window._agpPendingSave = true;
   agpFlashSync();
   if(window._agpSaveT) return;
   window._agpSaveT = setTimeout(function(){
-    window._agpSaveT = null;
-    if(window._agpPendingSave) agpPushNow();
+    window._agpSaveT=null;
+    if(window._agpPendingSave) agpEcrire();
   }, 400);
 };
-window.agpFlushSave = function(){ if(window._agpPendingSave) agpPushNow(); };
+window.agpFlushSave = function(){ if(window._agpPendingSave) agpEcrire(); };
 window.addEventListener('beforeunload', function(){ window.agpFlushSave(); });
-document.addEventListener('visibilitychange', function(){ if(document.hidden) window.agpFlushSave(); });
+window.addEventListener('pagehide',      function(){ window.agpFlushSave(); });
+document.addEventListener('visibilitychange', function(){
+  if(document.hidden){ window.agpFlushSave(); }
+  else { agpReprendre(); }   // au retour : on se resynchronise
+});
+window.addEventListener('online', function(){ agpReprendre(); });
 
-// Indicateur visuel simple — vert 2s puis retour bleu
+// Reprise après veille / perte de réseau : le socket temps réel
+// meurt souvent sur mobile, c'est une des causes du "le fondateur
+// ne voit pas les saisies des gérants". On relit explicitement.
+function agpReprendre(){
+  var p=window._agpCurrentPrest;
+  if(!p||!p.uid||!window._AGP_MODE) return;
+  if(window._agpRepriseT) return;
+  window._agpRepriseT=setTimeout(function(){
+    window._agpRepriseT=null;
+    get(ref(db,'agp_prest/'+p.uid+'/data')).then(function(sn){
+      if(window._agpAppliquer) window._agpAppliquer(sn.val());
+    }).catch(function(){});
+  }, 300);
+}
+
+// ---- Indicateurs ------------------------------------------
 function agpFlashSync(){
   var dot=document.getElementById('agpStatusDot');
   var txt=document.getElementById('agpStatusText');
@@ -148,103 +483,200 @@ function agpFlashSync(){
     dot.style.background='#22c55e'; txt.textContent='En ligne'; txt.style.color='#15803d';
   },2000);
 }
+function agpSyncErreur(){
+  var dot=document.getElementById('agpStatusDot');
+  var txt=document.getElementById('agpStatusText');
+  if(!dot||!txt) return;
+  clearTimeout(window._agpFlashT);
+  dot.style.background='#f59e0b'; txt.textContent='Reconnexion…'; txt.style.color='#b45309';
+}
+function agpAlerteProtection(detail){
+  try{ console.warn('AGP : écriture bloquée par le garde-fou ('+detail+')'); }catch(e){}
+  var b=document.getElementById('agpProtBanner');
+  if(!b){
+    b=document.createElement('div');
+    b.id='agpProtBanner';
+    b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9999998;background:#b45309;color:#fff;padding:10px 14px;font-size:13px;font-family:inherit;text-align:center';
+    document.body.appendChild(b);
+  }
+  b.innerHTML='🛡️ Sauvegarde bloquée : elle aurait supprimé des données existantes ('+detail+'). '
+    +'Rien n\'a été perdu. Rechargez la page pour vous resynchroniser. '
+    +'<button onclick="location.reload()" style="margin-left:8px;padding:4px 10px;border:none;border-radius:6px;background:#fff;color:#b45309;font-weight:700;cursor:pointer;font-family:inherit">Recharger</button>';
+}
 
 // ============================================================
-// CHARGEMENT FIREBASE — une seule lecture, simple et sûr
+// CHARGEMENT : écoute temps réel + détection de perte
 // ============================================================
-window.agpLoadData = function(prest) {
-  // Stopper l'ancien listener s'il existe
-  if(window._agpListener){ window._agpListener(); window._agpListener=null; }
-  // Bloquer toute sauvegarde pendant le chargement
-  window._AGP_READY=false;
+window.agpLoadData = function(prest){
+  if(window._agpListener){ try{window._agpListener();}catch(e){} window._agpListener=null; }
+  window._AGP_READY = false;
+  window._agpBase   = null;          // aucune écriture avant réception
+  window._agpSnapFait = null;
+  window._agpLastSaveFp = null;
 
-  const toA = v => !v?[]:Array.isArray(v)?v:Object.values(v);
-
-  const unsubscribe = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
-    const data = snap.val();
-
-    // ÉCHO LOCAL : ce snapshot est exactement ce que l'on vient d'écrire.
-    // On ne recharge rien et on ne redessine rien => plus aucune latence réseau ressentie.
-    if(window._AGP_READY && window._agpLastSaveFp && window._agpFp(data)===window._agpLastSaveFp) return;
-
-    // RESET propre avant chargement
-    users=[{nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0}];
-    stocks={}; historique=[]; depenses=[]; inscrits=[]; servicesList=[];
-    formations=[]; horaires=[]; durees=[];
-    servicesTypes=['Saisie','Impression','Photocopie','Prestation'];
-    permissionsGerants={}; revenu=0; totalDepenses=0; totalStudents=0; totalServices=0;
-    matricule=1;
-    if(typeof fraisInscriptionGlobal!=='undefined') fraisInscriptionGlobal=30000;
-
-    // Charger depuis Firebase si des données existent
-    if(data){
-      if(data.users)              users              = toA(data.users);
-      if(data.stocks)             stocks             = data.stocks;
-      if(data.historique)         historique         = toA(data.historique);
-      if(data.depenses)           depenses           = toA(data.depenses);
-      if(data.inscrits)           inscrits           = toA(data.inscrits);
-      if(data.servicesList)       servicesList       = toA(data.servicesList);
-      if(data.formations)         formations         = toA(data.formations);
-      if(data.horaires)           horaires           = Array.isArray(data.horaires)?data.horaires:Object.values(data.horaires||{});
-      if(data.durees)             durees             = toA(data.durees);
-      if(data.servicesTypes)      servicesTypes      = toA(data.servicesTypes);
-      if(data.permissionsGerants) permissionsGerants = data.permissionsGerants||{};
-      if(data.revenu        !=null) revenu        = data.revenu;
-      if(data.totalDepenses !=null) totalDepenses = data.totalDepenses;
-      if(data.totalStudents !=null) totalStudents = data.totalStudents;
-      if(data.totalServices !=null) totalServices = data.totalServices;
-      if(data.matricule     !=null) matricule     = data.matricule;
-      if(data.fraisInscription!=null && typeof fraisInscriptionGlobal!=='undefined')
-                                    fraisInscriptionGlobal = data.fraisInscription;
+  function appliquer(data){
+    // Rien de nouveau à afficher ? on ne redessine pas.
+    if(window._AGP_READY && window._agpBase){
+      try{
+        if(window._agpFp(data)===window._agpFp(agpBuildData())){
+          window._agpBase = agpNormaliser(data);
+          return;
+        }
+      }catch(e){}
     }
 
-    // Garantir que le fondateur est dans users
-    if(!users.find(u=>u.role==='FONDATEUR'))
-      users.unshift({nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0});
+    // ---- Détection d'une perte massive côté serveur --------
+    if(window._agpBase && agpVolume(window._agpBase)>0 && agpVolume(data||{})===0){
+      agpAlertePerte(prest, window._agpBase);
+      return;   // on garde l'affichage et l'état en mémoire intacts
+    }
 
-    // Synchroniser l'index gérant
+    var norm = agpNormaliser(data);
+
+    users              = norm.users;
+    stocks             = norm.stocks;
+    permissionsGerants = norm.permissionsGerants;
+    matricule          = norm.matricule;
+    revenu             = norm.revenu;
+    totalDepenses      = norm.totalDepenses;
+    totalStudents      = norm.totalStudents;
+    totalServices      = norm.totalServices;
+    depenses           = norm.depenses;
+    historique         = norm.historique;
+    servicesTypes      = norm.servicesTypes.length ? norm.servicesTypes : ['Saisie','Impression','Photocopie','Prestation'];
+    formations         = norm.formations;
+    horaires           = norm.horaires;
+    durees             = norm.durees;
+    inscrits           = norm.inscrits;
+    servicesList       = norm.servicesList;
+    if(typeof fraisInscriptionGlobal!=='undefined') fraisInscriptionGlobal = norm.fraisInscription;
+
+    if(!users.find(function(u){return u&&u.role==='FONDATEUR';}))
+      users.unshift({nom:'Fondateur',code:prest.codeFondateur,role:'FONDATEUR',bloque:false,salaire:0,salaireMois:{},salaireMode:'fixe',salairePourcentage:0});
+    else if(prest.codeFondateur){
+      var fo=users.find(function(u){return u&&u.role==='FONDATEUR';});
+      if(fo && !fo.code) fo.code=prest.codeFondateur;
+    }
+
+    // Purge d'affichage de l'historique > 1 mois
+    var lim=Date.now()-30*24*60*60*1000;
+    historique = historique.filter(function(h){
+      if(typeof h==='string') return true;
+      return h && h.ts ? (new Date(h.ts).getTime()>=lim) : true;
+    });
+
     if(typeof currentRole!=='undefined' && currentRole==='GERANT' && typeof currentUser!=='undefined'){
-      const gi=users.findIndex(u=>u.nom===currentUser||u.nom.includes(currentUser)||currentUser.includes(u.nom));
+      var gi=users.findIndex(function(u){return u&&(u.nom===currentUser||(u.nom&&u.nom.indexOf(currentUser)>=0)||(currentUser&&currentUser.indexOf(u.nom)>=0));});
       if(gi>=0 && typeof currentUserIndex!=='undefined') currentUserIndex=gi;
     }
 
-    // Purger l'historique de plus d'1 mois dès le chargement
-    var _maintenant = new Date();
-    var _unMoisAvant = new Date(_maintenant.getTime() - 30*24*60*60*1000);
-    historique = historique.filter(function(h){
-      if(typeof h === 'string') return true; // compatibilité ancien format, gardé
-      return h.ts ? new Date(h.ts) >= _unMoisAvant : true;
-    });
-    // DONNÉES PRÊTES — on autorise les sauvegardes
+    // La base de fusion = exactement ce que le serveur contient.
+    window._agpBase   = agpNormaliser(data);
     window._AGP_READY = true;
 
-    // Rafraîchir l'interface — immédiatement, sans temporisation
+    agpSauvegardeLocale(prest.uid, data||{});
+    agpSauvegardeServeur(prest.uid, data||{});
+
     try{ loadUsers(); }catch(e){}
     try{ updateDashboard(); }catch(e){}
-    (function(){
-      try{ buildJoursSection(); }catch(e){}
-      try{ renderServiceSelect(); }catch(e){}
-      try{ renderFormationSelect(); }catch(e){}
-      try{ renderCatalogueFormations(); }catch(e){}
-      try{ renderHoraireTable(); }catch(e){}
-      try{ renderDureeTable(); }catch(e){}
-      try{ renderStock(); }catch(e){}
-      try{ renderStockSelect(); }catch(e){}
-      try{ renderSalaires(); }catch(e){}
-      try{ renderManagerList(); }catch(e){}
-      try{ renderInscrits(); }catch(e){}
-      try{ renderHistorique(); }catch(e){}
-      try{ renderDepenses(); }catch(e){}
-      try{ verifierEcheances(); }catch(e){}
-      try{ renderAttente(); }catch(e){}
-      try{ _initDashFiltre(); }catch(e){}
-      var dt=document.getElementById('dateText');
-      if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
-      try{ agpMajAccesGerants(); }catch(e){}
-    })();
+    try{ buildJoursSection(); }catch(e){}
+    try{ renderServiceSelect(); }catch(e){}
+    try{ renderFormationSelect(); }catch(e){}
+    try{ renderCatalogueFormations(); }catch(e){}
+    try{ renderHoraireTable(); }catch(e){}
+    try{ renderDureeTable(); }catch(e){}
+    try{ renderStock(); }catch(e){}
+    try{ renderStockSelect(); }catch(e){}
+    try{ renderSalaires(); }catch(e){}
+    try{ renderManagerList(); }catch(e){}
+    try{ renderInscrits(); }catch(e){}
+    try{ renderHistorique(); }catch(e){}
+    try{ renderDepenses(); }catch(e){}
+    try{ verifierEcheances(); }catch(e){}
+    try{ renderAttente(); }catch(e){}
+    try{ _initDashFiltre(); }catch(e){}
+    var dt=document.getElementById('dateText');
+    if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+    try{ agpMajAccesGerants(); }catch(e){}
+  }
+
+  window._agpAppliquer = appliquer;
+  window._agpListener  = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
+    appliquer(snap.val());
+  }, function(err){
+    console.warn('AGP écoute:', err);
+    agpSyncErreur();
   });
-  window._agpListener=unsubscribe;
+
+  // Filet : si le serveur ne répond pas, on n'écrit rien et on
+  // propose la reprise. Aucun risque d'écraser avec du vide.
+  clearTimeout(window._agpTimeoutT);
+  window._agpTimeoutT=setTimeout(function(){
+    if(!window._AGP_READY) agpSyncErreur();
+  }, 8000);
+
+  // Resynchronisation périodique de sécurité (réseau instable)
+  clearInterval(window._agpPollT);
+  window._agpPollT=setInterval(function(){
+    if(window._AGP_MODE && window._agpCurrentPrest && !document.hidden) agpReprendre();
+  }, 45000);
 };
+
+// ---- Bannière + restauration en cas de perte détectée -------
+function agpAlertePerte(prest, sauvegarde){
+  var b=document.getElementById('agpPerteBanner');
+  if(!b){
+    b=document.createElement('div');
+    b.id='agpPerteBanner';
+    b.style.cssText='position:fixed;left:0;right:0;top:0;z-index:9999999;background:#b91c1c;color:#fff;padding:12px 14px;font-size:13px;font-family:inherit;text-align:center';
+    document.body.appendChild(b);
+  }
+  b.innerHTML='⚠️ Les données de cette prestation sont vides sur le serveur, alors que cet appareil en possède une copie complète. '
+    +'<button id="agpBtnRestaurer" style="margin-left:8px;padding:5px 12px;border:none;border-radius:6px;background:#fff;color:#b91c1c;font-weight:700;cursor:pointer;font-family:inherit">Restaurer maintenant</button>';
+  var btn=document.getElementById('agpBtnRestaurer');
+  if(btn) btn.onclick=function(){
+    window._agpAutoriserPurge=false;
+    set(ref(db,'agp_prest/'+prest.uid+'/data'), sauvegarde).then(function(){
+      b.style.background='#15803d';
+      b.textContent='✅ Données restaurées.';
+      setTimeout(function(){ b.remove(); }, 4000);
+    }).catch(function(e){ alert('Erreur restauration: '+e.message); });
+  };
+}
+
+// ---- Restauration manuelle (fondateur / concepteur) --------
+window.agpRestaurerDepuisSource = function(uid, data){
+  if(!uid||!data) return Promise.reject(new Error('source vide'));
+  return get(ref(db,'agp_prest/'+uid+'/data')).then(function(sn){
+    var actuel=sn.val()||{};
+    // fusion : on n'enlève jamais ce qui est déjà en ligne
+    var fus=agpFusion({}, agpNormaliser(data), actuel);
+    return set(ref(db,'agp_prest/'+uid+'/data'), fus).then(function(){ return fus; });
+  });
+};
+window.agpSourcesRecuperation = function(uid){
+  var src=[];
+  try{
+    var o=localStorage.getItem('agp_offline_'+uid);
+    if(o){ var oo=JSON.parse(o); if(oo&&oo.data) src.push({type:'Copie locale', ts:oo.ts, data:oo.data, vol:agpVolume(oo.data)}); }
+  }catch(e){}
+  try{
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k && k.indexOf('agp_snap_'+uid+'_')===0){
+        var s=JSON.parse(localStorage.getItem(k));
+        if(s&&s.data) src.push({type:'Instantané '+k.split('_').pop(), ts:s.ts, data:s.data, vol:agpVolume(s.data)});
+      }
+    }
+  }catch(e){}
+  return get(ref(db,'agp_prest/'+uid+'/sauvegardes')).then(function(sn){
+    var v=sn.val()||{};
+    Object.keys(v).forEach(function(j){ src.push({type:'Sauvegarde serveur '+j, ts:j, data:v[j], vol:agpVolume(v[j])}); });
+    src.sort(function(a,b){return b.vol-a.vol;});
+    return src;
+  }).catch(function(){ src.sort(function(a,b){return b.vol-a.vol;}); return src; });
+};
+window._agpVolume = agpVolume;
 </script>
 
 <!-- Script AGP (landing, register, login, concepteur) -->
@@ -962,7 +1394,7 @@ function agpRestoreAllData(){
             if(bObj&&bObj.data&&bObj.data.inscrits){
               var nbIns=Array.isArray(bObj.data.inscrits)?bObj.data.inscrits.length:Object.keys(bObj.data.inscrits).length;
               if(nbIns>0){
-                s(r(db,'agp_prest/'+uid+'/data'),bObj.data);
+                window.agpRestaurerDepuisSource(uid,bObj.data).catch(function(){});
                 restored++;
               }
             }
@@ -2339,30 +2771,10 @@ function charger(){
     const sl=localStorage.getItem('neindi_services_list'); if(sl) servicesList=JSON.parse(sl);
     const cn=localStorage.getItem('neindi_centre_nom'); if(cn) centreNom=cn;
     const ca=localStorage.getItem('neindi_centre_adresse'); if(ca) centreAdresse=ca;
-    // RESET FORCE - remettre tous les compteurs a zero
-    inscrits=[];
-    servicesList=[];
-    depenses=[];
-    revenu=0;
-    totalDepenses=0;
-    totalStudents=0;
-    totalServices=0;
-    matricule=1;
-    historique=[];
-    Object.keys(stocks).forEach(function(k){ stocks[k]=0; });
-    // Sauvegarder immediatement pour ecraser l'ancien localStorage
-    try{
-      localStorage.setItem('neindi_inscrits','[]');
-      localStorage.setItem('neindi_services_list','[]');
-      localStorage.setItem('neindi_depenses_list','[]');
-      localStorage.setItem('neindi_revenu','0');
-      localStorage.setItem('neindi_depenses','0');
-      localStorage.setItem('neindi_students','0');
-      localStorage.setItem('neindi_services_count','0');
-      localStorage.setItem('neindi_history','[]');
-      localStorage.setItem('neindi_matricule','1');
-      localStorage.setItem('neindi_stocks', JSON.stringify(stocks));
-    }catch(e){}
+    // (Ancien bloc "RESET FORCE" SUPPRIME : il remettait a zero toutes
+    //  les donnees ET ecrasait la copie locale de secours a CHAQUE
+    //  ouverture de la page. C'est ce qui empechait toute recuperation
+    //  apres une perte. On ne touche plus a rien ici.)
     const clogo=localStorage.getItem('neindi_centre_logo');
     if(clogo){
       const li=document.getElementById('loginLogo');
@@ -5381,8 +5793,9 @@ window.agpRecupererToutesPrests = async function(){
   if(!log) return;
   log.style.display='block';
   log.textContent='⏳ Connexion Firebase...\n';
-  var db=window._agpDb, r=window._agpRef, g=window._agpGet, s=window._agpSet;
+  var db=window._agpDb, r=window._agpRef, g=window._agpGet;
   if(!db){log.textContent+='❌ Firebase non disponible.\n';return;}
+  var vol=window._agpVolume||function(d){return 0;};
   try{
     log.textContent+='📦 Lecture de toutes les prestations...\n';
     var allSnap=await g(r(db,'agp_prest'));
@@ -5390,58 +5803,52 @@ window.agpRecupererToutesPrests = async function(){
     if(!allPracts){log.textContent+='❌ Aucune prestation trouvee.\n';return;}
     var uids=Object.keys(allPracts);
     log.textContent+='✅ '+uids.length+' prestations trouvees.\n\n';
-    var videes=0,ok=0,restaurees=0;
+    var videes=0,ok=0,restaurees=0,sansSource=0;
     for(var i=0;i<uids.length;i++){
       var uid=uids[i];
-      var prest=allPracts[uid];
+      var prest=allPracts[uid]||{};
       var info=prest.info||{};
       var data=prest.data||null;
       var nom=info.centreNom||info.nom||uid;
-      var nbIns=0,nbSvc=0,nbDep=0;
-      if(data){
-        if(data.inscrits) nbIns=Array.isArray(data.inscrits)?data.inscrits.length:Object.keys(data.inscrits).length;
-        if(data.servicesList) nbSvc=Array.isArray(data.servicesList)?data.servicesList.length:Object.keys(data.servicesList).length;
-        if(data.depenses) nbDep=Array.isArray(data.depenses)?data.depenses.length:Object.keys(data.depenses).length;
-      }
-      if(!data||(nbIns===0&&nbSvc===0&&nbDep===0)){
-        log.textContent+='⚠️  ['+nom+'] VIDE — '+nbIns+' inscrits, '+nbSvc+' services\n';
-        videes++;
-        var backup=null;
-        try{var b=localStorage.getItem('agp_offline_'+uid);if(b)backup=JSON.parse(b);}catch(e){}
-        if(backup&&backup.data){
-          var bd=backup.data;
-          var nbBI=bd.inscrits?bd.inscrits.length:0;
-          var nbBS=bd.servicesList?bd.servicesList.length:0;
-          if(nbBI>0||nbBS>0){
-            log.textContent+='   💾 Backup local: '+nbBI+' inscrits, '+nbBS+' services\n';
-            log.textContent+='   ↗️  Restauration Firebase...\n';
-            try{
-              await s(r(db,'agp_prest/'+uid+'/data'),bd);
-              log.textContent+='   ✅ RESTAUREE avec succes!\n';
-              restaurees++;
-            }catch(e2){log.textContent+='   ❌ Erreur: '+e2.message+'\n';}
-          } else {
-            log.textContent+='   ℹ️  Backup local vide aussi.\n';
-          }
-        } else {
-          log.textContent+='   ℹ️  Pas de backup sur cet appareil.\n';
-          log.textContent+='      → Faire ouvrir l\'app par le fondateur depuis SON appareil.\n';
-        }
-      } else {
-        log.textContent+='✅ ['+nom+'] OK — '+nbIns+' inscrits, '+nbSvc+' services, '+nbDep+' depenses\n';
+      var vActuel=vol(data||{});
+      if(vActuel>0){
+        log.textContent+='✅ ['+nom+'] OK — '+vActuel+' enregistrements\n';
         ok++;
+        continue;
       }
+      log.textContent+='⚠️  ['+nom+'] VIDE\n';
+      videes++;
+      // Sources possibles : sauvegardes serveur, copie locale, instantanes locaux
+      var sources=[];
+      try{ sources=await window.agpSourcesRecuperation(uid); }catch(e){ sources=[]; }
+      sources=sources.filter(function(s){return s.vol>0;});
+      if(!sources.length){
+        log.textContent+='   ℹ️  Aucune source de recuperation trouvee.\n';
+        log.textContent+='      → Ouvrir l\'app depuis un appareil qui a servi a la saisie.\n';
+        sansSource++;
+        continue;
+      }
+      var best=sources[0];
+      log.textContent+='   💾 Source retenue: '+best.type+' ('+best.vol+' enregistrements)\n';
+      log.textContent+='   ↗️  Restauration (fusion, sans rien supprimer)...\n';
+      try{
+        await window.agpRestaurerDepuisSource(uid, best.data);
+        log.textContent+='   ✅ RESTAUREE avec succes!\n';
+        restaurees++;
+      }catch(e2){ log.textContent+='   ❌ Erreur: '+e2.message+'\n'; }
     }
     log.textContent+='\n════════════════════\n';
     log.textContent+='BILAN:\n';
     log.textContent+='  Prestations OK: '+ok+'\n';
     log.textContent+='  Prestations vides: '+videes+'\n';
     log.textContent+='  Restaurees: '+restaurees+'\n';
-    if(videes-restaurees>0){
-      log.textContent+='\n⚠️  '+(videes-restaurees)+' prestations a recuperer depuis\n';
-      log.textContent+='   l\'appareil du fondateur de chaque boutique.\n';
+    log.textContent+='  Sans source disponible: '+sansSource+'\n';
+    if(sansSource>0){
+      log.textContent+='\n⚠️  '+sansSource+' prestation(s) a recuperer depuis\n';
+      log.textContent+='   l\'appareil du fondateur ou d\'un gerant de chaque boutique.\n';
+      log.textContent+='   (Ouvrir cette page sur CET appareil puis relancer le scan.)\n';
     }
-    if(restaurees>0) log.textContent+='\n🎉 '+restaurees+' prestations restaurees!\n';
+    if(restaurees>0) log.textContent+='\n🎉 '+restaurees+' prestation(s) restauree(s)!\n';
   }catch(e){log.textContent+='❌ Erreur: '+e.message+'\n';console.error(e);}
 };
 function fermerModal(id){ document.getElementById(id).style.display='none'; }
@@ -5469,7 +5876,10 @@ function creerNouveauCentre(){
       const li=document.getElementById('loginLogo');
       if(li) li.src=logoData;
     }
-    sauvegarder(); fermerModal('modalNouveauCentre');
+    window._agpAutoriserPurge = true;
+    sauvegarder();
+    setTimeout(function(){ window._agpAutoriserPurge = false; }, 4000);
+    fermerModal('modalNouveauCentre');
     alert('Centre "'+nom+'" cree! Code Fondateur: '+code);
     loadUsers();
   }
@@ -5491,7 +5901,11 @@ function reinitialiserDonnees(){
   historique=[];
   // Remettre stock a zero
   Object.keys(stocks).forEach(function(k){ stocks[k]=0; });
+  // Purge VOLONTAIRE : on leve le garde-fou anti-effacement le temps
+  // de cette seule ecriture, puis on le remet immediatement.
+  window._agpAutoriserPurge = true;
   sauvegarder();
+  setTimeout(function(){ window._agpAutoriserPurge = false; }, 4000);
   updateDashboard();
   renderDepenses();
   renderServiceTable();
