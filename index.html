@@ -359,7 +359,8 @@ function agpPurgerSnaps(uid){
       if(k && k.indexOf('agp_snap_')===0 && (!uid || k.indexOf('agp_snap_'+uid+'_')===0)) cles.push(k);
     }
     cles.sort();
-    while(cles.length>7){ localStorage.removeItem(cles.shift()); }
+    // 3 instantanes suffisent : on laisse de la place a la file d'attente hors ligne
+    while(cles.length>3){ localStorage.removeItem(cles.shift()); }
   }catch(e){}
 }
 
@@ -383,6 +384,90 @@ function agpSauvegardeServeur(uid, data){
 }
 
 // ============================================================
+// MODE HORS LIGNE (offline-first) + FILE D'ATTENTE
+// ------------------------------------------------------------
+// Le SDK Web de Realtime Database ne conserve rien sur le disque :
+// sans réseau au démarrage, aucune donnée n'arrivait et aucune
+// écriture n'était possible (l'app paraissait vide et bloquée).
+// On ajoute deux clés LOCALES (la base Firebase n'est pas touchée) :
+//   agp_offline_<uid> : dernier état SERVEUR connu (base de fusion)
+//   agp_file_<uid>    : état LOCAL + base d'origine = saisies en attente
+// ============================================================
+function agpCleFile(uid){ return 'agp_file_'+uid; }
+function agpLireAttente(uid){
+  if(!uid) return null;
+  try{
+    var v=localStorage.getItem(agpCleFile(uid));
+    if(!v) return null;
+    var o=JSON.parse(v);
+    return (o && o.data) ? o : null;
+  }catch(e){ return null; }
+}
+function agpEnregistrerAttente(uid, base, data){
+  if(!uid || !data) return;
+  var anc=agpLireAttente(uid);
+  // La base d'origine reste figée tant que la file n'a pas été vidée :
+  // c'est elle qui permet de rejouer EXACTEMENT les modifications locales.
+  var b=(anc && anc.base) ? anc.base : (base || {});
+  var paquet=JSON.stringify({ts:Date.now(), base:b, data:data});
+  try{ localStorage.setItem(agpCleFile(uid), paquet); }
+  catch(e){
+    agpPurgerSnaps();                      // libère de la place puis réessaie
+    try{ localStorage.setItem(agpCleFile(uid), paquet); }
+    catch(e2){
+      // Mémoire du navigateur saturée : on prévient au lieu de perdre
+      // silencieusement les saisies hors ligne.
+      if(!window._agpAlerteMemoire){
+        window._agpAlerteMemoire=true;
+        try{ console.warn('AGP : memoire locale saturee', e2); }catch(e3){}
+        setTimeout(function(){
+          alert("Attention : la memoire de sauvegarde de cet appareil est pleine.\n"
+               +"Connectez-vous a Internet pour synchroniser, puis rechargez la page.");
+        },0);
+      }
+      return;
+    }
+  }
+  window._agpAttente=true;
+}
+function agpEffacerAttente(uid){
+  try{ localStorage.removeItem(agpCleFile(uid)); }catch(e){}
+  window._agpAttente=false;
+  agpMajIndicateur();
+}
+function agpLireSnapshotLocal(uid){
+  try{
+    var v=localStorage.getItem('agp_offline_'+uid);
+    if(!v) return null;
+    var o=JSON.parse(v);
+    return (o && o.data) ? o.data : null;
+  }catch(e){ return null; }
+}
+// Base de fusion à utiliser pour une sauvegarde locale
+function agpBaseCourante(uid){
+  if(window._agpBase) return window._agpBase;
+  var f=agpLireAttente(uid);
+  if(f && f.base) return f.base;
+  var sn=agpLireSnapshotLocal(uid);
+  if(sn) return agpNormaliser(sn);
+  return {};
+}
+window.agpEstHorsLigne=function(){
+  if(typeof navigator!=='undefined' && navigator.onLine===false) return true;
+  return window._agpConnecte===false;
+};
+window.agpAEnAttente=function(){
+  var p=window._agpCurrentPrest;
+  return !!(p && p.uid && agpLireAttente(p.uid));
+};
+// Liste des agents utilisable SANS réseau (page de connexion)
+window.agpUsersLocaux=function(uid){
+  var f=agpLireAttente(uid);
+  var d=(f&&f.data) ? f.data : agpLireSnapshotLocal(uid);
+  return d ? agpArr(d.users) : [];
+};
+
+// ============================================================
 // ÉCRITURE : transaction serveur, jamais d'écrasement global
 // ============================================================
 function agpEcrire(){
@@ -391,16 +476,27 @@ function agpEcrire(){
   // Verrou absolu : aucune écriture tant que l'état du serveur
   // n'a pas été reçu pour CETTE prestation.
   if(!window._AGP_READY || !window._agpBase) return;
+  if(window._agpEnCours) { window._agpPendingSave = true; return; }
 
   const base  = window._agpBase;
   const local = agpCopie(agpBuildData());
   window._agpPendingSave = false;
   window._agpLastPush    = Date.now();
   window._agpEnCours     = true;
+  agpMajIndicateur('sync');
   var refus = null;
 
   runTransaction(ref(db,'agp_prest/'+p.uid+'/data'), function(courant){
-    var srv = courant || {};
+    // CORRECTION MAJEURE : l'état du serveur doit être marqué avec les MÊMES
+    // identifiants déterministes que la base et l'état local, sinon la fusion
+    // ne reconnaît pas qu'il s'agit du même enregistrement.
+    // Avant : srv = courant (brut, sans _id) => pour tout enregistrement
+    // ANCIEN (créé avant le moteur v2), la clé du serveur ne correspondait
+    // ni à celle de la base ni à celle du local. La fusion considérait alors
+    // la version locale comme "supprimée ailleurs" et la jetait : toute
+    // modification d'une fiche ancienne (typiquement un VERSEMENT) était
+    // silencieusement annulée à la sauvegarde suivante.
+    var srv = agpNormaliser(courant || {});
     var fus = agpFusion(base, local, srv);
     var pb  = agpGardeFou(courant, fus);
     if(pb){ refus = pb; return; }   // annule la transaction
@@ -414,26 +510,45 @@ function agpEcrire(){
       window._agpEchecs     = 0;
       agpSauvegardeLocale(p.uid, v);
       agpSauvegardeServeur(p.uid, v);
+      // Les saisies hors ligne sont désormais chez Firebase : file d'attente vidée.
+      if(!window._agpPendingSave) agpEffacerAttente(p.uid);
       agpFlashSync();
+      if(window._agpPendingSave){ setTimeout(function(){ agpEcrire(); }, 60); }
     } else if(refus){
       agpAlerteProtection(refus);
+      agpMajIndicateur();
     }
   }).catch(function(e){
     window._agpEnCours = false;
     console.warn('AGP sauvegarde:', e);
+    // Rien n'est perdu : la copie locale (file d'attente) reste intacte
+    // et sera renvoyée automatiquement au retour du réseau.
     agpSyncErreur();
     window._agpEchecs = (window._agpEchecs||0)+1;
-    if(window._agpEchecs<6){
-      clearTimeout(window._agpRetryT);
-      window._agpRetryT = setTimeout(function(){ if(window._AGP_READY) agpEcrire(); }, 2500*window._agpEchecs);
-    }
+    var delai = Math.min(30000, 2500*Math.max(1,window._agpEchecs));
+    clearTimeout(window._agpRetryT);
+    window._agpRetryT = setTimeout(function(){
+      if(window._AGP_READY && window._agpCurrentPrest) agpEcrire();
+    }, delai);
   });
 }
 
-// Premier clic : écriture immédiate. Clics rapprochés : regroupés.
+// 1) Sauvegarde LOCALE immédiate (fonctionne sans Internet)
+// 2) Envoi Firebase si la prestation est déjà synchronisée
+//    Premier clic : écriture immédiate. Clics rapprochés : regroupés.
 window.agpSaveFirebase = function(){
   const p = window._agpCurrentPrest;
-  if(!p || !window._AGP_READY || !window._agpBase) return;
+  if(!p || !p.uid) return;
+
+  // --- 1. LOCAL : rien ne peut être perdu, même hors ligne ---
+  try{
+    var local = agpCopie(agpBuildData());     // agpBuildData attribue un _id stable aux nouveautés
+    agpEnregistrerAttente(p.uid, agpBaseCourante(p.uid), local);
+  }catch(e){ console.warn('AGP sauvegarde locale:', e); }
+  agpMajIndicateur();
+
+  // --- 2. FIREBASE (si possible) ---
+  if(!window._AGP_READY || !window._agpBase) return;  // pas encore synchro : la file s'en charge
   const now = Date.now();
   if(!window._agpLastPush || (now - window._agpLastPush) > 400){
     if(window._agpSaveT){ clearTimeout(window._agpSaveT); window._agpSaveT=null; }
@@ -441,21 +556,48 @@ window.agpSaveFirebase = function(){
     return;
   }
   window._agpPendingSave = true;
-  agpFlashSync();
   if(window._agpSaveT) return;
   window._agpSaveT = setTimeout(function(){
     window._agpSaveT=null;
     if(window._agpPendingSave) agpEcrire();
   }, 400);
 };
-window.agpFlushSave = function(){ if(window._agpPendingSave) agpEcrire(); };
+window.agpFlushSave = function(){
+  var p=window._agpCurrentPrest;
+  if(!p||!p.uid||!window._AGP_READY||!window._agpBase) return;
+  if(window._agpPendingSave || agpLireAttente(p.uid)) agpEcrire();
+};
 window.addEventListener('beforeunload', function(){ window.agpFlushSave(); });
 window.addEventListener('pagehide',      function(){ window.agpFlushSave(); });
 document.addEventListener('visibilitychange', function(){
   if(document.hidden){ window.agpFlushSave(); }
   else { agpReprendre(); }   // au retour : on se resynchronise
 });
-window.addEventListener('online', function(){ agpReprendre(); });
+window.addEventListener('online',  function(){ window._agpConnecte=true;  agpMajIndicateur(); agpReprendre(); window.agpFlushSave(); });
+window.addEventListener('offline', function(){ window._agpConnecte=false; agpMajIndicateur(); });
+
+// Détection fiable du retour d'Internet côté Firebase (plus sûr que navigator.onLine)
+try{
+  onValue(ref(db,'.info/connected'), function(sn){
+    var avant = window._agpConnecte;
+    window._agpConnecte = (sn.val()===true);
+    agpMajIndicateur();
+    if(window._agpConnecte && avant!==true && window._AGP_MODE){
+      agpReprendre();                       // relit l'état réel du serveur
+      setTimeout(function(){ window.agpFlushSave(); }, 800);  // puis renvoie la file d'attente
+    }
+  });
+}catch(e){}
+
+// Filet supplémentaire : tentative régulière tant qu'il reste des saisies en attente
+setInterval(function(){
+  var p=window._agpCurrentPrest;
+  if(!p||!p.uid||!window._AGP_MODE) return;
+  if(!agpLireAttente(p.uid)) return;
+  if(window.agpEstHorsLigne()) return;
+  if(window._AGP_READY && window._agpBase) agpEcrire();
+  else agpReprendre();
+}, 20000);
 
 // Reprise après veille / perte de réseau : le socket temps réel
 // meurt souvent sur mobile, c'est une des causes du "le fondateur
@@ -472,23 +614,55 @@ function agpReprendre(){
   }, 300);
 }
 
-// ---- Indicateurs ------------------------------------------
-function agpFlashSync(){
+// ---- Indicateur d'etat (meme badge, 4 etats) ---------------
+//  vert   : en ligne / synchronise
+//  orange : synchronisation en cours ou saisies en attente
+//  rouge  : hors ligne
+// Le design du badge existant n'est pas modifie : seules la
+// pastille et l'etiquette changent.
+function agpPeindreEtat(couleur, libelle, texteCouleur, bordure, fond){
   var dot=document.getElementById('agpStatusDot');
   var txt=document.getElementById('agpStatusText');
+  var badge=document.getElementById('agpStatusBadge');
   if(!dot||!txt) return;
-  dot.style.background='#22c55e'; txt.textContent='Sauvegardé ✓'; txt.style.color='#15803d';
+  dot.style.background=couleur;
+  txt.textContent=libelle;
+  txt.style.color=texteCouleur;
+  if(badge){
+    badge.style.borderColor=bordure;
+    badge.style.background=fond;
+  }
+}
+function agpMajIndicateur(etat){
+  var p=window._agpCurrentPrest;
+  var enAttente = !!(p && p.uid && agpLireAttente(p.uid));
+  if(etat==='sync'){
+    agpPeindreEtat('#f59e0b','Synchronisation…','#b45309','#fcd34d','rgba(255,251,235,0.97)');
+    return;
+  }
+  if(window.agpEstHorsLigne()){
+    agpPeindreEtat('#ef4444', enAttente?'Hors ligne — en attente':'Hors ligne',
+                   '#b91c1c','#fca5a5','rgba(254,242,242,0.97)');
+    return;
+  }
+  if(enAttente){
+    agpPeindreEtat('#f59e0b','En attente de synchro','#b45309','#fcd34d','rgba(255,251,235,0.97)');
+    return;
+  }
+  agpPeindreEtat('#22c55e','En ligne','#15803d','#86efac','rgba(240,253,244,0.97)');
+}
+window.agpMajIndicateur=agpMajIndicateur;
+function agpFlashSync(){
   clearTimeout(window._agpFlashT);
-  window._agpFlashT=setTimeout(function(){
-    dot.style.background='#22c55e'; txt.textContent='En ligne'; txt.style.color='#15803d';
-  },2000);
+  agpPeindreEtat('#22c55e','Synchronisé ✓','#15803d','#86efac','rgba(240,253,244,0.97)');
+  window._agpFlashT=setTimeout(function(){ agpMajIndicateur(); },2000);
 }
 function agpSyncErreur(){
-  var dot=document.getElementById('agpStatusDot');
-  var txt=document.getElementById('agpStatusText');
-  if(!dot||!txt) return;
   clearTimeout(window._agpFlashT);
-  dot.style.background='#f59e0b'; txt.textContent='Reconnexion…'; txt.style.color='#b45309';
+  var p=window._agpCurrentPrest;
+  var enAttente = !!(p && p.uid && agpLireAttente(p.uid));
+  agpPeindreEtat('#f59e0b', enAttente?'Reconnexion… (données conservées)':'Reconnexion…',
+                 '#b45309','#fcd34d','rgba(255,251,235,0.97)');
 }
 function agpAlerteProtection(detail){
   try{ console.warn('AGP : écriture bloquée par le garde-fou ('+detail+')'); }catch(e){}
@@ -514,9 +688,16 @@ window.agpLoadData = function(prest){
   window._agpSnapFait = null;
   window._agpLastSaveFp = null;
 
-  function appliquer(data){
+  // origine = 'serveur' (donnée reçue de Firebase) ou 'local'
+  // (hydratation immédiate depuis l'appareil, sans réseau).
+  function appliquer(data, origine){
+    origine = origine || 'serveur';
+    var attente = (origine==='serveur') ? agpLireAttente(prest.uid) : null;
+
     // Rien de nouveau à afficher ? on ne redessine pas.
-    if(window._AGP_READY && window._agpBase){
+    // (sauf s'il reste des saisies hors ligne à renvoyer : il faut alors
+    //  poursuivre pour déclencher la synchronisation)
+    if(origine==='serveur' && !attente && window._AGP_READY && window._agpBase){
       try{
         if(window._agpFp(data)===window._agpFp(agpBuildData())){
           window._agpBase = agpNormaliser(data);
@@ -526,12 +707,28 @@ window.agpLoadData = function(prest){
     }
 
     // ---- Détection d'une perte massive côté serveur --------
-    if(window._agpBase && agpVolume(window._agpBase)>0 && agpVolume(data||{})===0){
+    if(origine==='serveur' && !attente && window._agpBase
+       && agpVolume(window._agpBase)>0 && agpVolume(data||{})===0){
       agpAlertePerte(prest, window._agpBase);
       return;   // on garde l'affichage et l'état en mémoire intacts
     }
 
-    var norm = agpNormaliser(data);
+    // ---- FUSION DES SAISIES FAITES HORS LIGNE --------------
+    // base    = état du serveur au moment où l'on est passé hors ligne
+    // attente = état local (avec les saisies hors ligne)
+    // data    = état réel du serveur maintenant
+    // La fusion est idempotente : chaque enregistrement porte un _id,
+    // un même versement ne peut donc pas être créé deux fois.
+    var aSynchroniser = false;
+    var aAfficher = data;
+    if(origine==='serveur' && attente && attente.data){
+      try{
+        aAfficher = agpFusion(attente.base||{}, agpNormaliser(attente.data), agpNormaliser(data||{}));
+        aSynchroniser = true;
+      }catch(e){ console.warn('AGP fusion hors ligne:', e); aAfficher = data; }
+    }
+
+    var norm = agpNormaliser(aAfficher);
 
     users              = norm.users;
     stocks             = norm.stocks;
@@ -570,12 +767,13 @@ window.agpLoadData = function(prest){
       if(gi>=0 && typeof currentUserIndex!=='undefined') currentUserIndex=gi;
     }
 
-    // La base de fusion = exactement ce que le serveur contient.
-    window._agpBase   = agpNormaliser(data);
-    window._AGP_READY = true;
-
-    agpSauvegardeLocale(prest.uid, data||{});
-    agpSauvegardeServeur(prest.uid, data||{});
+    if(origine==='serveur'){
+      // La base de fusion = exactement ce que le serveur contient.
+      window._agpBase   = agpNormaliser(data);
+      window._AGP_READY = true;
+      agpSauvegardeLocale(prest.uid, data||{});
+      agpSauvegardeServeur(prest.uid, data||{});
+    }
 
     try{ loadUsers(); }catch(e){}
     try{ updateDashboard(); }catch(e){}
@@ -598,21 +796,42 @@ window.agpLoadData = function(prest){
     var dt=document.getElementById('dateText');
     if(dt) dt.innerText=new Date().toLocaleDateString('fr-FR',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
     try{ agpMajAccesGerants(); }catch(e){}
+    try{ if(typeof agpRafraichirEcransActifs==='function') agpRafraichirEcransActifs(); }catch(e){}
+    agpMajIndicateur();
+
+    // Saisies hors ligne présentes : on les renvoie maintenant à Firebase.
+    if(aSynchroniser && origine==='serveur'){
+      setTimeout(function(){ agpEcrire(); }, 250);
+    }
   }
 
   window._agpAppliquer = appliquer;
+
+  // ---- AFFICHAGE IMMÉDIAT SANS RÉSEAU (offline-first) ------
+  // On montre tout de suite ce que l'appareil possède : l'application
+  // reste utilisable même si Firebase ne répond pas.
+  try{
+    var _att = agpLireAttente(prest.uid);
+    var _loc = (_att && _att.data) ? _att.data : agpLireSnapshotLocal(prest.uid);
+    window._agpAttente = !!_att;
+    if(_loc) appliquer(_loc, 'local');
+  }catch(e){ console.warn('AGP hydratation locale:', e); }
+  agpMajIndicateur();
   window._agpListener  = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
-    appliquer(snap.val());
+    appliquer(snap.val(), 'serveur');
   }, function(err){
     console.warn('AGP écoute:', err);
     agpSyncErreur();
   });
 
   // Filet : si le serveur ne répond pas, on n'écrit rien et on
-  // propose la reprise. Aucun risque d'écraser avec du vide.
+  // continue avec les données locales. Aucun risque d'écraser avec du vide.
   clearTimeout(window._agpTimeoutT);
   window._agpTimeoutT=setTimeout(function(){
-    if(!window._AGP_READY) agpSyncErreur();
+    if(!window._AGP_READY){
+      if(window.agpEstHorsLigne()) agpMajIndicateur();
+      else agpSyncErreur();
+    }
   }, 8000);
 
   // Resynchronisation périodique de sécurité (réseau instable)
@@ -650,7 +869,8 @@ window.agpRestaurerDepuisSource = function(uid, data){
   return get(ref(db,'agp_prest/'+uid+'/data')).then(function(sn){
     var actuel=sn.val()||{};
     // fusion : on n'enlève jamais ce qui est déjà en ligne
-    var fus=agpFusion({}, agpNormaliser(data), actuel);
+    // (srv normalisé, sinon les anciens enregistrements seraient dupliqués)
+    var fus=agpFusion({}, agpNormaliser(data), agpNormaliser(actuel));
     return set(ref(db,'agp_prest/'+uid+'/data'), fus).then(function(){ return fus; });
   });
 };
@@ -759,6 +979,10 @@ function agpGoTo(){
   }catch(e){}
   var db=window._agpDb,r=window._agpRef,g=window._agpGet;
   if(!db){err.textContent='Connexion impossible';err.style.display='block';return;}
+  if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
+    err.textContent='Hors ligne : cette prestation n\'a jamais ete ouverte sur cet appareil. Connectez-vous a Internet une premiere fois.';
+    err.style.color='#f59e0b';err.style.display='block';return;
+  }
   err.textContent='Recherche en cours...';err.style.display='block';err.style.color='#60a5fa';
   g(r(db,'agp_codes/'+code)).then(function(snap){
     var uid=snap.val();
@@ -848,24 +1072,32 @@ function agpShowLogin(prest){
     if(ba) ba.addEventListener('click',agpLoginAgent);
     if(bc) bc.addEventListener('click',function(){window._agpLastCode=null;agpShowLanding();});
     var _fi2=document.getElementById('agp-l-fond'); if(_fi2) _fi2.focus();
-    // Charger agents
+    // Charger agents : d'abord la copie locale (fonctionne SANS Internet),
+    // puis rafraichissement en ligne si le reseau repond.
+    function _remplirAgents(arr){
+      var sel=document.getElementById('agp-l-agent-sel');
+      if(!sel||!arr||!arr.length) return;
+      var garde=sel.value;
+      sel.innerHTML='<option value="">-- Selectionner un agent --</option>';
+      arr.forEach(function(ag){
+        if(ag&&ag.role!=='FONDATEUR'&&!ag.bloque){
+          var o=document.createElement('option');
+          o.value=ag.code||'';
+          o.textContent=ag.nom+' ('+ag.role+')';
+          o.dataset.nom=ag.nom||'';
+          sel.appendChild(o);
+        }
+      });
+      if(garde) sel.value=garde;
+    }
+    try{
+      if(window.agpUsersLocaux) _remplirAgents(window.agpUsersLocaux(prest.uid));
+    }catch(e){}
     var db=window._agpDb,r=window._agpRef,g=window._agpGet;
     if(db&&prest.uid){
       g(r(db,'agp_prest/'+prest.uid+'/data/users')).then(function(snap){
-        var sel=document.getElementById('agp-l-agent-sel');if(!sel)return;
         var u=snap.val();
-        if(u){
-          var arr=Array.isArray(u)?u:Object.values(u);
-          arr.forEach(function(ag){
-            if(ag&&ag.role!=='FONDATEUR'&&!ag.bloque){
-              var o=document.createElement('option');
-              o.value=ag.code||'';
-              o.textContent=ag.nom+' ('+ag.role+')';
-              o.dataset.nom=ag.nom||'';
-              sel.appendChild(o);
-            }
-          });
-        }
+        if(u) _remplirAgents(Array.isArray(u)?u:Object.values(u));
       }).catch(function(){});
     }
   },0);
@@ -894,7 +1126,21 @@ function agpLoginFond(){
 
   // Le code a peut-être été modifié depuis l'app : on revérifie en ligne
   var db=window._agpDb,r=window._agpRef,g=window._agpGet,st=window._agpSet;
-  if(!db||!p.uid){agpLoginMsg('Code fondateur incorrect',false);return;}
+  // Hors ligne : on verifie sur la copie locale de la prestation
+  function _verifLocal(){
+    try{
+      var us=(window.agpUsersLocaux?window.agpUsersLocaux(p.uid):[])||[];
+      for(var i=0;i<us.length;i++){
+        if(us[i]&&us[i].role==='FONDATEUR'&&us[i].code&&pwd===us[i].code){ _ok(us[i].code); return true; }
+      }
+    }catch(e){}
+    return false;
+  }
+  if(!db||!p.uid){ if(_verifLocal())return; agpLoginMsg('Code fondateur incorrect',false);return;}
+  if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
+    if(_verifLocal()) return;
+    agpLoginMsg('Code fondateur incorrect (hors ligne)',false);return;
+  }
   agpLoginMsg('Verification...',true);
   Promise.all([
     g(r(db,'agp_prest/'+p.uid+'/info/codeFondateur')),
@@ -911,8 +1157,9 @@ function agpLoginFond(){
       st(r(db,'agp_prest/'+p.uid+'/info/codeFondateur'),dataCode).catch(function(){});
       _ok(dataCode); return;
     }
+    if(_verifLocal()) return;
     agpLoginMsg('Code fondateur incorrect',false);
-  }).catch(function(){agpLoginMsg('Code fondateur incorrect',false);});
+  }).catch(function(){ if(_verifLocal())return; agpLoginMsg('Code fondateur incorrect',false);});
 }
 
 function agpLoginAgent(){
@@ -2821,11 +3068,12 @@ function renderCharts(){
     var selMF=document.getElementById('dashMois'); var selAF=document.getElementById('dashAnnee');
     var filtMF=selMF?parseInt(selMF.value):new Date().getMonth()+1;
     var filtAF=selAF?parseInt(selAF.value):new Date().getFullYear();
-    var insFilt=(typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
-    var svcFilt=(typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
-    var depFilt=(typeof depenses!=='undefined'?depenses:[]).filter(function(dp){var d=parseDateFR(dp.date);return d&&d.getFullYear()===filtAF&&d.getMonth()+1===filtMF;});
-    var rF=insFilt.reduce(function(s,i){return s+(i.montantPaye||0);},0)+svcFilt.reduce(function(s,v){return s+(v.montant||0);},0);
-    var dF=depFilt.reduce(function(s,dp){return s+(dp.montant||0);},0);
+    var _mF=_matchMois(filtAF,filtMF);
+    var _encF=_encaissementsPeriode(_mF);
+    var svcFilt=(typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s&&s.date);return d&&_mF(d);});
+    var depFilt=(typeof depenses!=='undefined'?depenses:[]).filter(function(dp){var d=parseDateFR(dp&&dp.date);return d&&_mF(d);});
+    var rF=_encF.total+svcFilt.reduce(function(s,v){return s+agpNombre(v&&v.montant);},0);
+    var dF=depFilt.reduce(function(s,dp){return s+agpNombre(dp&&dp.montant);},0);
     var bF=rF-dF;
     if(_charts.finance) _charts.finance.destroy();
     _charts.finance = new Chart(ctxF, {
@@ -2958,19 +3206,23 @@ function updateDashboard(){
   var MOIS_NOM = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var periodeLabel = document.getElementById('dashPeriodeLabel');
   if(periodeLabel) periodeLabel.textContent = '📅 Période affichée : '+MOIS_NOM[filtMois]+' '+filtAnnee;
-  // Revenus inscrits filtrés
-  var insFiltr = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
-    var d=parseDateFR(i.date); return d&&d.getFullYear()===filtAnnee&&d.getMonth()+1===filtMois;
-  });
+  // Revenus filtrés — MEME logique que les rapports (encaissements reels) :
+  //   part encaissee a l'inscription + versements recus pendant la periode + services
+  // AVANT : on sommait montantPaye des inscrits DU MOIS. Un versement encaisse
+  // ce mois-ci pour un eleve inscrit un mois anterieur n'entrait donc jamais
+  // dans le benefice net -> "certaines prestations ne se mettent pas a jour".
+  var _mFiltre = _matchMois(filtAnnee, filtMois);
+  var _encFilt = _encaissementsPeriode(_mFiltre);
+  var insFiltr = _encFilt.inscrits;
   var svcFiltr = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
-    var d=parseDateFR(s.date); return d&&d.getFullYear()===filtAnnee&&d.getMonth()+1===filtMois;
+    var d=parseDateFR(s&&s.date); return d&&_mFiltre(d);
   });
   var depFiltr = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
-    var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===filtAnnee&&dt.getMonth()+1===filtMois;
+    var dt=parseDateFR(d&&d.date); return dt&&_mFiltre(dt);
   });
-  var revFilt  = insFiltr.reduce(function(s,i){return s+(i.montantPaye||0);},0)
-               + svcFiltr.reduce(function(s,v){return s+(v.montant||0);},0);
-  var depFilt  = depFiltr.reduce(function(s,d){return s+(d.montant||0);},0);
+  var revFilt  = _encFilt.total
+               + svcFiltr.reduce(function(s,v){return s+agpNombre(v&&v.montant);},0);
+  var depFilt  = depFiltr.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
   var benFilt  = revFilt - depFilt;
   // Affichage
   document.getElementById('revenuText').innerText=revFilt.toLocaleString()+' GNF';
@@ -3001,6 +3253,43 @@ function updateDashboard(){
     ha.innerHTML=txt;
   }
 }
+
+// ============================================================
+// RECALCUL / ACTUALISATION GLOBALE
+// Appelee apres tout mouvement financier (versement, inscription,
+// service, depense, suppression) et apres chaque synchronisation.
+// Elle garantit qu'une meme donnee donne le meme resultat sur tous
+// les ecrans, sans que l'utilisateur ait a recharger la page.
+// ============================================================
+function agpEstSectionActive(id){
+  var el=document.getElementById(id);
+  return !!(el && el.classList && el.classList.contains('active'));
+}
+function agpRecalculerTout(){
+  try{ renderInscrits(); }catch(e){}
+  try{ updateDashboard(); }catch(e){}     // recalcule revenus / depenses / benefice net
+  try{ renderDepenses(); }catch(e){}
+  try{ renderHistorique(); }catch(e){}
+  try{ verifierEcheances(); }catch(e){}
+  agpRafraichirEcransActifs();
+}
+// Ecrans lourds (rapports, tableaux) : on ne regenere que celui qui est affiche
+function agpRafraichirEcransActifs(){
+  try{
+    if(agpEstSectionActive('rapport') && document.getElementById('rapportContenu')
+       && document.getElementById('rapportContenu').innerHTML.trim()!==''){
+      genererRapport();
+    }
+  }catch(e){}
+  try{ if(agpEstSectionActive('dashboardMensuel')) renderDashboardMensuel(); }catch(e){}
+  try{ if(agpEstSectionActive('rapportJournalier')) renderRapportJournalier(); }catch(e){}
+  try{ if(agpEstSectionActive('actionsAnnee')) renderActionsAnnee(); }catch(e){}
+  try{ if(agpEstSectionActive('comparaisonGraphe')) renderComparaisonGraphe(); }catch(e){}
+  try{ if(agpEstSectionActive('attente')) renderAttente(); }catch(e){}
+  try{ if(agpEstSectionActive('services')) renderServiceTable(); }catch(e){}
+}
+window.agpRecalculerTout=agpRecalculerTout;
+window.agpRafraichirEcransActifs=agpRafraichirEcransActifs;
 
 // ===== LOGIN =====
 function loadUsers(){
@@ -3686,7 +3975,7 @@ function registerStudent(){
   if(lgcTz) lgcTz.style.display='none';
   ajouterLigneLogiciel(); // remettre une ligne vide
   document.querySelectorAll('.jourCase').forEach(function(c){c.checked=false;});
-  updateDashboard(); sauvegarder();
+  sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Inscription: '+nom+' '+prenom+' | '+formation+' | '+mat);
 }
 
@@ -3785,7 +4074,7 @@ function afficherRecu(ins, logoSrc){
       +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Verse:</strong></span><span style="color:#16a34a;font-weight:bold;">'+(ins.montantPaye||0).toLocaleString()+' GNF</span></div>'
       +'<div style="display:flex;justify-content:space-between;margin-bottom:4px;"><span><strong>Reste:</strong></span><span style="color:#dc2626;font-weight:bold;font-size:15px;">'+ins.resteAPayer.toLocaleString()+' GNF</span></div>'
       +(ins.echeance?'<div style="display:flex;justify-content:space-between;"><span><strong>Echeance:</strong></span><span style="color:#7c3aed;font-weight:bold;">'+new Date(ins.echeance).toLocaleDateString('fr-FR')+'</span></div>':'')
-      +((ins.versements&&ins.versements.length)?'<div style="margin-top:6px;border-top:1px solid #fed7aa;padding-top:6px;font-size:11px;"><strong>Versements:</strong><ul style="margin:3px 0 0 12px;padding:0;">'+ins.versements.map(function(v){return '<li>'+v.date+' : '+v.montant.toLocaleString()+' GNF</li>';}).join('')+'</ul></div>':'')
+      +(function(){var _lv=_versementsDe(ins); return _lv.length?'<div style="margin-top:6px;border-top:1px solid #fed7aa;padding-top:6px;font-size:11px;"><strong>Versements:</strong><ul style="margin:3px 0 0 12px;padding:0;">'+_lv.map(function(v){return '<li>'+(v.date||'')+' : '+_montantVersement(v).toLocaleString()+' GNF</li>';}).join('')+'</ul></div>':'';})()
       +'</div>'
       : '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:8px;margin-top:6px;text-align:center;font-size:12px;color:#15803d;font-weight:bold;"> PAIEMENT COMPLET</div>')
     +'<div style="font-size:10px;text-align:center;color:#94a3b8;margin-top:4px;">Document officiel — '+nomPrest+'</div>'
@@ -4215,15 +4504,17 @@ function _genRapportJournalier(){
     return d&&d.getDate()===jour&&d.getMonth()+1===moisNum&&d.getFullYear()===annee;
   }
 
-  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
-  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
-  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){return sameDay(d.date);});
-  var versementsJour = _listerVersementsPeriode(function(d){return d.getDate()===jour&&d.getMonth()+1===moisNum&&d.getFullYear()===annee;});
+  var _mJ=_matchJour(annee,moisNum,jour);
+  var _encJ=_encaissementsPeriode(_mJ);
+  var ins  = _encJ.inscrits;
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s&&s.date);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){return sameDay(d&&d.date);});
+  var versementsJour = _encJ.versements;
 
-  var revIns = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
-  var revVers = versementsJour.reduce(function(s,v){return s+v.montant;},0);
-  var revSvc = svcs.reduce(function(s,v){return s+(v.montant||0);},0);
-  var totDep = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var revIns = _encJ.initial;
+  var revVers = _encJ.totalVersements;
+  var revSvc = svcs.reduce(function(s,v){return s+agpNombre(v&&v.montant);},0);
+  var totDep = deps.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
   var benef  = revIns+revVers+revSvc-totDep;
 
   // Grouper services
@@ -4260,8 +4551,8 @@ function _genRapportJournalier(){
         +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
         +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
         +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
-        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
-        +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+agpNombre(i&&i.montantPaye).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(agpNombre(i&&i.resteAPayer)>0?agpNombre(i.resteAPayer).toLocaleString()+' GNF':'✅ Soldé')+'</td>'
         +'</tr>';
     });
     html += '</tbody></table></div>';
@@ -4301,48 +4592,148 @@ function _genRapportJournalier(){
 }
 
 function parseDateFR(dateStr){
-  // Parse dd/mm/yyyy -> Date  (retourne null si invalide)
-  if(!dateStr) return null;
-  var s = String(dateStr).trim();
-  var p = s.split('/');
-  if(p.length===3){
-    var d=new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0]));
+  // Parse robuste et tolerant : dd/mm/yyyy, dd-mm-yyyy, dd.mm.yyyy, d/m/yy,
+  // yyyy-mm-dd, objet Date, timestamp. Retourne null si vraiment illisible.
+  // (Certains navigateurs Android/iOS inserent des marques invisibles dans
+  //  toLocaleDateString : elles faisaient echouer l'ancien parseur, et les
+  //  versements disparaissaient alors des rapports.)
+  if(dateStr===null||dateStr===undefined||dateStr==='') return null;
+  if(dateStr instanceof Date) return isNaN(dateStr.getTime())?null:dateStr;
+  if(typeof dateStr==='number'){ var dn=new Date(dateStr); return isNaN(dn.getTime())?null:dn; }
+  var s=String(dateStr).replace(/[\u200e\u200f\u202a-\u202e\u00a0\u202f]/g,'').trim();
+  if(!s) return null;
+  var p=s.split(/[^0-9]+/).filter(function(x){return x!=='';});
+  function mk(a,m,j){
+    if(isNaN(a)||isNaN(m)||isNaN(j)) return null;
+    var d=new Date(a,m-1,j);
     return isNaN(d.getTime())?null:d;
   }
-  // Tenter ISO yyyy-mm-dd
-  var iso = s.split('-');
-  if(iso.length===3 && iso[0].length===4){
-    var d2=new Date(parseInt(iso[0]),parseInt(iso[1])-1,parseInt(iso[2]));
-    return isNaN(d2.getTime())?null:d2;
+  if(p.length>=3){
+    var a=parseInt(p[0],10), b=parseInt(p[1],10), c=parseInt(p[2],10);
+    if(p[0].length===4) return mk(a,b,c);                 // yyyy-mm-dd
+    if(p[2].length===4) return mk(c,b,a);                 // dd/mm/yyyy
+    if(c>31)            return mk(c,b,a);
+    if(c<100)           return mk(2000+c,b,a);            // dd/mm/yy
+    return mk(c,b,a);
   }
   var d3=new Date(s);
   return isNaN(d3.getTime())?null:d3;
 }
 
-// ===== VERSEMENTS — utilitaires pour les rapports (lecture seule, ne modifie aucune donnée) =====
-// ins.montantPaye est cumulatif (mis à jour à chaque versement, voir enregistrerVersement).
+// Convertit en nombre TOUTE valeur venant de la base (nombre, texte, texte
+// avec espaces/virgules, null, undefined). Aucune donnee n'est modifiee :
+// c'est une lecture defensive. Sans cela, un montant enregistre en texte
+// ("50000") faisait une concatenation au lieu d'une addition et cassait
+// silencieusement le benefice net.
+function agpNombre(v){
+  if(typeof v==='number') return isFinite(v)?v:0;
+  if(v===null||v===undefined||typeof v==='boolean') return 0;
+  var s=String(v).replace(/[\s\u00a0\u202f\u200e\u200f]/g,'').replace(/[^0-9,.\-]/g,'');
+  if(!s||s==='-') return 0;
+  var iv=s.lastIndexOf(','), ip=s.lastIndexOf('.');
+  if(iv>-1&&ip>-1){
+    if(iv>ip) s=s.replace(/\./g,'').replace(',','.');
+    else      s=s.replace(/,/g,'');
+  } else if(iv>-1){
+    var ap=s.length-iv-1;
+    s=(ap>0&&ap<=2)?s.replace(',','.'):s.replace(/,/g,'');
+  } else if(ip>-1){
+    var ap2=s.length-ip-1;
+    if(!(ap2>0&&ap2<=2)) s=s.replace(/\./g,'');
+  }
+  var n=parseFloat(s);
+  return isFinite(n)?n:0;
+}
+window.agpNombre=agpNombre;
+
+// ===== VERSEMENTS - utilitaires (lecture seule, ne modifie aucune donnee) =====
+// Firebase Realtime Database renvoie une LISTE sous forme d'OBJET des qu'elle
+// contient un trou (ex: {"0":{...},"2":{...}}). Un objet n'a ni .forEach ni
+// .reduce : l'ancien code levait alors une exception et TOUT le rapport (ou le
+// calcul) s'arretait -> "les versements n'apparaissent pas dans les rapports"
+// et "certaines prestations ne mettent pas a jour le benefice net".
+// _versementsDe() normalise toujours en tableau, sans rien reecrire en base.
+function _versementsDe(ins){
+  if(!ins) return [];
+  var v=ins.versements;
+  if(!v) return [];
+  var arr;
+  if(Array.isArray(v)) arr=v;
+  else if(typeof v==='object'){
+    arr=Object.keys(v).sort(function(a,b){
+      var na=parseInt(a,10), nb=parseInt(b,10);
+      if(!isNaN(na)&&!isNaN(nb)) return na-nb;
+      return a<b?-1:(a>b?1:0);
+    }).map(function(k){ return v[k]; });
+  } else return [];
+  var out=[];
+  for(var i=0;i<arr.length;i++){
+    var x=arr[i];
+    if(x===null||x===undefined||typeof x!=='object') continue;
+    out.push(x);
+  }
+  return out;
+}
+function _dateVersement(v){
+  if(!v) return null;
+  return parseDateFR(v.dateISO||v.date);
+}
+function _montantVersement(v){ return agpNombre(v&&v.montant); }
+function _totalVersements(ins){
+  return _versementsDe(ins).reduce(function(s,v){ return s+_montantVersement(v); },0);
+}
+// ins.montantPaye est cumulatif (mis a jour a chaque versement).
 // Le "montant initial" verse le jour de l'inscription = montantPaye - somme des versements ulterieurs.
 function _montantInitialInscrit(ins){
-  var totVers=(ins.versements||[]).reduce(function(s,v){return s+(v.montant||0);},0);
-  return Math.max(0,(ins.montantPaye||0)-totVers);
+  return Math.max(0, agpNombre(ins&&ins.montantPaye) - _totalVersements(ins));
 }
 // Parcourt tous les versements de tous les inscrits et retourne ceux dont la date (de versement)
 // correspond a matchFn(dateObj). Marque "arriere" si le versement a ete encaisse un mois/annee
 // different (posterieur) du mois d'inscription de l'eleve, pour expliquer les ecarts mensuels.
 function _listerVersementsPeriode(matchFn){
   var out=[];
-  (typeof inscrits!=='undefined'?inscrits:[]).forEach(function(ins){
-    (ins.versements||[]).forEach(function(v){
-      var d=parseDateFR(v.date);
+  var liste=(typeof inscrits!=='undefined'?inscrits:[]);
+  if(!Array.isArray(liste)) liste=[];
+  liste.forEach(function(ins){
+    if(!ins||typeof ins!=='object') return;
+    _versementsDe(ins).forEach(function(v){
+      var d=_dateVersement(v);
       if(d&&matchFn(d)){
         var di=parseDateFR(ins.date);
         var arriere = di ? (d.getFullYear()>di.getFullYear() || (d.getFullYear()===di.getFullYear()&&d.getMonth()>di.getMonth())) : false;
-        out.push({ins:ins,montant:v.montant||0,date:v.date,dateObj:d,arriere:arriere});
+        out.push({ins:ins,montant:_montantVersement(v),date:(v.date||''),dateObj:d,arriere:arriere});
       }
     });
   });
   out.sort(function(a,b){return a.dateObj-b.dateObj;});
   return out;
+}
+// SOURCE UNIQUE DE VERITE des encaissements d'une periode.
+// Utilisee par le tableau de bord, les graphiques, le tableau mensuel et les
+// rapports, pour qu'une meme donnee donne partout le meme resultat.
+//   initial   = part encaissee le jour de l'inscription (inscriptions de la periode)
+//   versement = versements REELLEMENT encaisses pendant la periode,
+//               quelle que soit la date d'inscription de l'eleve
+function _encaissementsPeriode(matchFn){
+  var liste=(typeof inscrits!=='undefined'?inscrits:[]);
+  if(!Array.isArray(liste)) liste=[];
+  var ins=liste.filter(function(i){ var d=parseDateFR(i&&i.date); return d&&matchFn(d); });
+  var initial=ins.reduce(function(s,i){ return s+_montantInitialInscrit(i); },0);
+  var vers=_listerVersementsPeriode(matchFn);
+  var totVers=vers.reduce(function(s,v){ return s+v.montant; },0);
+  return {
+    inscrits:ins,
+    initial:initial,
+    versements:vers,
+    totalVersements:totVers,
+    total:initial+totVers
+  };
+}
+function _matchMois(annee,mois){
+  return function(d){ return d.getFullYear()===annee && d.getMonth()+1===mois; };
+}
+function _matchJour(annee,mois,jour){
+  return function(d){ return d.getFullYear()===annee && d.getMonth()+1===mois && d.getDate()===jour; };
 }
 // Construit le tableau HTML "Versements recus" + l'encart d'explication des arrieres.
 // Renvoie {html, total, arrieres} pour reutilisation dans les KPI/bénéfice.
@@ -4481,7 +4872,13 @@ function ajouterPaiement(idx){
   if(!peutModifier()){alert('Modification non autorisee par le Fondateur');return;}
   const ins=inscrits[idx];
   if(!ins) return;
-  const resteActuel=ins.resteAPayer||0;
+  // resteAPayer peut etre absent ou stocke en texte sur d'anciennes fiches :
+  // on le recalcule de facon defensive sans reecrire la base.
+  var _total=agpNombre(ins.total)||agpNombre(ins.prix);
+  var _paye =agpNombre(ins.montantPaye);
+  var resteActuel = (ins.resteAPayer===undefined||ins.resteAPayer===null||ins.resteAPayer==='')
+                    ? Math.max(0,_total-_paye)
+                    : agpNombre(ins.resteAPayer);
   if(resteActuel<=0){
     alert('Cet inscrit a deja tout paye (solde = 0). Aucun versement a enregistrer.');
     return;
@@ -4498,10 +4895,10 @@ function ajouterPaiement(idx){
   info.innerHTML=
     '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'+
     '<span><strong>Total du :</strong></span>'+
-    '<span style="font-weight:bold;color:#172554;">'+(ins.total||0).toLocaleString()+' GNF</span></div>'+
+    '<span style="font-weight:bold;color:#172554;">'+_total.toLocaleString()+' GNF</span></div>'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:4px;">'+
     '<span><strong>Deja verse :</strong></span>'+
-    '<span style="font-weight:bold;color:#16a34a;">'+(ins.montantPaye||0).toLocaleString()+' GNF</span></div>'+
+    '<span style="font-weight:bold;color:#16a34a;">'+_paye.toLocaleString()+' GNF</span></div>'+
     '<div style="display:flex;justify-content:space-between;">'+
     '<span><strong>Reste a payer :</strong></span>'+
     '<span style="font-weight:bold;color:#dc2626;font-size:16px;">'+resteActuel.toLocaleString()+' GNF</span></div>';
@@ -4546,7 +4943,7 @@ function ajouterPaiement(idx){
 
   // Mise a jour resume live
   im.oninput=function(){
-    const v=parseInt(im.value||0);
+    const v=agpNombre(im.value);
     if(v>0){
       const nvReste=resteActuel-v;
       res.style.display='block';
@@ -4559,7 +4956,7 @@ function ajouterPaiement(idx){
   };
 
   modifCtx=function(){
-    const montant=parseInt(document.getElementById('pvMontant').value||0);
+    const montant=agpNombre(document.getElementById('pvMontant').value);
     const dateV=document.getElementById('pvDate').value;
     const newEch=document.getElementById('pvEcheance').value;
     if(!montant||montant<=0){alert('Entrez un montant valide');return;}
@@ -4568,20 +4965,32 @@ function ajouterPaiement(idx){
       alert('Le montant ('+montant.toLocaleString()+' GNF) depasse le reste a payer ('+resteActuel.toLocaleString()+' GNF)');
       return;
     }
-    // Enregistrer le versement
-    const dateFormatee=new Date(dateV).toLocaleDateString('fr-FR');
-    if(!inscrits[idx].versements) inscrits[idx].versements=[];
-    inscrits[idx].versements.push({montant,date:dateFormatee});
-    inscrits[idx].montantPaye=(inscrits[idx].montantPaye||0)+montant;
-    inscrits[idx].resteAPayer=Math.max(0,resteActuel-montant);
-    if(newEch) inscrits[idx].echeance=newEch;
-    // Ajouter au revenu
-    revenu+=montant;
+    // ---- Enregistrement du versement (structure INCHANGEE : montant + date) ----
+    // La date affichee reste au format fr-FR comme avant. On ajoute seulement
+    // un champ technique dateISO (aaaa-mm-jj) pour que les rapports puissent
+    // filtrer sans dependre du format local du telephone. Les anciens
+    // versements sans dateISO continuent d'etre lus par leur champ date.
+    var _p=String(dateV).split('-');
+    var _dObj=(_p.length===3)?new Date(parseInt(_p[0],10),parseInt(_p[1],10)-1,parseInt(_p[2],10)):new Date(dateV);
+    if(isNaN(_dObj.getTime())) _dObj=new Date();
+    const dateFormatee=_dObj.toLocaleDateString('fr-FR');
+    var _cible=inscrits[idx];
+    // Normalise la liste si Firebase l'a renvoyee sous forme d'objet (sans perte)
+    var _vers=_versementsDe(_cible);
+    _vers.push({montant:montant, date:dateFormatee, dateISO:_dObj.getFullYear()+'-'+String(_dObj.getMonth()+1).padStart(2,'0')+'-'+String(_dObj.getDate()).padStart(2,'0')});
+    _cible.versements=_vers;
+    _cible.montantPaye=agpNombre(_cible.montantPaye)+montant;
+    _cible.resteAPayer=Math.max(0,resteActuel-montant);
+    if(newEch) _cible.echeance=newEch;
+    // Ajouter au revenu (compteur historique conserve tel quel)
+    revenu=agpNombre(revenu)+montant;
     fermerModal('modalModif');
-    renderInscrits(); updateDashboard(); sauvegarder();
-    const msg='Versement '+ins.mat+': '+montant.toLocaleString()+' GNF le '+dateFormatee+'  Reste: '+inscrits[idx].resteAPayer.toLocaleString()+' GNF';
+    // 1) sauvegarde (locale immediate + Firebase si dispo)  2) recalcul complet
+    sauvegarder();
+    agpRecalculerTout();
+    const msg='Versement '+ins.mat+': '+montant.toLocaleString()+' GNF le '+dateFormatee+'  Reste: '+_cible.resteAPayer.toLocaleString()+' GNF';
     ajouterHistorique(msg);
-    alert(' Versement enregistre!\nMontant: '+montant.toLocaleString()+' GNF\nNouveaU solde: '+inscrits[idx].resteAPayer.toLocaleString()+' GNF');
+    alert(' Versement enregistre!\nMontant: '+montant.toLocaleString()+' GNF\nNouveau solde: '+_cible.resteAPayer.toLocaleString()+' GNF'+(window.agpEstHorsLigne&&window.agpEstHorsLigne()?'\n\n(Hors ligne : enregistre sur cet appareil, sera synchronise au retour d\'Internet)':''));
   };
   document.getElementById('modalModif').style.display='flex';
 }
@@ -4590,9 +4999,9 @@ function supprimerInscrit(idx){
   if(!peutSupprimer()){alert('Suppression non autorisee par le Fondateur');return;}
   const ins=inscrits[idx];
   if(!confirm('Supprimer '+ins.mat+'  '+ins.nom+' '+ins.prenom+' ?')) return;
-  revenu-=(ins.montantPaye||ins.total||0); totalStudents=Math.max(0,totalStudents-1);
+  revenu=agpNombre(revenu)-(agpNombre(ins.montantPaye)||agpNombre(ins.total)); totalStudents=Math.max(0,agpNombre(totalStudents)-1);
   inscrits.splice(idx,1);
-  renderInscrits(); updateDashboard(); sauvegarder();
+  sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Suppression inscrit: '+ins.mat);
 }
 
@@ -4903,7 +5312,7 @@ function addService(){
   document.getElementById('servicePrice').value='';
   document.getElementById('serviceQty').value='1';
   var el=document.getElementById('apercuServiceTotal'); if(el) el.textContent='';
-  renderServiceTable(); updateDashboard(); sauvegarder();
+  renderServiceTable(); sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Service: '+service+' x'+qty+'  '+montant.toLocaleString()+' GNF');
 }
 
@@ -4979,7 +5388,7 @@ function modifierService(idx){
     revenu+=nm-s.montant;
     servicesList[idx].service=nv;
     servicesList[idx].montant=nm;
-    fermerModal('modalModif'); renderServiceTable(); updateDashboard(); sauvegarder();
+    fermerModal('modalModif'); renderServiceTable(); sauvegarder(); agpRecalculerTout();
     ajouterHistorique('Modif service: '+nv+'  '+nm.toLocaleString()+' GNF');
   });
 }
@@ -4990,7 +5399,7 @@ function supprimerService(idx){
   if(!confirm('Supprimer "'+s.service+'" ('+s.montant.toLocaleString()+' GNF)?')) return;
   revenu-=s.montant; totalServices=Math.max(0,totalServices-1);
   servicesList.splice(idx,1);
-  renderServiceTable(); updateDashboard(); sauvegarder();
+  renderServiceTable(); sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Suppression service: '+s.service);
 }
 
@@ -5004,7 +5413,7 @@ function addDepense(){
   depenses.push({motif,categorie:cat||'Divers',montant,par:currentUser,date:new Date().toLocaleDateString('fr-FR')});
   totalDepenses+=montant;
   ['depenseMotif','depenseCategorie','depenseMontant'].forEach(function(id){document.getElementById(id).value='';});
-  renderDepenses(); updateDashboard(); sauvegarder();
+  sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Depense: '+motif+'  '+montant.toLocaleString()+' GNF');
 }
 
@@ -5055,7 +5464,7 @@ function modifierDepense(idx){
     depenses[idx].motif=document.getElementById('modifField_motif').value.trim()||dep.motif;
     depenses[idx].categorie=document.getElementById('modifField_categorie').value.trim()||dep.categorie;
     depenses[idx].montant=nm;
-    fermerModal('modalModif'); renderDepenses(); updateDashboard(); sauvegarder();
+    fermerModal('modalModif'); sauvegarder(); agpRecalculerTout();
     ajouterHistorique('Modif depense: '+dep.motif);
   });
 }
@@ -5066,7 +5475,7 @@ function supprimerDepense(idx){
   if(!confirm('Supprimer depense "'+dep.motif+'" ('+dep.montant.toLocaleString()+' GNF)?')) return;
   totalDepenses-=dep.montant;
   depenses.splice(idx,1);
-  renderDepenses(); updateDashboard(); sauvegarder();
+  sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Suppression depense: '+dep.motif);
 }
 
@@ -5687,7 +6096,7 @@ function fixerSalaire(idx){
   }
   alert(msg);
   if(inp) inp.value='';
-  renderSalaires(); renderDepenses(); updateDashboard(); sauvegarder();
+  renderSalaires(); sauvegarder(); agpRecalculerTout();
   ajouterHistorique('Salaire paye: '+u.nom+' - '+montant.toLocaleString()+' GNF ('+mois+')');
   // Proposer la generation du bulletin
   if(confirm('Voulez-vous générer automatiquement le bulletin de paie pour '+u.nom+' ?')){
@@ -5939,11 +6348,14 @@ function getDataParMoisAnnee(annee){
   var result=[];
   for(var m=0;m<12;m++){
     var label=MOIS[m];
-    var inscritsMois=inscrits.filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()===m;});
-    var servicesMois=servicesList.filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()===m;});
-    var depensesMois=depenses.filter(function(d){var dd=parseDateFR(d.date);return dd&&dd.getFullYear()===annee&&dd.getMonth()===m;});
-    var entrees=inscritsMois.reduce(function(s,i){return s+(i.montantPaye||0);},0)+servicesMois.reduce(function(s,sv){return s+sv.montant;},0);
-    var sorties=depensesMois.reduce(function(s,d){return s+d.montant;},0);
+    var _mm=_matchMois(annee,m+1);
+    var _enc=_encaissementsPeriode(_mm);
+    var inscritsMois=_enc.inscrits;
+    var servicesMois=servicesList.filter(function(s){var d=parseDateFR(s&&s.date);return d&&_mm(d);});
+    var depensesMois=depenses.filter(function(d){var dd=parseDateFR(d&&d.date);return dd&&_mm(dd);});
+    // encaissements reels du mois = part initiale + versements du mois + services
+    var entrees=_enc.total+servicesMois.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+    var sorties=depensesMois.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
     result.push({
       label:label,mois:m+1,
       nbInscrits:inscritsMois.length,
@@ -7043,22 +7455,22 @@ function _genRapportMensuel(){
   var annee  = parseInt((document.getElementById('rapportAnnee')||{}).value || new Date().getFullYear());
   var label  = _moisLabel(mois) + ' ' + annee;
 
-  var ins = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
-    var d=parseDateFR(i.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;
-  });
+  var _mM=_matchMois(annee,mois);
+  var _encM=_encaissementsPeriode(_mM);
+  var ins = _encM.inscrits;
   var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
-    var d=parseDateFR(s.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;
+    var d=parseDateFR(s&&s.date); return d&&_mM(d);
   });
   var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
-    var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;
+    var dt=parseDateFR(d&&d.date); return dt&&_mM(dt);
   });
 
-  var revInscrDu     = ins.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
-  var revInscrEncaisse = ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
-  var versementsMois = _listerVersementsPeriode(function(d){return d.getFullYear()===annee&&d.getMonth()+1===mois;});
-  var revVersements  = versementsMois.reduce(function(s,v){return s+v.montant;},0);
-  var revSvc   = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
-  var totDep   = deps.reduce(function(s,d){return s+(d.montant||0);},0);
+  var revInscrDu     = ins.reduce(function(s,i){return s+(agpNombre(i&&i.total)||agpNombre(i&&i.prix));},0);
+  var revInscrEncaisse = _encM.initial;
+  var versementsMois = _encM.versements;
+  var revVersements  = _encM.totalVersements;
+  var revSvc   = svcs.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+  var totDep   = deps.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
   var revInscr = revInscrEncaisse + revVersements; // revenu inscriptions reellement encaisse ce mois
   var benef    = revInscr + revSvc - totDep;
 
@@ -7106,7 +7518,7 @@ function _genRapportMensuel(){
         +'<td style="padding:5px 8px;">'+i.formation+'</td>'
         +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+(i.total||i.prix||0).toLocaleString()+' GNF</td>'
         +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'
-          +(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+          +(agpNombre(i&&i.resteAPayer)>0?agpNombre(i.resteAPayer).toLocaleString()+' GNF':'✅ Soldé')+'</td>'
         +'</tr>';
     });
     html += '</tbody></table>';
@@ -7234,26 +7646,29 @@ function _genRapportAnnuel(){
 
   var parMois = [];
   for(var m=1; m<=12; m++){
-    var ins2 = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){
-      var d=parseDateFR(i.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===m;
-    });
+    var _mA=_matchMois(annee,m);
+    var _encA=_encaissementsPeriode(_mA);
+    var ins2 = _encA.inscrits;
     var svcs2 = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){
-      var d=parseDateFR(s.date); return d&&d.getFullYear()===annee&&d.getMonth()+1===m;
+      var d=parseDateFR(s&&s.date); return d&&_mA(d);
     });
     var deps2 = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){
-      var dt=parseDateFR(d.date); return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===m;
+      var dt=parseDateFR(d&&d.date); return dt&&_mA(dt);
     });
-    var rI = ins2.reduce(function(s,i){return s+(i.total||i.prix||0);},0);
-    var rS = svcs2.reduce(function(s,sv){return s+(sv.montant||0);},0);
-    var dep = deps2.reduce(function(s,d){return s+(d.montant||0);},0);
-    parMois.push({mois:m,label:moisNoms[m-1],nbIns:ins2.length,rI:rI,rS:rS,dep:dep,ben:rI+rS-dep});
+    // Coherence avec le rapport mensuel / journalier : on raisonne en ENCAISSE.
+    var rI = _encA.initial;                 // encaisse a l'inscription
+    var rV = _encA.totalVersements;         // versements encaisses ce mois
+    var rS = svcs2.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+    var dep = deps2.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
+    parMois.push({mois:m,label:moisNoms[m-1],nbIns:ins2.length,rI:rI,rV:rV,rS:rS,dep:dep,ben:rI+rV+rS-dep});
   }
 
   var totNbIns = parMois.reduce(function(s,m){return s+m.nbIns;},0);
   var totRI   = parMois.reduce(function(s,m){return s+m.rI;},0);
+  var totRV   = parMois.reduce(function(s,m){return s+m.rV;},0);
   var totRS   = parMois.reduce(function(s,m){return s+m.rS;},0);
   var totDep  = parMois.reduce(function(s,m){return s+m.dep;},0);
-  var totBen  = totRI + totRS - totDep;
+  var totBen  = totRI + totRV + totRS - totDep;
 
   var stk = (typeof stocks!=='undefined')?stocks:{};
   var consomItems = Object.keys(stk).filter(_isConsommable);
@@ -7264,7 +7679,8 @@ function _genRapportAnnuel(){
   // KPIs
   html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px;">';
   html += _buildKpiCard('Total Inscrits', totNbIns, '#172554', '#dbeafe');
-  html += _buildKpiCard('Rev. Inscriptions', totRI.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Encaissé Nouv. Inscript.', totRI.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += _buildKpiCard('Versements Reçus', totRV.toLocaleString()+' GNF', '#16a34a', '#dcfce7');
   html += _buildKpiCard('Rev. Services', totRS.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
   html += _buildKpiCard('Total Dépenses', totDep.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
   html += _buildKpiCard('Bénéfice Annuel', totBen.toLocaleString()+' GNF', totBen>=0?'#15803d':'#dc2626', totBen>=0?'#dcfce7':'#fee2e2');
@@ -7277,18 +7693,20 @@ function _genRapportAnnuel(){
     +'<th style="padding:6px 8px;text-align:left;">Mois</th>'
     +'<th style="padding:6px 8px;text-align:center;">Inscrits</th>'
     +'<th style="padding:6px 8px;text-align:right;">Rev.Inscr.</th>'
+    +'<th style="padding:6px 8px;text-align:right;">Versements</th>'
     +'<th style="padding:6px 8px;text-align:right;">Rev.Svcs</th>'
     +'<th style="padding:6px 8px;text-align:right;">Dépenses</th>'
     +'<th style="padding:6px 8px;text-align:right;">Bénéfice</th>'
     +'</tr></thead><tbody>';
   parMois.forEach(function(m, i){
     var bg = i%2===0?'#f8fafc':'white';
-    var hasData = m.nbIns>0||m.rI>0||m.rS>0||m.dep>0;
+    var hasData = m.nbIns>0||m.rI>0||m.rV>0||m.rS>0||m.dep>0;
     var opac = hasData?'1':'0.45';
     html += '<tr style="background:'+bg+';opacity:'+opac+';">'
       +'<td style="padding:5px 8px;font-weight:bold;">'+m.label+'</td>'
       +'<td style="padding:5px 8px;text-align:center;">'+m.nbIns+'</td>'
       +'<td style="padding:5px 8px;text-align:right;color:#15803d;">'+m.rI.toLocaleString()+'</td>'
+      +'<td style="padding:5px 8px;text-align:right;color:#16a34a;">'+m.rV.toLocaleString()+'</td>'
       +'<td style="padding:5px 8px;text-align:right;color:#2563eb;">'+m.rS.toLocaleString()+'</td>'
       +'<td style="padding:5px 8px;text-align:right;color:#dc2626;">'+m.dep.toLocaleString()+'</td>'
       +'<td style="padding:5px 8px;text-align:right;font-weight:bold;color:'+(m.ben>=0?'#15803d':'#dc2626')+';">'+m.ben.toLocaleString()+'</td>'
@@ -7298,6 +7716,7 @@ function _genRapportAnnuel(){
     +'<td style="padding:6px 8px;">TOTAL</td>'
     +'<td style="padding:6px 8px;text-align:center;">'+totNbIns+'</td>'
     +'<td style="padding:6px 8px;text-align:right;">'+totRI.toLocaleString()+'</td>'
+    +'<td style="padding:6px 8px;text-align:right;">'+totRV.toLocaleString()+'</td>'
     +'<td style="padding:6px 8px;text-align:right;">'+totRS.toLocaleString()+'</td>'
     +'<td style="padding:6px 8px;text-align:right;">'+totDep.toLocaleString()+'</td>'
     +'<td style="padding:6px 8px;text-align:right;">'+totBen.toLocaleString()+'</td>'
@@ -7346,6 +7765,7 @@ function _drawAnnuelCharts(parMois){
         labels:labels,
         datasets:[
           {label:'Rev.Inscr.',data:parMois.map(function(m){return m.rI;}),backgroundColor:'#22c55e',borderRadius:5},
+          {label:'Versements',data:parMois.map(function(m){return m.rV;}),backgroundColor:'#16a34a',borderRadius:5},
           {label:'Rev.Svcs', data:parMois.map(function(m){return m.rS;}),backgroundColor:'#3b82f6',borderRadius:5},
           {label:'Dépenses',data:parMois.map(function(m){return m.dep;}),backgroundColor:'#ef4444',borderRadius:5}
         ]
@@ -7441,16 +7861,21 @@ function renderDashboardMensuel(){
   var MOIS_NOM = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var label = MOIS_NOM[mois] + ' ' + annee;
 
-  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
-  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
-  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
+  var _mDbm=_matchMois(annee,mois);
+  var _encDbm=_encaissementsPeriode(_mDbm);
+  var ins  = _encDbm.inscrits;
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s&&s.date);return d&&_mDbm(d);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d&&d.date);return dt&&_mDbm(dt);});
 
-  var revInscrVerse = ins.reduce(function(s,i){return s+(i.montantPaye||0);},0);
-  var revInscrDu    = ins.reduce(function(s,i){return s+(i.total||0);},0);
-  var revInscrReste = ins.reduce(function(s,i){return s+(i.resteAPayer||0);},0);
-  var revSvc  = svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
-  var totDep  = deps.reduce(function(s,d){return s+(d.montant||0);},0);
-  var totalEntrees = revInscrVerse + revSvc;
+  var versementsMois = _encDbm.versements;
+  var revVersements  = _encDbm.totalVersements;      // versements encaisses CE mois
+  var revInscrInitial= _encDbm.initial;              // part encaissee a l'inscription
+  var revInscrVerse = ins.reduce(function(s,i){return s+agpNombre(i&&i.montantPaye);},0); // cumul par inscrit (colonne "Verse")
+  var revInscrDu    = ins.reduce(function(s,i){return s+agpNombre(i&&i.total);},0);
+  var revInscrReste = ins.reduce(function(s,i){return s+agpNombre(i&&i.resteAPayer);},0);
+  var revSvc  = svcs.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+  var totDep  = deps.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0);
+  var totalEntrees = _encDbm.total + revSvc;         // encaisse reel de la periode
   var benefNet = totalEntrees - totDep;
 
   // Grouper services par type
@@ -7468,9 +7893,9 @@ function renderDashboardMensuel(){
     var k=i.formation||'N/A';
     if(!formMap[k]){formMap[k]={nb:0,total:0,verse:0,reste:0};}
     formMap[k].nb++;
-    formMap[k].total+=(i.total||0);
-    formMap[k].verse+=(i.montantPaye||0);
-    formMap[k].reste+=(i.resteAPayer||0);
+    formMap[k].total+=agpNombre(i&&i.total);
+    formMap[k].verse+=agpNombre(i&&i.montantPaye);
+    formMap[k].reste+=agpNombre(i&&i.resteAPayer);
   });
 
   function kpi(label,val,color,bg){
@@ -7486,7 +7911,8 @@ function renderDashboardMensuel(){
   // KPIs
   html += '<div style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px;">';
   html += kpi('Inscrits', ins.length, '#172554', '#dbeafe');
-  html += kpi('Rev. Versé Inscr.', revInscrVerse.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += kpi('Encaissé Nouv. Inscr.', revInscrInitial.toLocaleString()+' GNF', '#15803d', '#dcfce7');
+  html += kpi('Versements Reçus', revVersements.toLocaleString()+' GNF', '#16a34a', '#dcfce7');
   html += kpi('Dettes Inscr.', revInscrReste.toLocaleString()+' GNF', '#dc2626', '#fee2e2');
   html += kpi('Rev. Services', revSvc.toLocaleString()+' GNF', '#2563eb', '#eff6ff');
   html += kpi('Total Entrées', totalEntrees.toLocaleString()+' GNF', '#0369a1', '#e0f2fe');
@@ -7514,8 +7940,8 @@ function renderDashboardMensuel(){
         +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
         +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
         +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
-        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
-        +'<td style="padding:5px 8px;color:'+rColor+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+        +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+agpNombre(i&&i.montantPaye).toLocaleString()+' GNF</td>'
+        +'<td style="padding:5px 8px;color:'+rColor+';font-weight:bold;">'+(agpNombre(i&&i.resteAPayer)>0?agpNombre(i.resteAPayer).toLocaleString()+' GNF':'✅ Soldé')+'</td>'
         +'<td style="padding:5px 8px;font-size:10px;color:#64748b;">'+i.date+'</td>'
         +'</tr>';
     });
@@ -7549,6 +7975,9 @@ function renderDashboardMensuel(){
   } else {
     html += '<p style="color:#94a3b8;font-style:italic;margin-bottom:18px;">Aucune inscription ce mois.</p>';
   }
+
+  // Versements du mois (toutes echeances confondues, y compris pour des inscriptions anterieures)
+  html += _buildVersementsSection(versementsMois, 'Versements reçus ce mois').html;
 
   // Tableau services du mois
   html += '<h3 style="font-size:14px;font-weight:800;color:#172554;border-left:4px solid #7c3aed;padding-left:10px;margin-bottom:10px;">🖨️ Services du mois ('+svcs.length+')</h3>';
@@ -7731,15 +8160,17 @@ function _renderRJJour(){
     return dd&&dd.getDate()===d&&dd.getMonth()+1===m&&dd.getFullYear()===a;
   }
 
-  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){return sameDay(i.date);});
-  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s.date);});
-  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(dp){return sameDay(dp.date);});
-  var versements=_listerVersementsPeriode(function(dd){return dd.getDate()===d&&dd.getMonth()+1===m&&dd.getFullYear()===a;});
+  var _mRJ=_matchJour(a,m,d);
+  var _encRJ=_encaissementsPeriode(_mRJ);
+  var ins  = _encRJ.inscrits;
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){return sameDay(s&&s.date);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(dp){return sameDay(dp&&dp.date);});
+  var versements=_encRJ.versements;
 
-  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
-  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
-  var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
-  var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
+  var revIns=_encRJ.initial;
+  var revVers=_encRJ.totalVersements;
+  var revSvc=svcs.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+  var totDep=deps.reduce(function(s,dp){return s+agpNombre(dp&&dp.montant);},0);
   var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
@@ -7760,15 +8191,17 @@ function _renderRJMois(){
   var MOIS_NOM=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
   var label=MOIS_NOM[mois]+' '+annee;
 
-  var ins  = (typeof inscrits!=='undefined'?inscrits:[]).filter(function(i){var d=parseDateFR(i.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
-  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s.date);return d&&d.getFullYear()===annee&&d.getMonth()+1===mois;});
-  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d.date);return dt&&dt.getFullYear()===annee&&dt.getMonth()+1===mois;});
-  var versements=_listerVersementsPeriode(function(dd){return dd.getFullYear()===annee&&dd.getMonth()+1===mois;});
+  var _mRJM=_matchMois(annee,mois);
+  var _encRJM=_encaissementsPeriode(_mRJM);
+  var ins  = _encRJM.inscrits;
+  var svcs = (typeof servicesList!=='undefined'?servicesList:[]).filter(function(s){var d=parseDateFR(s&&s.date);return d&&_mRJM(d);});
+  var deps = (typeof depenses!=='undefined'?depenses:[]).filter(function(d){var dt=parseDateFR(d&&d.date);return dt&&_mRJM(dt);});
+  var versements=_encRJM.versements;
 
-  var revIns=ins.reduce(function(s,i){return s+_montantInitialInscrit(i);},0);
-  var revVers=versements.reduce(function(s,v){return s+v.montant;},0);
-  var revSvc=svcs.reduce(function(s,sv){return s+(sv.montant||0);},0);
-  var totDep=deps.reduce(function(s,dp){return s+(dp.montant||0);},0);
+  var revIns=_encRJM.initial;
+  var revVers=_encRJM.totalVersements;
+  var revSvc=svcs.reduce(function(s,sv){return s+agpNombre(sv&&sv.montant);},0);
+  var totDep=deps.reduce(function(s,dp){return s+agpNombre(dp&&dp.montant);},0);
   var ben=revIns+revVers+revSvc-totDep;
 
   var html='<div id="rjPrintable">';
@@ -7816,8 +8249,8 @@ function _buildRJTableInscrits(ins){
       +'<td style="padding:5px 8px;">'+i.prenom+'</td>'
       +'<td style="padding:5px 8px;font-size:10px;">'+i.formation+'</td>'
       +'<td style="padding:5px 8px;font-weight:bold;">'+((i.total||0)).toLocaleString()+' GNF</td>'
-      +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+((i.montantPaye||0)).toLocaleString()+' GNF</td>'
-      +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(i.resteAPayer>0?i.resteAPayer.toLocaleString()+' GNF':'✅ Soldé')+'</td>'
+      +'<td style="padding:5px 8px;color:#15803d;font-weight:bold;">'+agpNombre(i&&i.montantPaye).toLocaleString()+' GNF</td>'
+      +'<td style="padding:5px 8px;color:'+(i.resteAPayer>0?'#dc2626':'#15803d')+';font-weight:bold;">'+(agpNombre(i&&i.resteAPayer)>0?agpNombre(i.resteAPayer).toLocaleString()+' GNF':'✅ Soldé')+'</td>'
       +'</tr>';
   });
   h+='</tbody></table></div>';
