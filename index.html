@@ -359,7 +359,7 @@ function agpPurgerSnaps(uid){
       if(k && k.indexOf('agp_snap_')===0 && (!uid || k.indexOf('agp_snap_'+uid+'_')===0)) cles.push(k);
     }
     cles.sort();
-    // 3 instantanes suffisent : on laisse de la place a la file d'attente hors ligne
+    // 3 instantanes de secours suffisent (lecture manuelle uniquement)
     while(cles.length>3){ localStorage.removeItem(cles.shift()); }
   }catch(e){}
 }
@@ -384,57 +384,45 @@ function agpSauvegardeServeur(uid, data){
 }
 
 // ============================================================
-// MODE HORS LIGNE (offline-first) + FILE D'ATTENTE
+// MODE STRICTEMENT EN LIGNE  (le mode hors ligne est supprimé)
 // ------------------------------------------------------------
-// Le SDK Web de Realtime Database ne conserve rien sur le disque :
-// sans réseau au démarrage, aucune donnée n'arrivait et aucune
-// écriture n'était possible (l'app paraissait vide et bloquée).
-// On ajoute deux clés LOCALES (la base Firebase n'est pas touchée) :
-//   agp_offline_<uid> : dernier état SERVEUR connu (base de fusion)
-//   agp_file_<uid>    : état LOCAL + base d'origine = saisies en attente
+// La base Firebase est désormais la SEULE source de vérité.
+// Plus aucune saisie n'est conservée sur l'appareil et plus
+// aucune fusion avec d'anciennes données locales n'est faite :
+// c'est cette file d'attente locale qui faisait réapparaître ou
+// disparaître des enregistrements et divergeait entre appareils.
+// Si le serveur ne répond pas, TOUT accès à la base est bloqué
+// (voir agpBloquerAcces plus bas).
+// La structure de la base et les informations des prestations
+// ne sont PAS modifiées.
+// ------------------------------------------------------------
+// agp_offline_<uid> / agp_snap_<uid>_<jour> restent écrits mais
+// UNIQUEMENT comme copie de secours d'un état SERVEUR déjà reçu
+// (outil de récupération manuel du concepteur). Ils ne servent
+// jamais à faire fonctionner l'application sans réseau.
 // ============================================================
-function agpCleFile(uid){ return 'agp_file_'+uid; }
-function agpLireAttente(uid){
-  if(!uid) return null;
+
+// Purge définitive des anciennes files d'attente hors ligne :
+// elles ne doivent plus jamais être rejouées sur le serveur.
+(function agpPurgerFilesHorsLigne(){
   try{
-    var v=localStorage.getItem(agpCleFile(uid));
-    if(!v) return null;
-    var o=JSON.parse(v);
-    return (o && o.data) ? o : null;
-  }catch(e){ return null; }
-}
-function agpEnregistrerAttente(uid, base, data){
-  if(!uid || !data) return;
-  var anc=agpLireAttente(uid);
-  // La base d'origine reste figée tant que la file n'a pas été vidée :
-  // c'est elle qui permet de rejouer EXACTEMENT les modifications locales.
-  var b=(anc && anc.base) ? anc.base : (base || {});
-  var paquet=JSON.stringify({ts:Date.now(), base:b, data:data});
-  try{ localStorage.setItem(agpCleFile(uid), paquet); }
-  catch(e){
-    agpPurgerSnaps();                      // libère de la place puis réessaie
-    try{ localStorage.setItem(agpCleFile(uid), paquet); }
-    catch(e2){
-      // Mémoire du navigateur saturée : on prévient au lieu de perdre
-      // silencieusement les saisies hors ligne.
-      if(!window._agpAlerteMemoire){
-        window._agpAlerteMemoire=true;
-        try{ console.warn('AGP : memoire locale saturee', e2); }catch(e3){}
-        setTimeout(function(){
-          alert("Attention : la memoire de sauvegarde de cet appareil est pleine.\n"
-               +"Connectez-vous a Internet pour synchroniser, puis rechargez la page.");
-        },0);
-      }
-      return;
+    var aSupprimer=[];
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k && k.indexOf('agp_file_')===0) aSupprimer.push(k);
     }
-  }
-  window._agpAttente=true;
-}
-function agpEffacerAttente(uid){
-  try{ localStorage.removeItem(agpCleFile(uid)); }catch(e){}
-  window._agpAttente=false;
-  agpMajIndicateur();
-}
+    aSupprimer.forEach(function(k){ try{ localStorage.removeItem(k); }catch(e){} });
+  }catch(e){}
+})();
+
+// Fonctions conservées (appelées ailleurs) mais neutralisées :
+// il n'existe plus de saisies « en attente » sur l'appareil.
+function agpLireAttente(){ return null; }
+function agpEnregistrerAttente(){}
+function agpEffacerAttente(){}
+
+// Lecture d'une copie de secours (état serveur déjà reçu) —
+// utilisée seulement par l'outil de récupération manuel.
 function agpLireSnapshotLocal(uid){
   try{
     var v=localStorage.getItem('agp_offline_'+uid);
@@ -443,29 +431,75 @@ function agpLireSnapshotLocal(uid){
     return (o && o.data) ? o.data : null;
   }catch(e){ return null; }
 }
-// Base de fusion à utiliser pour une sauvegarde locale
-function agpBaseCourante(uid){
-  if(window._agpBase) return window._agpBase;
-  var f=agpLireAttente(uid);
-  if(f && f.base) return f.base;
-  var sn=agpLireSnapshotLocal(uid);
-  if(sn) return agpNormaliser(sn);
-  return {};
-}
 window.agpEstHorsLigne=function(){
   if(typeof navigator!=='undefined' && navigator.onLine===false) return true;
   return window._agpConnecte===false;
 };
-window.agpAEnAttente=function(){
-  var p=window._agpCurrentPrest;
-  return !!(p && p.uid && agpLireAttente(p.uid));
+// « En attente » = une écriture n'a pas pu partir vers le serveur.
+// Les données sont alors seulement en mémoire : l'accès est bloqué
+// jusqu'au retour du réseau, rien n'est écrit sur l'appareil.
+window.agpAEnAttente=function(){ return !!window._agpNonEnvoye; };
+// Aucune liste d'agents hors ligne : la connexion exige le serveur.
+window.agpUsersLocaux=function(){ return []; };
+
+// ============================================================
+// BLOCAGE TOTAL DE L'ACCÈS QUAND LE SERVEUR NE RÉPOND PAS
+// ============================================================
+var AGP_DELAI_BLOCAGE = 8000;   // tolérance avant blocage (ms)
+window.agpBloquerAcces=function(raison){
+  var b=document.getElementById('agpBlocage');
+  if(!b){
+    b=document.createElement('div');
+    b.id='agpBlocage';
+    b.style.cssText='position:fixed;inset:0;z-index:9999999;background:rgba(2,6,23,0.94);backdrop-filter:blur(3px);'
+      +'display:flex;align-items:center;justify-content:center;padding:24px;font-family:inherit';
+    b.innerHTML='<div style="max-width:420px;width:100%;background:#0a1628;border:1px solid rgba(239,68,68,0.35);'
+      +'border-radius:16px;padding:26px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,0.6)">'
+      +'<div style="font-size:42px;margin-bottom:10px">&#x1F4F6;</div>'
+      +'<h2 style="font-size:17px;font-weight:800;color:#fca5a5;margin:0 0 8px">Connexion au serveur perdue</h2>'
+      +'<p id="agpBlocageTxt" style="font-size:13px;color:#94a3b8;line-height:1.6;margin:0 0 16px">'
+      +'L\'application fonctionne uniquement en ligne. Tant que la base n\'est pas joignable, '
+      +'l\'accès aux données est bloqué afin d\'éviter toute perte ou tout doublon.</p>'
+      +'<button id="agpBlocageBtn" style="width:100%;padding:12px;border:none;border-radius:9px;'
+      +'background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;'
+      +'cursor:pointer;font-family:inherit">Réessayer</button>'
+      +'<p style="font-size:11px;color:#475569;margin:12px 0 0">Vérifiez votre connexion Internet puis réessayez.</p>'
+      +'</div>';
+    document.body.appendChild(b);
+    var bt=document.getElementById('agpBlocageBtn');
+    if(bt) bt.onclick=function(){
+      if(window._agpConnecte===true && window._AGP_READY){ window.agpDebloquerAcces(); agpReprendre(); }
+      else location.reload();
+    };
+  }
+  b.style.display='flex';
+  var t=document.getElementById('agpBlocageTxt');
+  if(t){
+    t.innerHTML = (raison==='save')
+      ? 'Votre dernière saisie n\'a pas pu être enregistrée : le serveur ne répond pas. '
+        +'Elle sera envoyée automatiquement dès le retour d\'Internet. '
+        +'<strong>Ne fermez pas cette page</strong> tant que la connexion n\'est pas rétablie.'
+      : 'L\'application fonctionne uniquement en ligne. Tant que la base n\'est pas joignable, '
+        +'l\'accès aux données est bloqué afin d\'éviter toute perte ou tout doublon.';
+  }
 };
-// Liste des agents utilisable SANS réseau (page de connexion)
-window.agpUsersLocaux=function(uid){
-  var f=agpLireAttente(uid);
-  var d=(f&&f.data) ? f.data : agpLireSnapshotLocal(uid);
-  return d ? agpArr(d.users) : [];
+window.agpDebloquerAcces=function(){
+  var b=document.getElementById('agpBlocage');
+  if(b) b.style.display='none';
 };
+// Surveillance permanente : hors ligne ou serveur muet => blocage.
+function agpSurveillerConnexion(){
+  if(!window._AGP_MODE){ window._agpKoDepuis=null; window.agpDebloquerAcces(); return; }
+  var ko = window.agpEstHorsLigne() || !window._AGP_READY;
+  if(ko){
+    if(!window._agpKoDepuis) window._agpKoDepuis=Date.now();
+    if(Date.now()-window._agpKoDepuis > AGP_DELAI_BLOCAGE) window.agpBloquerAcces();
+  }else{
+    window._agpKoDepuis=null;
+    if(!window._agpNonEnvoye) window.agpDebloquerAcces();
+  }
+}
+setInterval(agpSurveillerConnexion, 2000);
 
 // ============================================================
 // ÉCRITURE : transaction serveur, jamais d'écrasement global
@@ -510,19 +544,24 @@ function agpEcrire(){
       window._agpEchecs     = 0;
       agpSauvegardeLocale(p.uid, v);
       agpSauvegardeServeur(p.uid, v);
-      // Les saisies hors ligne sont désormais chez Firebase : file d'attente vidée.
-      if(!window._agpPendingSave) agpEffacerAttente(p.uid);
+      // Écriture réellement acceptée par le serveur : plus rien en suspens.
+      if(!window._agpPendingSave){
+        window._agpNonEnvoye = false;
+        window.agpDebloquerAcces();
+      }
       agpFlashSync();
       if(window._agpPendingSave){ setTimeout(function(){ agpEcrire(); }, 60); }
     } else if(refus){
+      window._agpNonEnvoye = false;   // refus volontaire : la bannière suffit
       agpAlerteProtection(refus);
       agpMajIndicateur();
     }
   }).catch(function(e){
     window._agpEnCours = false;
     console.warn('AGP sauvegarde:', e);
-    // Rien n'est perdu : la copie locale (file d'attente) reste intacte
-    // et sera renvoyée automatiquement au retour du réseau.
+    // La saisie reste en mémoire et repart automatiquement dès que le
+    // serveur répond. Rien n'est écrit sur l'appareil (mode en ligne strict).
+    window._agpNonEnvoye = true;
     agpSyncErreur();
     window._agpEchecs = (window._agpEchecs||0)+1;
     var delai = Math.min(30000, 2500*Math.max(1,window._agpEchecs));
@@ -533,22 +572,25 @@ function agpEcrire(){
   });
 }
 
-// 1) Sauvegarde LOCALE immédiate (fonctionne sans Internet)
-// 2) Envoi Firebase si la prestation est déjà synchronisée
-//    Premier clic : écriture immédiate. Clics rapprochés : regroupés.
+// Enregistrement STRICTEMENT en ligne : rien n'est écrit sur
+// l'appareil. Sans serveur, la saisie ne peut pas être validée et
+// l'accès est bloqué jusqu'au retour de la connexion.
+// Premier clic : écriture immédiate. Clics rapprochés : regroupés.
 window.agpSaveFirebase = function(){
   const p = window._agpCurrentPrest;
   if(!p || !p.uid) return;
 
-  // --- 1. LOCAL : rien ne peut être perdu, même hors ligne ---
-  try{
-    var local = agpCopie(agpBuildData());     // agpBuildData attribue un _id stable aux nouveautés
-    agpEnregistrerAttente(p.uid, agpBaseCourante(p.uid), local);
-  }catch(e){ console.warn('AGP sauvegarde locale:', e); }
-  agpMajIndicateur();
+  // Serveur injoignable ou état serveur pas encore reçu : on n'écrit
+  // rien localement, on signale et on bloque l'accès à la base.
+  if(!window._AGP_READY || !window._agpBase || window.agpEstHorsLigne()){
+    window._agpNonEnvoye = true;
+    agpMajIndicateur();
+    window.agpBloquerAcces('save');
+    return;
+  }
 
-  // --- 2. FIREBASE (si possible) ---
-  if(!window._AGP_READY || !window._agpBase) return;  // pas encore synchro : la file s'en charge
+  window._agpNonEnvoye = true;    // levé dès que le serveur accepte
+  agpMajIndicateur();
   const now = Date.now();
   if(!window._agpLastPush || (now - window._agpLastPush) > 400){
     if(window._agpSaveT){ clearTimeout(window._agpSaveT); window._agpSaveT=null; }
@@ -565,7 +607,7 @@ window.agpSaveFirebase = function(){
 window.agpFlushSave = function(){
   var p=window._agpCurrentPrest;
   if(!p||!p.uid||!window._AGP_READY||!window._agpBase) return;
-  if(window._agpPendingSave || agpLireAttente(p.uid)) agpEcrire();
+  if(window._agpPendingSave || window._agpNonEnvoye) agpEcrire();
 };
 window.addEventListener('beforeunload', function(){ window.agpFlushSave(); });
 window.addEventListener('pagehide',      function(){ window.agpFlushSave(); });
@@ -574,7 +616,12 @@ document.addEventListener('visibilitychange', function(){
   else { agpReprendre(); }   // au retour : on se resynchronise
 });
 window.addEventListener('online',  function(){ window._agpConnecte=true;  agpMajIndicateur(); agpReprendre(); window.agpFlushSave(); });
-window.addEventListener('offline', function(){ window._agpConnecte=false; agpMajIndicateur(); });
+window.addEventListener('offline', function(){
+  window._agpConnecte=false;
+  if(!window._agpKoDepuis) window._agpKoDepuis=Date.now();
+  agpMajIndicateur();
+  agpSurveillerConnexion();
+});
 
 // Détection fiable du retour d'Internet côté Firebase (plus sûr que navigator.onLine)
 try{
@@ -582,18 +629,24 @@ try{
     var avant = window._agpConnecte;
     window._agpConnecte = (sn.val()===true);
     agpMajIndicateur();
+    if(!window._agpConnecte){
+      // Base injoignable : on arme immédiatement le blocage d'accès.
+      if(!window._agpKoDepuis) window._agpKoDepuis=Date.now();
+      agpSurveillerConnexion();
+    }
     if(window._agpConnecte && avant!==true && window._AGP_MODE){
       agpReprendre();                       // relit l'état réel du serveur
-      setTimeout(function(){ window.agpFlushSave(); }, 800);  // puis renvoie la file d'attente
+      setTimeout(function(){ window.agpFlushSave(); }, 800);  // puis renvoie l'écriture en attente
     }
   });
 }catch(e){}
 
-// Filet supplémentaire : tentative régulière tant qu'il reste des saisies en attente
+// Filet supplémentaire : tentative régulière tant qu'une écriture
+// n'a pas été acceptée par le serveur (les données sont en mémoire).
 setInterval(function(){
   var p=window._agpCurrentPrest;
   if(!p||!p.uid||!window._AGP_MODE) return;
-  if(!agpLireAttente(p.uid)) return;
+  if(!window._agpNonEnvoye) return;
   if(window.agpEstHorsLigne()) return;
   if(window._AGP_READY && window._agpBase) agpEcrire();
   else agpReprendre();
@@ -610,7 +663,7 @@ function agpReprendre(){
     window._agpRepriseT=null;
     get(ref(db,'agp_prest/'+p.uid+'/data')).then(function(sn){
       if(window._agpAppliquer) window._agpAppliquer(sn.val());
-    }).catch(function(){});
+    }).catch(function(){ agpSyncErreur(); });
   }, 300);
 }
 
@@ -634,19 +687,18 @@ function agpPeindreEtat(couleur, libelle, texteCouleur, bordure, fond){
   }
 }
 function agpMajIndicateur(etat){
-  var p=window._agpCurrentPrest;
-  var enAttente = !!(p && p.uid && agpLireAttente(p.uid));
+  var enAttente = !!window._agpNonEnvoye;
   if(etat==='sync'){
     agpPeindreEtat('#f59e0b','Synchronisation…','#b45309','#fcd34d','rgba(255,251,235,0.97)');
     return;
   }
   if(window.agpEstHorsLigne()){
-    agpPeindreEtat('#ef4444', enAttente?'Hors ligne — en attente':'Hors ligne',
+    agpPeindreEtat('#ef4444', enAttente?'Hors ligne — accès bloqué':'Hors ligne',
                    '#b91c1c','#fca5a5','rgba(254,242,242,0.97)');
     return;
   }
   if(enAttente){
-    agpPeindreEtat('#f59e0b','En attente de synchro','#b45309','#fcd34d','rgba(255,251,235,0.97)');
+    agpPeindreEtat('#f59e0b','Envoi en cours…','#b45309','#fcd34d','rgba(255,251,235,0.97)');
     return;
   }
   agpPeindreEtat('#22c55e','En ligne','#15803d','#86efac','rgba(240,253,244,0.97)');
@@ -659,9 +711,8 @@ function agpFlashSync(){
 }
 function agpSyncErreur(){
   clearTimeout(window._agpFlashT);
-  var p=window._agpCurrentPrest;
-  var enAttente = !!(p && p.uid && agpLireAttente(p.uid));
-  agpPeindreEtat('#f59e0b', enAttente?'Reconnexion… (données conservées)':'Reconnexion…',
+  var enAttente = !!window._agpNonEnvoye;
+  agpPeindreEtat('#f59e0b', enAttente?'Reconnexion… (envoi en attente)':'Reconnexion…',
                  '#b45309','#fcd34d','rgba(255,251,235,0.97)');
 }
 function agpAlerteProtection(detail){
@@ -688,16 +739,23 @@ window.agpLoadData = function(prest){
   window._agpSnapFait = null;
   window._agpLastSaveFp = null;
 
-  // origine = 'serveur' (donnée reçue de Firebase) ou 'local'
-  // (hydratation immédiate depuis l'appareil, sans réseau).
+  // Mode strictement en ligne : la seule origine possible des données
+  // est le serveur. Plus aucune hydratation depuis l'appareil.
   function appliquer(data, origine){
-    origine = origine || 'serveur';
-    var attente = (origine==='serveur') ? agpLireAttente(prest.uid) : null;
+    origine = 'serveur';
+
+    // Une écriture n'est pas encore partie (coupure réseau juste après une
+    // saisie) : ces données ne vivent qu'en mémoire. On les envoie AVANT de
+    // reprendre l'état du serveur, sinon la saisie serait écrasée.
+    if(window._agpNonEnvoye && window._AGP_READY && window._agpBase){
+      if(!window._agpEnCours && !window._agpPendingSave){
+        setTimeout(function(){ agpEcrire(); }, 0);
+      }
+      return;
+    }
 
     // Rien de nouveau à afficher ? on ne redessine pas.
-    // (sauf s'il reste des saisies hors ligne à renvoyer : il faut alors
-    //  poursuivre pour déclencher la synchronisation)
-    if(origine==='serveur' && !attente && window._AGP_READY && window._agpBase){
+    if(origine==='serveur' && window._AGP_READY && window._agpBase){
       try{
         if(window._agpFp(data)===window._agpFp(agpBuildData())){
           window._agpBase = agpNormaliser(data);
@@ -707,26 +765,16 @@ window.agpLoadData = function(prest){
     }
 
     // ---- Détection d'une perte massive côté serveur --------
-    if(origine==='serveur' && !attente && window._agpBase
+    if(origine==='serveur' && window._agpBase
        && agpVolume(window._agpBase)>0 && agpVolume(data||{})===0){
       agpAlertePerte(prest, window._agpBase);
       return;   // on garde l'affichage et l'état en mémoire intacts
     }
 
-    // ---- FUSION DES SAISIES FAITES HORS LIGNE --------------
-    // base    = état du serveur au moment où l'on est passé hors ligne
-    // attente = état local (avec les saisies hors ligne)
-    // data    = état réel du serveur maintenant
-    // La fusion est idempotente : chaque enregistrement porte un _id,
-    // un même versement ne peut donc pas être créé deux fois.
-    var aSynchroniser = false;
+    // ---- AFFICHAGE : STRICTEMENT L'ÉTAT DU SERVEUR ---------
+    // Plus aucune fusion avec des saisies locales : l'écran montre
+    // exactement ce que contient la base, pour tous les appareils.
     var aAfficher = data;
-    if(origine==='serveur' && attente && attente.data){
-      try{
-        aAfficher = agpFusion(attente.base||{}, agpNormaliser(attente.data), agpNormaliser(data||{}));
-        aSynchroniser = true;
-      }catch(e){ console.warn('AGP fusion hors ligne:', e); aAfficher = data; }
-    }
 
     var norm = agpNormaliser(aAfficher);
 
@@ -798,41 +846,33 @@ window.agpLoadData = function(prest){
     try{ agpMajAccesGerants(); }catch(e){}
     try{ if(typeof agpRafraichirEcransActifs==='function') agpRafraichirEcransActifs(); }catch(e){}
     agpMajIndicateur();
-
-    // Saisies hors ligne présentes : on les renvoie maintenant à Firebase.
-    if(aSynchroniser && origine==='serveur'){
-      setTimeout(function(){ agpEcrire(); }, 250);
-    }
+    window.agpDebloquerAcces();   // le serveur répond : l'accès est rétabli
   }
 
   window._agpAppliquer = appliquer;
 
-  // ---- AFFICHAGE IMMÉDIAT SANS RÉSEAU (offline-first) ------
-  // On montre tout de suite ce que l'appareil possède : l'application
-  // reste utilisable même si Firebase ne répond pas.
-  try{
-    var _att = agpLireAttente(prest.uid);
-    var _loc = (_att && _att.data) ? _att.data : agpLireSnapshotLocal(prest.uid);
-    window._agpAttente = !!_att;
-    if(_loc) appliquer(_loc, 'local');
-  }catch(e){ console.warn('AGP hydratation locale:', e); }
+  // ---- AUCUN AFFICHAGE SANS SERVEUR ------------------------
+  // Mode en ligne strict : rien n'est affiché tant que la base n'a
+  // pas répondu. L'appareil ne conserve aucune donnée de travail.
+  window._agpNonEnvoye = false;
+  window._agpKoDepuis  = Date.now();
   agpMajIndicateur();
   window._agpListener  = onValue(ref(db,'agp_prest/'+prest.uid+'/data'), function(snap){
     appliquer(snap.val(), 'serveur');
   }, function(err){
     console.warn('AGP écoute:', err);
     agpSyncErreur();
+    window.agpBloquerAcces();
   });
 
-  // Filet : si le serveur ne répond pas, on n'écrit rien et on
-  // continue avec les données locales. Aucun risque d'écraser avec du vide.
+  // Filet : si la base ne répond pas dans le délai, on bloque TOUT accès.
   clearTimeout(window._agpTimeoutT);
   window._agpTimeoutT=setTimeout(function(){
     if(!window._AGP_READY){
-      if(window.agpEstHorsLigne()) agpMajIndicateur();
-      else agpSyncErreur();
+      agpSyncErreur();
+      window.agpBloquerAcces();
     }
-  }, 8000);
+  }, AGP_DELAI_BLOCAGE);
 
   // Resynchronisation périodique de sécurité (réseau instable)
   clearInterval(window._agpPollT);
@@ -968,20 +1008,14 @@ function agpGoTo(){
   var err=document.getElementById('agp-code-err');
   if(!code){err.textContent='Entrez votre code prestation';err.style.display='block';return;}
   err.style.display='none';
-  try{
-    var cached=JSON.parse(localStorage.getItem('agp_p_'+code)||'null');
-    if(cached&&!cached.blocked){
-      window._agpLastCode=code;
-      agpShowLogin(cached);
-      agpRafraichirPrestEnFond(code,cached);
-      return;
-    }
-  }catch(e){}
+  // Mode strictement en ligne : la fiche est TOUJOURS relue sur le
+  // serveur (plus de raccourci par copie locale, qui pouvait ouvrir
+  // une prestation bloquee ou expirée avec des informations perimees).
   var db=window._agpDb,r=window._agpRef,g=window._agpGet;
-  if(!db){err.textContent='Connexion impossible';err.style.display='block';return;}
+  if(!db){err.textContent='Connexion impossible';err.style.color='#ef4444';err.style.display='block';return;}
   if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
-    err.textContent='Hors ligne : cette prestation n\'a jamais ete ouverte sur cet appareil. Connectez-vous a Internet une premiere fois.';
-    err.style.color='#f59e0b';err.style.display='block';return;
+    err.textContent='Aucune connexion Internet : l\'acces a la base est bloque. Reconnectez-vous puis reessayez.';
+    err.style.color='#ef4444';err.style.display='block';return;
   }
   err.textContent='Recherche en cours...';err.style.display='block';err.style.color='#60a5fa';
   g(r(db,'agp_codes/'+code)).then(function(snap){
@@ -1072,8 +1106,7 @@ function agpShowLogin(prest){
     if(ba) ba.addEventListener('click',agpLoginAgent);
     if(bc) bc.addEventListener('click',function(){window._agpLastCode=null;agpShowLanding();});
     var _fi2=document.getElementById('agp-l-fond'); if(_fi2) _fi2.focus();
-    // Charger agents : d'abord la copie locale (fonctionne SANS Internet),
-    // puis rafraichissement en ligne si le reseau repond.
+    // Charger agents : UNIQUEMENT depuis le serveur (mode en ligne strict).
     function _remplirAgents(arr){
       var sel=document.getElementById('agp-l-agent-sel');
       if(!sel||!arr||!arr.length) return;
@@ -1090,15 +1123,14 @@ function agpShowLogin(prest){
       });
       if(garde) sel.value=garde;
     }
-    try{
-      if(window.agpUsersLocaux) _remplirAgents(window.agpUsersLocaux(prest.uid));
-    }catch(e){}
     var db=window._agpDb,r=window._agpRef,g=window._agpGet;
     if(db&&prest.uid){
       g(r(db,'agp_prest/'+prest.uid+'/data/users')).then(function(snap){
         var u=snap.val();
         if(u) _remplirAgents(Array.isArray(u)?u:Object.values(u));
-      }).catch(function(){});
+      }).catch(function(){
+        agpLoginMsg('Serveur injoignable : impossible de charger la liste des agents.',false);
+      });
     }
   },0);
 }
@@ -1124,22 +1156,12 @@ function agpLoginFond(){
 
   if(pwd===p.codeFondateur){ _ok(pwd); return; }
 
-  // Le code a peut-être été modifié depuis l'app : on revérifie en ligne
+  // Le code a peut-être été modifié depuis l'app : on revérifie en ligne.
+  // Mode strictement en ligne : aucune verification sur copie locale.
   var db=window._agpDb,r=window._agpRef,g=window._agpGet,st=window._agpSet;
-  // Hors ligne : on verifie sur la copie locale de la prestation
-  function _verifLocal(){
-    try{
-      var us=(window.agpUsersLocaux?window.agpUsersLocaux(p.uid):[])||[];
-      for(var i=0;i<us.length;i++){
-        if(us[i]&&us[i].role==='FONDATEUR'&&us[i].code&&pwd===us[i].code){ _ok(us[i].code); return true; }
-      }
-    }catch(e){}
-    return false;
-  }
-  if(!db||!p.uid){ if(_verifLocal())return; agpLoginMsg('Code fondateur incorrect',false);return;}
+  if(!db||!p.uid){ agpLoginMsg('Serveur injoignable : connexion impossible.',false);return;}
   if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
-    if(_verifLocal()) return;
-    agpLoginMsg('Code fondateur incorrect (hors ligne)',false);return;
+    agpLoginMsg('Aucune connexion Internet : l\'acces a la base est bloque.',false);return;
   }
   agpLoginMsg('Verification...',true);
   Promise.all([
@@ -1157,13 +1179,15 @@ function agpLoginFond(){
       st(r(db,'agp_prest/'+p.uid+'/info/codeFondateur'),dataCode).catch(function(){});
       _ok(dataCode); return;
     }
-    if(_verifLocal()) return;
     agpLoginMsg('Code fondateur incorrect',false);
-  }).catch(function(){ if(_verifLocal())return; agpLoginMsg('Code fondateur incorrect',false);});
+  }).catch(function(){ agpLoginMsg('Serveur injoignable : verification impossible.',false);});
 }
 
 function agpLoginAgent(){
   var p=window._agpPendingPrest;if(!p)return;
+  if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
+    agpLoginMsg('Aucune connexion Internet : l\'acces a la base est bloque.',false);return;
+  }
   var sel=document.getElementById('agp-l-agent-sel');
   var pwd=(document.getElementById('agp-l-agent-code')||{}).value||'';
   if(!sel||!sel.value){agpLoginMsg('Selectionnez un agent',false);return;}
@@ -1241,6 +1265,9 @@ function agpLaunch(prest, role, agentName, agIdx){
     window._AGP_MODE=false;
     window._AGP_READY=false;
     window._agpCurrentPrest=null;
+    window._agpNonEnvoye=false;
+    window._agpKoDepuis=null;
+    if(window.agpDebloquerAcces) window.agpDebloquerAcces();
     var si=document.getElementById('agpSyncIndicator');if(si)si.style.display='none';
     var lf=document.getElementById('agp-l-fond');if(lf)lf.value='';
     var lm=document.getElementById('agp-login-msg');if(lm)lm.style.display='none';
@@ -1411,6 +1438,11 @@ function agpDevPanel(){
     ov.innerHTML='<div style="background:#0a1628;border:1px solid rgba(37,99,235,0.25);border-radius:16px;padding:24px;max-width:700px;width:95%;max-height:85vh;overflow-y:auto"><div style="text-align:center;color:#475569;padding:30px">Chargement...</div></div>';
     document.body.appendChild(ov);
     ov.onclick=function(e){if(e.target===ov)ov.remove();};
+  }
+  // Mode strictement en ligne : sans serveur, aucun acces a la liste.
+  if(window.agpEstHorsLigne && window.agpEstHorsLigne()){
+    agpDevErreurPanel('Aucune connexion Internet : l\'acces a la base est bloque.');
+    return;
   }
   // Affichage instantané de la dernière liste connue, puis mise à jour en arrière-plan
   var cache=null;
@@ -4990,7 +5022,7 @@ function ajouterPaiement(idx){
     agpRecalculerTout();
     const msg='Versement '+ins.mat+': '+montant.toLocaleString()+' GNF le '+dateFormatee+'  Reste: '+_cible.resteAPayer.toLocaleString()+' GNF';
     ajouterHistorique(msg);
-    alert(' Versement enregistre!\nMontant: '+montant.toLocaleString()+' GNF\nNouveau solde: '+_cible.resteAPayer.toLocaleString()+' GNF'+(window.agpEstHorsLigne&&window.agpEstHorsLigne()?'\n\n(Hors ligne : enregistre sur cet appareil, sera synchronise au retour d\'Internet)':''));
+    alert(' Versement enregistre!\nMontant: '+montant.toLocaleString()+' GNF\nNouveau solde: '+_cible.resteAPayer.toLocaleString()+' GNF');
   };
   document.getElementById('modalModif').style.display='flex';
 }
