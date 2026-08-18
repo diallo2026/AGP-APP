@@ -8361,5 +8361,926 @@ function imprimerRapportJournalier(){
 
 </script>
 
+
+<!-- ============================================================
+     MODULE AGP-M1 — INSCRIPTION PAR MODULE
+     ------------------------------------------------------------
+     AVANT : registerStudent refusait TOUTE nouvelle inscription
+     d'une personne deja enregistree (meme nom + meme prenom), quel
+     que soit le module demande. Un etudiant qui avait suivi Word
+     ne pouvait donc jamais s'inscrire a Excel.
+
+     DESORMAIS, la regle porte sur le MODULE, pas sur la personne :
+     - modules differents            -> inscription autorisee ;
+     - meme module deja suivi        -> refusee (doublon) ;
+     - meme module marque ABANDONNE  -> autorisee (il reprend).
+
+     Le statut est lu la ou l'application l'ecrit deja :
+     inscrit.logicielsList[].statut, sinon inscrit.statut.
+     Un module « en cours » ou « termine » bloque le doublon ;
+     seul « abandonne » ouvre la reprise.
+
+     AUCUNE modification de la structure de la base ni des donnees
+     des prestations : ce module ne change que la verification
+     faite AVANT l'enregistrement.
+     ============================================================ -->
+<script>
+(function(){
+'use strict';
+
+function normaliser(t){
+  var s = String(t || '').toLowerCase().trim();
+  try{ s = s.normalize('NFD').replace(/[\u0300-\u036f]/g, ''); }catch(e){}
+  return s.replace(/[^a-z0-9]/g, '');
+}
+function lesInscrits(){
+  try{ return inscrits || []; }catch(e){ return window.inscrits || []; }
+}
+
+/* les modules d'une inscription, avec leur statut */
+function modulesDe(ins){
+  var out = [];
+  var global = ins.statut || 'en_cours';
+  if(ins.logicielsList && ins.logicielsList.length){
+    ins.logicielsList.forEach(function(l){
+      if(!l) return;
+      out.push({ nom: l.nom || '', statut: l.statut || global });
+    });
+  }else if(ins.formation){
+    String(ins.formation).split(/\s*[+,;\/]\s*/).forEach(function(n){
+      if(n) out.push({ nom: n, statut: global });
+    });
+  }
+  return out;
+}
+
+/* les modules demandes maintenant, lus dans le formulaire */
+function modulesDemandes(){
+  try{
+    if(typeof window.getLogicielsSelectionnes === 'function'){
+      return (window.getLogicielsSelectionnes() || []).map(function(l){ return l.nom || ''; })
+        .filter(Boolean);
+    }
+  }catch(e){}
+  return [];
+}
+
+/* etat d'un module pour cet etudiant : null, 'en_cours', 'termine', 'abandonne' */
+function etatModule(anciennes, nomModule){
+  var cible = normaliser(nomModule);
+  var etat = null;
+  anciennes.forEach(function(ins){
+    modulesDe(ins).forEach(function(m){
+      if(normaliser(m.nom) !== cible) return;
+      var s = m.statut || 'en_cours';
+      /* un module encore actif prime sur un abandon plus ancien */
+      if(s !== 'abandonne') etat = s;
+      else if(etat === null) etat = 'abandonne';
+    });
+  });
+  return etat;
+}
+
+window.agpVerifierModules = function(nom, prenom, demandes){
+  var n = normaliser(nom), p = normaliser(prenom);
+  var anciennes = lesInscrits().filter(function(i){
+    return i && normaliser(i.nom) === n && normaliser(i.prenom) === p;
+  });
+  if(!anciennes.length) return { connu:false, bloquants:[], reprises:[], nouveaux:demandes, anciennes:[] };
+
+  var bloquants = [], reprises = [], nouveaux = [];
+  demandes.forEach(function(m){
+    var e = etatModule(anciennes, m);
+    if(e === null) nouveaux.push(m);
+    else if(e === 'abandonne') reprises.push(m);
+    else bloquants.push({ module:m, statut:e });
+  });
+  return { connu:true, bloquants:bloquants, reprises:reprises, nouveaux:nouveaux, anciennes:anciennes };
+};
+
+function libelle(s){
+  return s === 'termine' ? 'deja termine' : s === 'abandonne' ? 'abandonne' : 'en cours';
+}
+
+/* ------------------------------------------------------------
+   La verification remplace celle d'origine
+   ------------------------------------------------------------ */
+(function habiller(){
+  function poser(){
+    if(typeof window.registerStudent !== 'function'){ setTimeout(poser, 400); return; }
+    if(window._agpInscriptionParModule) return;
+    window._agpInscriptionParModule = true;
+    var original = window.registerStudent;
+
+    window.registerStudent = function(){
+      var nom = (document.getElementById('nom') || {}).value || '';
+      var prenom = (document.getElementById('prenom') || {}).value || '';
+      nom = nom.trim(); prenom = prenom.trim();
+      if(!nom || !prenom) return original.apply(this, arguments);
+
+      var demandes = modulesDemandes();
+      if(!demandes.length) return original.apply(this, arguments);
+
+      var v = window.agpVerifierModules(nom, prenom, demandes);
+
+      if(v.connu && v.bloquants.length){
+        var ancien = v.anciennes[0] || {};
+        var texte = 'INSCRIPTION REFUSEE — MODULE DEJA SUIVI\n\n'
+          + nom + ' ' + prenom + ' (matricule ' + (ancien.mat || '—') + ')\n\n'
+          + v.bloquants.map(function(b){ return '• ' + b.module + ' : ' + libelle(b.statut); }).join('\n')
+          + '\n\nUn meme module ne peut pas etre repris tant qu\'il n\'est pas marque « Abandonne ».';
+        if(v.nouveaux.length || v.reprises.length){
+          texte += '\n\nModules autorises pour cet etudiant : '
+            + v.nouveaux.concat(v.reprises).join(', ')
+            + '\nRetirez le ou les modules refuses pour continuer.';
+        }
+        alert(texte);
+        return;
+      }
+
+      if(v.connu){
+        var a = v.anciennes[0] || {};
+        var suite = 'ETUDIANT DEJA CONNU — INSCRIPTION AUTORISEE\n\n'
+          + nom + ' ' + prenom + ' (matricule ' + (a.mat || '—') + ')\n'
+          + (v.reprises.length ? 'Reprise apres abandon : ' + v.reprises.join(', ') + '\n' : '')
+          + (v.nouveaux.length ? 'Nouveau(x) module(s) : ' + v.nouveaux.join(', ') + '\n' : '')
+          + '\nUne nouvelle inscription va etre enregistree. Continuer ?';
+        if(!confirm(suite)) return;
+      }
+
+      /* la verification d'origine (meme nom + prenom) doit etre neutralisee
+         le temps de l'appel, sinon elle refuserait ce que nous venons
+         d'autoriser. On la contourne sans toucher au reste. */
+      var vraiFind = Array.prototype.find;
+      var listeInscrits = lesInscrits();
+      var sauvegarde = listeInscrits.slice();
+      var n = normaliser(nom), p = normaliser(prenom);
+      var retires = [];
+      for(var i = listeInscrits.length - 1; i >= 0; i--){
+        var x = listeInscrits[i];
+        if(x && normaliser(x.nom) === n && normaliser(x.prenom) === p){
+          retires.push({ position:i, valeur:x });
+          listeInscrits.splice(i, 1);
+        }
+      }
+      var resultat;
+      try{
+        resultat = original.apply(this, arguments);
+      }finally{
+        /* on remet les anciennes inscriptions a leur place exacte */
+        retires.reverse().forEach(function(e){ listeInscrits.splice(e.position, 0, e.valeur); });
+        if(listeInscrits.length < sauvegarde.length){
+          /* securite : rien ne doit avoir disparu */
+          sauvegarde.forEach(function(x){
+            if(listeInscrits.indexOf(x) < 0) listeInscrits.push(x);
+          });
+        }
+        try{ if(typeof window.sauvegarder === 'function') window.sauvegarder(); }catch(e){}
+        try{ if(typeof window.appliquerFiltres === 'function') window.appliquerFiltres(); }catch(e){}
+      }
+      return resultat;
+    };
+  }
+  poser();
+  setInterval(poser, 5000);
+})();
+
+})();
+</script>
+
+
+<!-- ============================================================
+     MODULE AGP-C1 — ESPACE CONCEPTEUR (App AGP)
+     ------------------------------------------------------------
+     Reprend l'organisation de l'espace concepteur des boutiques,
+     adaptee aux prestations : une seule fenetre, trois onglets.
+
+       1. PRESTATIONS  — cartes-compteurs cliquables (total,
+          actives, essai, expirees, bloquees), recherche, tri,
+          export CSV, et par ligne : bloquer/debloquer, activer une
+          formule de licence, prolonger, contacter.
+       2. TARIFICATION — les cartes de licence (nom, duree, prix),
+          la duree d'essai, les instructions de paiement et leur
+          publication.
+       3. FACTURES     — les prestations ayant paye leur licence,
+          avec facture imprimable numerotee FL-annee-sequence,
+          envoi WhatsApp et envoi email.
+
+     OU VIVENT LES DONNEES
+     Tarifs, configuration et factures : agp_platform — un noeud
+     AJOUTE, celui du concepteur.
+     Sur une prestation, seuls les champs de licence deja utilises
+     par l'application sont ecrits :
+       licenceStatut, dateExpiration, dateDernierPaiement,
+       licencePeriode, blocked
+     AUCUNE autre donnee de prestation n'est touchee, AUCUNE
+     structure modifiee.
+
+     A FAIRE COTE FIREBASE : autoriser le noeud agp_platform dans
+     les regles, sinon tarifs et factures ne pourront pas etre
+     enregistres (l'onglet le signale clairement).
+     ============================================================ -->
+<style>
+  .apc-ov{position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;
+    background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);padding:12px}
+  .apc-panel{background:#0a1628;border:1px solid rgba(37,99,235,0.3);border-radius:16px;padding:18px 20px;
+    width:100%;max-width:980px;max-height:90vh;overflow-y:auto;color:#cbd5e1;font-size:13px;
+    font-family:inherit;box-sizing:border-box}
+  .apc-h{font-weight:700;color:#e2e8f0;font-size:15px}
+  .apc-sub{font-size:11px;color:#475569}
+  .apc-btn{padding:5px 10px;border:1px solid rgba(37,99,235,0.35);border-radius:6px;
+    background:rgba(37,99,235,0.12);color:#93c5fd;white-space:nowrap;font-size:10.5px;font-weight:700;
+    cursor:pointer;font-family:inherit}
+  .apc-btn:hover{background:rgba(37,99,235,0.24)}
+  .apc-btn.ok{border-color:rgba(34,197,94,0.4);background:rgba(34,197,94,0.12);color:#4ade80}
+  .apc-btn.danger{border-color:rgba(239,68,68,0.4);background:rgba(239,68,68,0.12);color:#f87171}
+  .apc-btn.wa{border-color:rgba(37,211,102,0.45);background:rgba(37,211,102,0.12);color:#4ade80}
+  .apc-field{width:100%;padding:9px 11px;margin-bottom:7px;background:#060d24;
+    border:1px solid rgba(37,99,235,0.35);border-radius:6px;color:#e2e8f0;font-size:12px;
+    font-family:inherit;box-sizing:border-box;outline:none}
+  .apc-onglets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;
+    border-bottom:1px solid rgba(37,99,235,0.22);padding-bottom:10px}
+  .apc-onglet{padding:7px 14px;border-radius:7px;cursor:pointer;font-family:inherit;
+    background:rgba(37,99,235,0.08);border:1px solid rgba(37,99,235,0.25);color:#94a3b8;
+    font-size:11.5px;font-weight:700}
+  .apc-onglet.on{background:rgba(37,99,235,0.24);border-color:#2563eb;color:#dbeafe}
+  .apc-stat{cursor:pointer;flex:1;min-width:88px;background:#060d24;border:1px solid rgba(37,99,235,0.25);
+    border-radius:8px;padding:8px;text-align:center}
+  .apc-stat.on{border-color:#2563eb;background:rgba(37,99,235,0.16)}
+  .apc-stat .l{font-size:9px;color:#475569;text-transform:uppercase;letter-spacing:.05em}
+  .apc-stat .v{font-size:16px;font-weight:800}
+  .apc-wrap{border:1px solid rgba(37,99,235,0.22);border-radius:8px;overflow:auto;max-height:46vh}
+  .apc-table{width:100%;border-collapse:collapse;font-size:11.5px;min-width:820px}
+  .apc-table th{position:sticky;top:0;z-index:2;background:#0d1b33;text-align:left;padding:9px 8px;
+    font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;
+    border-bottom:1px solid rgba(37,99,235,0.25);white-space:nowrap}
+  .apc-table td{padding:9px 8px;border-bottom:1px solid rgba(37,99,235,0.12);color:#cbd5e1;vertical-align:middle}
+  .apc-table tbody tr:hover td{background:rgba(37,99,235,0.07)}
+  .apc-badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:9.5px;font-weight:800;
+    text-transform:uppercase;white-space:nowrap}
+  .apc-badge.actif{background:rgba(34,197,94,0.15);color:#4ade80}
+  .apc-badge.essai{background:rgba(37,99,235,0.18);color:#93c5fd}
+  .apc-badge.expire{background:rgba(245,158,11,0.15);color:#fbbf24}
+  .apc-badge.bloque{background:rgba(239,68,68,0.15);color:#f87171}
+  .apc-sec{font-weight:700;color:#e2e8f0;margin-bottom:6px}
+  .apc-note{font-size:11.5px;color:#64748b;line-height:1.7}
+</style>
+<script>
+(function(){
+'use strict';
+
+var PLAT = 'agp_platform';
+var RACINE = 'agp_prest';
+
+function nb(v){ var n = parseFloat(v); return isNaN(n) ? 0 : n; }
+function esc(v){
+  if(v === null || v === undefined) return '';
+  return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+function argent(n){ return Number(nb(n)).toLocaleString('fr-FR') + ' GNF'; }
+function jour(d){
+  if(!d) return '—';
+  var x = (typeof d === 'number') ? new Date(d) : new Date(String(d));
+  return isNaN(x.getTime()) ? '—' : x.toLocaleDateString('fr-FR');
+}
+function val(id){ var e = document.getElementById(id); return e ? String(e.value || '').trim() : ''; }
+function coche(id){ var e = document.getElementById(id); return !!(e && e.checked); }
+function poser(id, v){ var e = document.getElementById(id); if(e) e.value = (v === undefined || v === null) ? '' : v; }
+
+/* ---- acces Firebase par les aides deja fournies par l'application ---- */
+function fb(){
+  return { db: window._agpDb, r: window._agpRef, g: window._agpGet,
+           s: window._agpSet, u: window._agpUpdate };
+}
+function pret(){ var f = fb(); return !!(f.db && f.r && f.g && f.s); }
+function lire(chemin){
+  var f = fb();
+  if(!pret()) return Promise.reject(new Error('Firebase indisponible'));
+  return f.g(f.r(f.db, chemin)).then(function(s){ return s.val(); });
+}
+function ecrire(chemin, v){
+  var f = fb();
+  if(!pret()) return Promise.reject(new Error('Firebase indisponible'));
+  return f.s(f.r(f.db, chemin), v);
+}
+function majInfo(uid, champs){
+  var f = fb();
+  if(!pret()) return Promise.reject(new Error('Firebase indisponible'));
+  if(f.u) return f.u(f.r(f.db, RACINE + '/' + uid + '/info'), champs);
+  return Promise.all(Object.keys(champs).map(function(k){
+    return f.s(f.r(f.db, RACINE + '/' + uid + '/info/' + k), champs[k]);
+  }));
+}
+
+var CARTES_DEFAUT = [
+  { nom:'1 mois',  jours:30,  prix:150000,  active:true },
+  { nom:'3 mois',  jours:90,  prix:400000,  active:true },
+  { nom:'6 mois',  jours:180, prix:750000,  active:true },
+  { nom:'12 mois', jours:365, prix:1400000, active:true }
+];
+
+var prestations = [], tarifs = null, config = null, factures = {};
+var filtre = 'tous', tri = 'recent', ongletCourant = 'prestations';
+
+/* ============================================================
+   OUVERTURE
+   ============================================================ */
+window.agpConcepteurPanneau = function(){
+  var ancien = document.getElementById('apc-ov');
+  if(ancien) ancien.remove();
+  var ov = document.createElement('div');
+  ov.id = 'apc-ov';
+  ov.className = 'apc-ov';
+  ov.innerHTML = '<div class="apc-panel">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">'
+      + '<div><div class="apc-h">Espace Concepteur — prestations</div>'
+      + '<div class="apc-sub">Souleymane Diallo · vue plateforme</div></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap">'
+        + '<button class="apc-btn" onclick="agpConcRecharger()">Actualiser</button>'
+        + '<button class="apc-btn" onclick="agpConcFermer()">Fermer</button>'
+      + '</div></div>'
+    + '<div class="apc-onglets">'
+      + '<button class="apc-onglet on" id="apc-ong-prestations" onclick="agpConcOnglet(\'prestations\')">Prestations</button>'
+      + '<button class="apc-onglet" id="apc-ong-tarifs" onclick="agpConcOnglet(\'tarifs\')">Tarification</button>'
+      + '<button class="apc-onglet" id="apc-ong-factures" onclick="agpConcOnglet(\'factures\')">Factures de licence</button>'
+    + '</div>'
+    + '<div id="apc-vue-prestations">' + vuePrestations() + '</div>'
+    + '<div id="apc-vue-tarifs" style="display:none">' + vueTarifs() + '</div>'
+    + '<div id="apc-vue-factures" style="display:none">' + vueFactures() + '</div>'
+    + '</div>';
+  ov.onclick = function(e){ if(e.target === ov) window.agpConcFermer(); };
+  document.body.appendChild(ov);
+  charger();
+};
+window.agpConcFermer = function(){
+  var o = document.getElementById('apc-ov');
+  if(o) o.remove();
+};
+window.agpConcOnglet = function(nom){
+  ongletCourant = nom;
+  ['prestations','tarifs','factures'].forEach(function(o){
+    var b = document.getElementById('apc-ong-' + o);
+    var v = document.getElementById('apc-vue-' + o);
+    if(b) b.classList.toggle('on', o === nom);
+    if(v) v.style.display = (o === nom) ? 'block' : 'none';
+  });
+  if(nom === 'tarifs') remplirTarifs();
+  if(nom === 'factures') rendreFactures();
+};
+
+/* ============================================================
+   1. PRESTATIONS
+   ============================================================ */
+function vuePrestations(){
+  function carte(id, f, l, c, idv){
+    return '<div class="apc-stat' + (f === 'tous' ? ' on' : '') + '" id="' + id + '" onclick="agpConcFiltre(\'' + f + '\')">'
+      + '<div class="l">' + l + '</div><div class="v" style="color:' + c + '" id="' + idv + '">—</div></div>';
+  }
+  return '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">'
+      + carte('apc-s-tous','tous','Total','#fff','apc-v-tous')
+      + carte('apc-s-actif','actif','Actives','#4ade80','apc-v-actif')
+      + carte('apc-s-essai','essai','En essai','#60a5fa','apc-v-essai')
+      + carte('apc-s-expire','expire','Expirees','#fbbf24','apc-v-expire')
+      + carte('apc-s-bloque','bloque','Bloquees','#ef4444','apc-v-bloque')
+    + '</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+      + '<input id="apc-recherche" class="apc-field" style="flex:1;min-width:170px;margin:0" '
+        + 'placeholder="Rechercher : nom, code, ville, telephone..." oninput="agpConcRendre()">'
+      + '<select id="apc-tri" class="apc-field" style="width:auto;margin:0" onchange="agpConcRendre()">'
+        + '<option value="recent">Plus recentes</option><option value="nom">Nom (A-Z)</option>'
+        + '<option value="expiration">Expiration proche</option></select>'
+      + '<button class="apc-btn" onclick="agpConcExport()">Export CSV</button>'
+    + '</div>'
+    + '<div class="apc-wrap"><table class="apc-table"><thead><tr>'
+      + '<th>Code</th><th>Prestation</th><th>Contact</th><th>Statut</th>'
+      + '<th>Creee le</th><th>Expire le</th><th>Licence</th><th>Actions</th>'
+      + '</tr></thead><tbody id="apc-corps">'
+      + '<tr><td colspan="8" style="padding:20px;text-align:center;color:#64748b">Chargement...</td></tr>'
+      + '</tbody></table></div>'
+    + '<div id="apc-etat" style="font-size:11px;color:#475569;margin-top:10px;min-height:16px"></div>';
+}
+
+function statut(p){
+  if(p.blocked === true) return 'bloque';
+  var e = p.dateExpiration ? new Date(p.dateExpiration) : null;
+  if(e && !isNaN(e.getTime()) && e < new Date()) return 'expire';
+  if(p.licenceStatut === 'actif') return 'actif';
+  return 'essai';
+}
+function libelle(s){
+  return s === 'actif' ? 'Active' : s === 'essai' ? 'Essai' : s === 'expire' ? 'Expiree' : 'Bloquee';
+}
+function nomDe(p){ return p.centreNom || p.prestation || p.entreprise || p.nom || 'Sans nom'; }
+
+function charger(){
+  var etat = document.getElementById('apc-etat');
+  if(etat) etat.textContent = 'Lecture des prestations...';
+  if(!pret()){
+    if(etat){ etat.style.color = '#ef4444'; etat.textContent = 'Firebase indisponible.'; }
+    return;
+  }
+  Promise.all([
+    lire(PLAT + '/tarifs').catch(function(){ return null; }),
+    lire(PLAT + '/config').catch(function(){ return null; }),
+    lire(PLAT + '/facturesLicence').catch(function(){ return null; })
+  ]).then(function(r){
+    tarifs = r[0]; config = r[1]; factures = r[2] || {};
+    return lire('agp_codes');
+  }).then(function(codes){
+    var v = codes || {}, uids = [], vus = {};
+    Object.keys(v).forEach(function(k){ if(v[k] && !vus[v[k]]){ vus[v[k]] = 1; uids.push(v[k]); } });
+    if(!uids.length) return [];
+    return Promise.all(uids.map(function(u){
+      return lire(RACINE + '/' + u + '/info').catch(function(){ return null; });
+    }));
+  }).then(function(l){
+    prestations = (l || []).filter(Boolean);
+    if(etat){ etat.style.color = '#22c55e'; etat.textContent = prestations.length + ' prestation(s)'; }
+    window.agpConcRendre();
+    if(ongletCourant === 'factures') rendreFactures();
+  }).catch(function(e){
+    if(etat){ etat.style.color = '#ef4444'; etat.textContent = 'Lecture impossible : ' + (e.message || e); }
+  });
+}
+window.agpConcRecharger = charger;
+
+window.agpConcFiltre = function(f){
+  filtre = f;
+  [['tous','apc-s-tous'],['actif','apc-s-actif'],['essai','apc-s-essai'],
+   ['expire','apc-s-expire'],['bloque','apc-s-bloque']].forEach(function(p){
+    var e = document.getElementById(p[1]);
+    if(e) e.classList.toggle('on', p[0] === f);
+  });
+  window.agpConcRendre();
+};
+
+function filtrees(){
+  var q = (val('apc-recherche') || '').toLowerCase();
+  var l = prestations.filter(function(p){
+    if(filtre !== 'tous' && statut(p) !== filtre) return false;
+    if(!q) return true;
+    return ((nomDe(p)) + ' ' + (p.codeAcces || '') + ' ' + (p.ville || '') + ' '
+      + (p.tel || '') + ' ' + (p.email || '')).toLowerCase().indexOf(q) >= 0;
+  });
+  tri = val('apc-tri') || 'recent';
+  l.sort(function(a,b){
+    if(tri === 'nom') return nomDe(a).localeCompare(nomDe(b));
+    if(tri === 'expiration'){
+      var ea = a.dateExpiration ? new Date(a.dateExpiration).getTime() : Infinity;
+      var eb = b.dateExpiration ? new Date(b.dateExpiration).getTime() : Infinity;
+      return ea - eb;
+    }
+    return new Date(b.dateCreation || 0) - new Date(a.dateCreation || 0);
+  });
+  return l;
+}
+
+window.agpConcRendre = function(){
+  var corps = document.getElementById('apc-corps');
+  if(!corps) return;
+  var s = { tous: prestations.length, actif:0, essai:0, expire:0, bloque:0 };
+  prestations.forEach(function(p){ s[statut(p)]++; });
+  [['apc-v-tous','tous'],['apc-v-actif','actif'],['apc-v-essai','essai'],
+   ['apc-v-expire','expire'],['apc-v-bloque','bloque']].forEach(function(x){
+    var e = document.getElementById(x[0]);
+    if(e) e.textContent = s[x[1]];
+  });
+
+  var l = filtrees();
+  if(!l.length){
+    corps.innerHTML = '<tr><td colspan="8" style="padding:20px;text-align:center;color:#64748b">'
+      + 'Aucune prestation ne correspond.</td></tr>';
+    return;
+  }
+  corps.innerHTML = l.map(function(p){
+    var st = statut(p);
+    var j = p.dateExpiration ? Math.ceil((new Date(p.dateExpiration) - new Date()) / 86400000) : null;
+    return '<tr>'
+      + '<td><span style="font-family:monospace;font-weight:700;color:#93c5fd">'
+        + esc(p.codeAcces || '—') + '</span></td>'
+      + '<td><div style="font-weight:600;color:#e2e8f0">' + esc(nomDe(p)) + '</div>'
+        + '<div style="font-size:10px;color:#64748b">' + esc(p.ville || '') + '</div></td>'
+      + '<td style="font-size:10.5px;color:#64748b">' + esc(p.tel || '—')
+        + '<div>' + esc(p.email || '') + '</div></td>'
+      + '<td><span class="apc-badge ' + st + '">' + libelle(st) + '</span></td>'
+      + '<td style="font-size:10.5px;color:#64748b">' + jour(p.dateCreation) + '</td>'
+      + '<td style="font-size:10.5px;color:#64748b">' + jour(p.dateExpiration)
+        + (j !== null ? '<div style="color:' + (j <= 0 ? '#f87171' : j <= 10 ? '#fbbf24' : '#64748b') + '">'
+            + (j <= 0 ? 'depassee' : j + ' j') + '</div>' : '') + '</td>'
+      + '<td style="font-size:10.5px;color:#64748b">' + esc(p.licencePeriode || p.licenceStatut || '—') + '</td>'
+      + '<td><div style="display:flex;gap:4px;flex-wrap:wrap">'
+        + '<button class="apc-btn ' + (p.blocked === true ? 'ok' : 'danger') + '" onclick="agpConcBloquer(\''
+          + esc(p.uid) + '\')">' + (p.blocked === true ? 'Debloquer' : 'Bloquer') + '</button>'
+        + '<button class="apc-btn ok" onclick="agpConcActiver(\'' + esc(p.uid) + '\')">Activer</button>'
+        + '<button class="apc-btn" onclick="agpConcProlonger(\'' + esc(p.uid) + '\')">Prolonger</button>'
+        + (p.tel ? '<button class="apc-btn wa" onclick="agpConcWhatsapp(\'' + esc(p.uid) + '\')">WhatsApp</button>' : '')
+      + '</div></td></tr>';
+  }).join('');
+};
+
+function prestation(uid){
+  var t = null;
+  prestations.forEach(function(p){ if(!t && String(p.uid) === String(uid)) t = p; });
+  return t;
+}
+function etat(txt, couleur){
+  var e = document.getElementById('apc-etat');
+  if(e){ e.style.color = couleur || '#64748b'; e.textContent = txt; }
+}
+
+window.agpConcBloquer = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  var suivant = !(p.blocked === true);
+  etat('Enregistrement...', '#60a5fa');
+  majInfo(uid, { blocked: suivant }).then(function(){
+    p.blocked = suivant;
+    window.agpConcRendre();
+    etat(nomDe(p) + (suivant ? ' bloquee' : ' debloquee'), suivant ? '#ef4444' : '#22c55e');
+  }).catch(function(e){ etat('Erreur : ' + (e.message || e), '#ef4444'); });
+};
+
+function cartes(){
+  return (tarifs && tarifs.cartes && tarifs.cartes.length) ? tarifs.cartes : CARTES_DEFAUT;
+}
+
+window.agpConcActiver = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  var l = cartes().filter(function(c){ return c && c.active !== false; });
+  var choix = l.map(function(c, i){
+    return (i+1) + ' = ' + c.nom + ' (' + c.jours + ' j, ' + argent(c.prix) + ')';
+  }).join('\n');
+  var r = prompt('Activer la licence de ' + nomDe(p) + '\n\n' + choix + '\n\nNumero de la formule :', '1');
+  if(!r) return;
+  var c = l[parseInt(r, 10) - 1];
+  if(!c) return etat('Formule inconnue.', '#f97316');
+  prolonger(uid, nb(c.jours), c.nom, nb(c.prix));
+};
+
+window.agpConcProlonger = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  var r = prompt('Prolonger ' + nomDe(p) + ' de combien de jours ?', '30');
+  if(!r) return;
+  var j = parseInt(r, 10);
+  if(!j || j < 1) return etat('Nombre de jours invalide.', '#f97316');
+  prolonger(uid, j, j + ' jours', 0);
+};
+
+function prolonger(uid, jours, periode, montant){
+  var p = prestation(uid);
+  if(!p) return;
+  var base = p.dateExpiration ? new Date(p.dateExpiration) : new Date();
+  if(isNaN(base.getTime()) || base < new Date()) base = new Date();
+  var exp = new Date(base.getTime() + jours * 86400000);
+  var maintenant = new Date();
+  etat('Enregistrement...', '#60a5fa');
+  majInfo(uid, {
+    licenceStatut: 'actif',
+    dateExpiration: exp.toISOString(),
+    dateDernierPaiement: maintenant.toISOString(),
+    licencePeriode: periode,
+    blocked: false
+  }).then(function(){
+    p.licenceStatut = 'actif'; p.dateExpiration = exp.toISOString();
+    p.dateDernierPaiement = maintenant.toISOString(); p.licencePeriode = periode; p.blocked = false;
+    window.agpConcRendre();
+    etat('Licence active jusqu\'au ' + exp.toLocaleDateString('fr-FR'), '#22c55e');
+    if(montant > 0){
+      enregistrerPaiement(p, montant, periode, jours).catch(function(){});
+    }
+  }).catch(function(e){ etat('Erreur : ' + (e.message || e), '#ef4444'); });
+}
+
+function numeroWhatsapp(n){
+  var s = String(n || '').replace(/[^0-9]/g, '');
+  if(!s) return '';
+  if(s.length === 9) s = '224' + s;
+  return s;
+}
+window.agpConcWhatsapp = function(uid){
+  var p = prestation(uid);
+  if(!p || !p.tel) return;
+  var j = p.dateExpiration ? Math.ceil((new Date(p.dateExpiration) - new Date()) / 86400000) : null;
+  var texte = 'Bonjour ' + nomDe(p) + ',\n'
+    + (p.blocked === true ? 'Votre acces a App AGP est actuellement suspendu.'
+       : (j !== null && j <= 0 ? 'Votre licence App AGP est arrivee a echeance.'
+          : 'Votre licence App AGP expire le ' + jour(p.dateExpiration) + '.'));
+  window.open('https://wa.me/' + numeroWhatsapp(p.tel) + '?text=' + encodeURIComponent(texte), '_blank');
+};
+
+window.agpConcExport = function(){
+  var l = filtrees();
+  if(!l.length) return etat('Rien a exporter.', '#f97316');
+  var lignes = [['Code','Prestation','Ville','Telephone','Email','Statut','Creee le','Expire le','Licence']];
+  l.forEach(function(p){
+    lignes.push([p.codeAcces||'', nomDe(p), p.ville||'', p.tel||'', p.email||'',
+                 libelle(statut(p)), jour(p.dateCreation), jour(p.dateExpiration),
+                 p.licencePeriode||p.licenceStatut||'']);
+  });
+  var csv = lignes.map(function(r){
+    return r.map(function(c){ return '"' + String(c).replace(/"/g,'""') + '"'; }).join(';');
+  }).join('\r\n');
+  var a = document.createElement('a');
+  a.href = 'data:text/csv;charset=utf-8,\uFEFF' + encodeURIComponent(csv);
+  a.download = 'prestations-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+  etat(l.length + ' ligne(s) exportee(s).', '#22c55e');
+};
+
+/* ============================================================
+   2. TARIFICATION
+   ============================================================ */
+function vueTarifs(){
+  return '<div class="apc-sec">Formules de licence</div>'
+    + '<div class="apc-note" style="margin-bottom:12px">Ces montants ne sont proposes aux prestations '
+      + 'qu\'une fois publies.</div>'
+    + '<table class="apc-table" style="min-width:0;margin-bottom:10px">'
+      + '<thead><tr><th>Formule</th><th>Duree (jours)</th><th>Prix (GNF)</th><th>Proposee</th><th></th></tr></thead>'
+      + '<tbody id="apc-tarifs-corps"></tbody></table>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px">'
+      + '<button class="apc-btn ok" onclick="agpConcAjouterCarte()">+ Ajouter une formule</button>'
+      + '<button class="apc-btn" onclick="agpConcCartesDefaut()">Formules par defaut</button>'
+    + '</div>'
+    + '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
+      + '<label class="apc-note">Duree d\'essai des nouvelles prestations (jours)</label>'
+      + '<input type="number" id="apc-essai" min="0" max="365" class="apc-field" style="width:90px;margin:0">'
+    + '</div>'
+    + '<input type="text" id="apc-instructions" class="apc-field" '
+      + 'placeholder="Instructions de paiement affichees a la prestation (Orange Money 6XX..., etc.)">'
+    + '<input type="text" id="apc-whatsapp" class="apc-field" '
+      + 'placeholder="Votre numero WhatsApp (ex : 224623030403)">'
+    + '<input type="text" id="apc-raison" class="apc-field" '
+      + 'placeholder="Raison sociale sur les factures (ex : NEINDI MULTI-SERVICES)">'
+    + '<input type="text" id="apc-adresse" class="apc-field" placeholder="Adresse sur les factures">'
+    + '<div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'
+      + '<label class="apc-note" style="display:flex;align-items:center;gap:7px">'
+        + '<input type="checkbox" id="apc-publie"> Publier les tarifs aupres des prestations</label>'
+      + '<button class="apc-btn ok" onclick="agpConcEnregistrerTarifs()">Enregistrer</button>'
+    + '</div>'
+    + '<div id="apc-tarifs-note" class="apc-note"></div>';
+}
+
+var edition = [];
+
+function remplirTarifs(){
+  edition = cartes().map(function(c){ return { nom:c.nom, jours:nb(c.jours), prix:nb(c.prix), active:c.active !== false }; });
+  rendreCartes();
+  poser('apc-essai', (tarifs && tarifs.essaiJours) ? tarifs.essaiJours : 60);
+  poser('apc-instructions', tarifs && tarifs.instructions);
+  poser('apc-whatsapp', config && config.whatsapp);
+  poser('apc-raison', config && config.raisonSociale);
+  poser('apc-adresse', config && config.adresse);
+  var p = document.getElementById('apc-publie');
+  if(p) p.checked = !!(tarifs && tarifs.publie);
+  var n = document.getElementById('apc-tarifs-note');
+  if(n){
+    n.style.color = '#64748b';
+    n.textContent = (tarifs && tarifs.majLe) ? 'Derniere mise a jour : ' + jour(tarifs.majLe)
+      : 'Aucun tarif enregistre pour l\'instant.';
+  }
+}
+function rendreCartes(){
+  var b = document.getElementById('apc-tarifs-corps');
+  if(!b) return;
+  b.innerHTML = edition.map(function(c, i){
+    return '<tr>'
+      + '<td><input class="apc-field" style="margin:0" value="' + esc(c.nom)
+        + '" oninput="agpConcCarte(' + i + ',\'nom\',this.value)"></td>'
+      + '<td><input class="apc-field" style="margin:0" type="number" min="1" value="' + nb(c.jours)
+        + '" oninput="agpConcCarte(' + i + ',\'jours\',this.value)"></td>'
+      + '<td><input class="apc-field" style="margin:0" type="number" min="0" value="' + nb(c.prix)
+        + '" oninput="agpConcCarte(' + i + ',\'prix\',this.value)"></td>'
+      + '<td style="text-align:center"><input type="checkbox" ' + (c.active ? 'checked' : '')
+        + ' onchange="agpConcCarte(' + i + ',\'active\',this.checked)"></td>'
+      + '<td><button class="apc-btn danger" onclick="agpConcRetirerCarte(' + i + ')">Retirer</button></td>'
+      + '</tr>';
+  }).join('') || '<tr><td colspan="5" style="padding:16px;text-align:center;color:#64748b">Aucune formule.</td></tr>';
+}
+window.agpConcCarte = function(i, champ, v){
+  if(!edition[i]) return;
+  edition[i][champ] = (champ === 'jours' || champ === 'prix') ? nb(v) : v;
+};
+window.agpConcAjouterCarte = function(){
+  edition.push({ nom:'Nouvelle formule', jours:30, prix:0, active:true });
+  rendreCartes();
+};
+window.agpConcRetirerCarte = function(i){ edition.splice(i, 1); rendreCartes(); };
+window.agpConcCartesDefaut = function(){
+  edition = CARTES_DEFAUT.map(function(c){ return { nom:c.nom, jours:c.jours, prix:c.prix, active:true }; });
+  rendreCartes();
+};
+
+window.agpConcEnregistrerTarifs = function(){
+  var n = document.getElementById('apc-tarifs-note');
+  function dire(t, ok){ if(n){ n.style.color = ok ? '#4ade80' : '#f87171'; n.textContent = t; } }
+  var l = edition.filter(function(c){ return c.nom && c.jours > 0; }).map(function(c){
+    return { nom:String(c.nom), jours:nb(c.jours), prix:nb(c.prix), active: c.active !== false };
+  });
+  if(!l.length) return dire('Ajoutez au moins une formule valable.', false);
+  var t = { cartes:l, essaiJours: Math.max(0, parseInt(val('apc-essai'), 10) || 0),
+            instructions: val('apc-instructions'), publie: coche('apc-publie'), majLe: Date.now() };
+  var c = { whatsapp: val('apc-whatsapp').replace(/[^0-9]/g,''), raisonSociale: val('apc-raison'),
+            adresse: val('apc-adresse'), majLe: Date.now() };
+  dire('Enregistrement...', true);
+  Promise.all([ecrire(PLAT + '/tarifs', t), ecrire(PLAT + '/config', c)]).then(function(){
+    tarifs = t; config = c;
+    dire('Tarifs enregistres' + (t.publie ? ' et publies.' : ' (non publies).'), true);
+  }).catch(function(e){
+    dire('Enregistrement refuse : ' + (e.message || e)
+      + ' — autorisez le noeud ' + PLAT + ' dans les regles Firebase.', false);
+  });
+};
+
+/* ============================================================
+   3. FACTURES DE LICENCE
+   ============================================================ */
+function vueFactures(){
+  return '<div class="apc-sec">Prestations ayant paye leur licence</div>'
+    + '<div class="apc-note" style="margin-bottom:10px">Facture numerotee, imprimable, et envoyable '
+      + 'par WhatsApp ou par email.</div>'
+    + '<input id="apc-fact-recherche" class="apc-field" placeholder="Rechercher une prestation..." '
+      + 'oninput="agpConcRendreFactures()">'
+    + '<div id="apc-factures" style="max-height:52vh;overflow:auto"></div>'
+    + '<div id="apc-fact-note" class="apc-note" style="margin-top:10px"></div>';
+}
+
+function aPaye(p){ return !!(p && (p.dateDernierPaiement || p.licenceStatut === 'actif')); }
+
+function montantDe(p){
+  var l = cartes();
+  var c = null;
+  l.forEach(function(x){
+    if(!c && x && String(x.nom).toLowerCase() === String(p.licencePeriode || '').toLowerCase()) c = x;
+  });
+  return c ? nb(c.prix) : 0;
+}
+function cleFacture(p){
+  return String(p.uid) + '_' + (p.dateDernierPaiement ? String(p.dateDernierPaiement).slice(0,10) : 'sansdate');
+}
+function numeroSuivant(){
+  var an = new Date().getFullYear(), max = 0;
+  Object.keys(factures).forEach(function(k){
+    var m = /^FL-(\d{4})-(\d+)$/.exec(String(factures[k] && factures[k].numero || ''));
+    if(m && Number(m[1]) === an) max = Math.max(max, Number(m[2]));
+  });
+  return 'FL-' + an + '-' + String(max + 1).padStart(4, '0');
+}
+function factureDe(p){
+  var cle = cleFacture(p);
+  if(factures[cle]) return Promise.resolve(factures[cle]);
+  var f = { numero: numeroSuivant(), uid: p.uid, prestation: nomDe(p), code: p.codeAcces || '',
+            formule: p.licencePeriode || '', montant: montantDe(p),
+            datePaiement: p.dateDernierPaiement || null, expiration: p.dateExpiration || null,
+            creeLe: Date.now() };
+  factures[cle] = f;
+  return ecrire(PLAT + '/facturesLicence/' + cle, f).then(function(){ return f; }, function(){ return f; });
+}
+function enregistrerPaiement(p, montant, formule, jours){
+  var cle = 'p' + Date.now();
+  return ecrire(PLAT + '/paiements/' + cle, {
+    uid: p.uid, prestation: nomDe(p), code: p.codeAcces || '', formule: formule,
+    jours: nb(jours), montant: nb(montant), date: Date.now(), etat: 'valide'
+  });
+}
+
+function rendreFactures(){ window.agpConcRendreFactures(); }
+
+window.agpConcRendreFactures = function(){
+  var z = document.getElementById('apc-factures');
+  if(!z) return;
+  var q = (val('apc-fact-recherche') || '').toLowerCase();
+  var l = prestations.filter(aPaye).filter(function(p){
+    if(!q) return true;
+    return (nomDe(p) + ' ' + (p.codeAcces || '') + ' ' + (p.tel || '')).toLowerCase().indexOf(q) >= 0;
+  });
+  if(!l.length){
+    z.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b">'
+      + 'Aucune prestation n\'a encore paye de licence.</div>';
+    return;
+  }
+  z.innerHTML = l.map(function(p){
+    var cle = cleFacture(p);
+    var f = factures[cle];
+    return '<div style="background:#060d24;border:1px solid rgba(37,99,235,0.18);border-radius:10px;'
+        + 'padding:11px;margin-bottom:8px;display:flex;justify-content:space-between;gap:10px;'
+        + 'flex-wrap:wrap;align-items:center">'
+      + '<div style="min-width:170px;flex:1">'
+        + '<div style="font-weight:700;color:#e2e8f0">' + esc(nomDe(p)) + '</div>'
+        + '<div style="font-size:10.5px;color:#64748b">' + esc(p.codeAcces || '')
+          + (p.tel ? ' · ' + esc(p.tel) : '') + (p.email ? ' · ' + esc(p.email) : '') + '</div>'
+        + '<div style="font-size:10.5px;color:#64748b">' + esc(p.licencePeriode || 'licence')
+          + ' · paye le ' + jour(p.dateDernierPaiement) + ' · expire le ' + jour(p.dateExpiration)
+          + (f ? ' · ' + esc(f.numero) : '') + '</div></div>'
+      + '<div style="font-weight:800;color:#93c5fd">' + argent(montantDe(p)) + '</div>'
+      + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
+        + '<button class="apc-btn" onclick="agpConcFacture(\'' + esc(p.uid) + '\')">Facture</button>'
+        + (p.tel ? '<button class="apc-btn wa" onclick="agpConcFactureWA(\'' + esc(p.uid) + '\')">WhatsApp</button>' : '')
+        + (p.email ? '<button class="apc-btn" onclick="agpConcFactureMail(\'' + esc(p.uid) + '\')">Email</button>' : '')
+      + '</div></div>';
+  }).join('');
+};
+
+function noteFact(t, ok){
+  var n = document.getElementById('apc-fact-note');
+  if(n){ n.style.color = ok ? '#4ade80' : '#f87171'; n.textContent = t; }
+}
+
+window.agpConcFacture = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  factureDe(p).then(function(f){
+    var c = config || {};
+    var raison = c.raisonSociale || 'NEINDI MULTI-SERVICES';
+    var adresse = c.adresse || 'Damakania, Kindia — Guinee';
+    var tel = c.whatsapp || '224623030403';
+    var css = 'body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:0;padding:28px;font-size:13px}'
+      + '.t{display:flex;justify-content:space-between;border-bottom:3px solid #1d4ed8;padding-bottom:12px;margin-bottom:18px}'
+      + '.t h1{margin:0;font-size:19px;color:#1d4ed8}'
+      + '.p{font-size:11.5px;color:#555;line-height:1.6}'
+      + 'table{width:100%;border-collapse:collapse;margin-top:14px}'
+      + 'th,td{border:1px solid #cbd5e1;padding:9px 10px;text-align:left}'
+      + 'th{background:#eff6ff;color:#1e3a8a}td.d{text-align:right}'
+      + '.tot{margin-top:14px;text-align:right;font-size:16px;font-weight:800}'
+      + '.paye{display:inline-block;padding:6px 14px;border:2px solid #15803d;color:#15803d;'
+      + 'border-radius:6px;font-weight:800;transform:rotate(-3deg)}'
+      + '.pied{margin-top:32px;display:flex;justify-content:space-between;font-size:11.5px;color:#555;'
+      + 'border-top:1px solid #cbd5e1;padding-top:10px}@media print{.np{display:none}}';
+    var corps = '<div class="t"><div><h1>' + esc(raison) + '</h1>'
+        + '<div class="p">' + esc(adresse) + '<br>' + esc(tel) + '</div></div>'
+      + '<div style="text-align:right"><div style="font-size:18px;font-weight:700">FACTURE DE LICENCE</div>'
+      + '<div class="p">N&deg; ' + esc(f.numero) + '<br>' + jour(f.datePaiement || f.creeLe) + '</div></div></div>'
+      + '<div class="p"><strong>Client</strong><br>' + esc(nomDe(p))
+        + '<br>Code : ' + esc(p.codeAcces || '—')
+        + (p.tel ? '<br>' + esc(p.tel) : '') + (p.email ? '<br>' + esc(p.email) : '') + '</div>'
+      + '<table><thead><tr><th>Designation</th><th>Periode</th><th>Montant</th></tr></thead><tbody>'
+      + '<tr><td>Licence d\'utilisation de l\'application App AGP</td>'
+      + '<td>' + esc(p.licencePeriode || '—')
+      + (p.dateExpiration ? '<br><span style="font-size:11px;color:#555">jusqu\'au '
+          + jour(p.dateExpiration) + '</span>' : '') + '</td>'
+      + '<td class="d">' + argent(f.montant) + '</td></tr></tbody></table>'
+      + '<div class="tot">Total : ' + argent(f.montant) + '</div>'
+      + '<div style="text-align:right"><span class="paye">PAYEE</span></div>'
+      + '<div class="pied"><span>Merci de votre confiance.</span><span>Signature et cachet</span></div>'
+      + '<div class="np" style="margin-top:22px"><button onclick="window.print()" style="padding:9px 18px;'
+      + 'background:#1d4ed8;color:#fff;border:none;border-radius:6px;font-size:13px;font-weight:700;'
+      + 'cursor:pointer">Imprimer / PDF</button></div>';
+    var w = window.open('', '_blank');
+    if(!w) return noteFact('Autorisez les fenetres pour imprimer.', false);
+    w.document.write('<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Facture ' + esc(f.numero)
+      + '</title><style>' + css + '</style></head><body>' + corps + '</body></html>');
+    w.document.close();
+    window.agpConcRendreFactures();
+  });
+};
+
+function texteFacture(p, f){
+  return 'FACTURE DE LICENCE — App AGP\nN° ' + f.numero + '\n\n'
+    + 'Prestation : ' + nomDe(p) + '\nCode : ' + (p.codeAcces || '') + '\n'
+    + 'Formule : ' + (p.licencePeriode || 'licence') + '\nMontant : ' + argent(f.montant) + '\n'
+    + 'Paye le : ' + jour(f.datePaiement) + '\nValable jusqu\'au : ' + jour(p.dateExpiration) + '\n\n'
+    + 'Statut : PAYEE — merci de votre confiance.';
+}
+window.agpConcFactureWA = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  factureDe(p).then(function(f){
+    window.open('https://wa.me/' + numeroWhatsapp(p.tel) + '?text='
+      + encodeURIComponent(texteFacture(p, f)), '_blank');
+    noteFact('WhatsApp ouvert — facture ' + f.numero, true);
+    window.agpConcRendreFactures();
+  });
+};
+window.agpConcFactureMail = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  factureDe(p).then(function(f){
+    window.location.href = 'mailto:' + encodeURIComponent(p.email)
+      + '?subject=' + encodeURIComponent('Facture de licence App AGP — ' + f.numero)
+      + '&body=' + encodeURIComponent(texteFacture(p, f));
+    noteFact('Messagerie ouverte — facture ' + f.numero, true);
+    window.agpConcRendreFactures();
+  });
+};
+
+/* ============================================================
+   BRANCHEMENT : le mot de passe existant ouvre le nouveau panneau
+   ============================================================ */
+(function brancher(){
+  function poser(){
+    if(typeof window.agpDevPanel !== 'function'){ setTimeout(poser, 400); return; }
+    if(window._agpConcepteurV2) return;
+    window._agpConcepteurV2 = true;
+    window.agpDevPanel = function(){ window.agpConcepteurPanneau(); };
+  }
+  poser();
+  setInterval(poser, 5000);
+})();
+
+})();
+</script>
+
 </body>
 </html>
