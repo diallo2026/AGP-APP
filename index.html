@@ -9099,8 +9099,8 @@ window.agpConcEnregistrerTarifs = function(){
    ============================================================ */
 function vueFactures(){
   return '<div class="apc-sec">Prestations ayant paye leur licence</div>'
-    + '<div class="apc-note" style="margin-bottom:10px">Facture numerotee, imprimable, et envoyable '
-      + 'par WhatsApp ou par email.</div>'
+    + '<div class="apc-note" style="margin-bottom:10px">Le montant paye est modifiable ici : '
+      + 'il s\'applique aussitot a la facture, au message WhatsApp et a l\'email.</div>'
     + '<input id="apc-fact-recherche" class="apc-field" placeholder="Rechercher une prestation..." '
       + 'oninput="agpConcRendreFactures()">'
     + '<div id="apc-factures" style="max-height:52vh;overflow:auto"></div>'
@@ -9109,13 +9109,19 @@ function vueFactures(){
 
 function aPaye(p){ return !!(p && (p.dateDernierPaiement || p.licenceStatut === 'actif')); }
 
-function montantDe(p){
-  var l = cartes();
-  var c = null;
+function montantTarif(p){
+  var l = cartes(), c = null;
   l.forEach(function(x){
     if(!c && x && String(x.nom).toLowerCase() === String(p.licencePeriode || '').toLowerCase()) c = x;
   });
   return c ? nb(c.prix) : 0;
+}
+/* le montant paye : celui saisi par le concepteur s'il en a saisi un,
+   sinon le prix de la formule correspondante */
+function montantDe(p){
+  var f = factures[cleFacture(p)];
+  if(f && f.montantSaisi === true) return nb(f.montant);
+  return montantTarif(p);
 }
 function cleFacture(p){
   return String(p.uid) + '_' + (p.dateDernierPaiement ? String(p.dateDernierPaiement).slice(0,10) : 'sansdate');
@@ -9132,7 +9138,7 @@ function factureDe(p){
   var cle = cleFacture(p);
   if(factures[cle]) return Promise.resolve(factures[cle]);
   var f = { numero: numeroSuivant(), uid: p.uid, prestation: nomDe(p), code: p.codeAcces || '',
-            formule: p.licencePeriode || '', montant: montantDe(p),
+            formule: p.licencePeriode || '', montant: montantDe(p), montantSaisi: false,
             datePaiement: p.dateDernierPaiement || null, expiration: p.dateExpiration || null,
             creeLe: Date.now() };
   factures[cle] = f;
@@ -9174,7 +9180,17 @@ window.agpConcRendreFactures = function(){
         + '<div style="font-size:10.5px;color:#64748b">' + esc(p.licencePeriode || 'licence')
           + ' · paye le ' + jour(p.dateDernierPaiement) + ' · expire le ' + jour(p.dateExpiration)
           + (f ? ' · ' + esc(f.numero) : '') + '</div></div>'
-      + '<div style="font-weight:800;color:#93c5fd">' + argent(montantDe(p)) + '</div>'
+      + '<div style="display:flex;align-items:center;gap:5px">'
+        + '<input id="apc-m-' + esc(p.uid) + '" type="number" min="0" value="' + nb(montantDe(p)) + '"'
+          + ' onkeydown="if(event.key===\'Enter\')agpConcMontant(\'' + esc(p.uid) + '\')"'
+          + ' title="Montant paye par cette prestation"'
+          + ' style="width:112px;padding:6px 8px;background:#0a1628;border:1px solid rgba(37,99,235,0.35);'
+          + 'border-radius:6px;color:#93c5fd;font-size:12px;font-weight:700;font-family:inherit;'
+          + 'text-align:right;outline:none">'
+        + '<span style="font-size:10px;color:#64748b">GNF</span>'
+        + '<button class="apc-btn ok" onclick="agpConcMontant(\'' + esc(p.uid) + '\')">Appliquer</button>'
+        + (f && f.montantSaisi ? '<span style="font-size:9.5px;color:#fbbf24">montant saisi</span>' : '')
+      + '</div>'
       + '<div style="display:flex;gap:5px;flex-wrap:wrap">'
         + '<button class="apc-btn" onclick="agpConcFacture(\'' + esc(p.uid) + '\')">Facture</button>'
         + (p.tel ? '<button class="apc-btn wa" onclick="agpConcFactureWA(\'' + esc(p.uid) + '\')">WhatsApp</button>' : '')
@@ -9187,6 +9203,31 @@ function noteFact(t, ok){
   var n = document.getElementById('apc-fact-note');
   if(n){ n.style.color = ok ? '#4ade80' : '#f87171'; n.textContent = t; }
 }
+
+/* le concepteur fixe lui-meme le montant paye ; il s'applique
+   aussitot a la facture, au message WhatsApp et a l'email */
+window.agpConcMontant = function(uid){
+  var p = prestation(uid);
+  if(!p) return;
+  var champ = document.getElementById('apc-m-' + uid);
+  if(!champ) return;
+  var montant = nb(champ.value);
+  if(montant < 0) return noteFact('Montant invalide.', false);
+  factureDe(p).then(function(f){
+    var avant = nb(f.montant);
+    f.montant = montant;
+    f.montantSaisi = true;
+    f.montantMajLe = Date.now();
+    return ecrire(PLAT + '/facturesLicence/' + cleFacture(p), f).then(function(){
+      noteFact('Montant de ' + nomDe(p) + ' : ' + argent(avant) + ' \u2192 ' + argent(montant)
+        + ' — applique a la facture ' + f.numero + '.', true);
+      window.agpConcRendreFactures();
+    });
+  }).catch(function(e){
+    noteFact('Enregistrement refuse : ' + (e.message || e)
+      + ' — autorisez le noeud ' + PLAT + ' dans les regles Firebase.', false);
+  });
+};
 
 window.agpConcFacture = function(uid){
   var p = prestation(uid);
