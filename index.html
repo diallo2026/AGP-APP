@@ -9986,7 +9986,7 @@ function ouvrirImpression(html){
   toast('Fenêtre d\'impression ouverte.','ok');
   return f.contentWindow;
 }
-var POLICES='<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Great+Vibes&family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Courier+Prime:wght@700&display=swap" rel="stylesheet">';
+var POLICES='<link rel="preconnect" href="https://fonts.googleapis.com"><link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;800&family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Courier+Prime:wght@700&display=swap" rel="stylesheet">';
 AX.ouvrirImpression=ouvrirImpression; AX.SCRIPT_IMPRESSION=SCRIPT_IMPRESSION; AX.POLICES=POLICES;
 
 /* ---------- Code 128 (B) -> SVG ---------- */
@@ -10792,13 +10792,13 @@ function modeleP(p){
   var em=emission('P',p.id)||{}, B=cfg('badges');
   var nomU=(p.prenom? p.nom : p.nom);
   return { type:'P', id:p.id, nom:String(nomU||'').toUpperCase(), prenom:p.prenom||'', l3l:'FONCTION', l3:p.fonction||'', l4l:'TÉLÉPHONE', l4:p.tel||'',
-    l5l:p.groupe?'GR. SANGUIN':'', l5:p.groupe||'', mat:matPersonnel(p), photo:p.photo||'', emis:em.emisLe||isoJour(), expire:em.expireLe||addMois(em.emisLe||isoJour(), B.validiteP),
+    l5l:p.groupe?'GR. SANGUIN':'', l5:p.groupe||'', dDl:'ENGAGÉ(E) LE', dD:frDe(p.embauche)||'—', mat:matPersonnel(p), photo:p.photo||'', emis:em.emisLe||isoJour(), expire:em.expireLe||addMois(em.emisLe||isoJour(), B.validiteP),
     titre:B.titreP, verso:B.versoP, contact:'', emisOk:!!em.emisLe };
 }
 function modeleE(ins){
   var k=cleIns(ins), em=emission('E',k)||{}, B=cfg('badges');
   return { type:'E', id:k, nom:String(ins.nom||'').toUpperCase(), prenom:ins.prenom||'', l3l:'FORMATION', l3:ins.formation||'', l4l:'HORAIRES', l4:joursCompacts(ins.jours),
-    l5l:'', l5:'', mat:ins.mat||'', photo:photoIns(ins), emis:em.emisLe||isoJour(), expire:em.expireLe||addMois(em.emisLe||isoJour(), B.validiteE),
+    l5l:'', l5:'', dDl:'INSCRIT(E) LE', dD:frDe(ins.date)||String(ins.date||'—'), mat:ins.mat||'', photo:photoIns(ins), emis:em.emisLe||isoJour(), expire:em.expireLe||addMois(em.emisLe||isoJour(), B.validiteE),
     titre:B.titreE, verso:B.versoE, contact:(ins.tuteur?ins.tuteur+' ':'')+(ins.tel||''), emisOk:!!em.emisLe };
 }
 function codeBadge(m){ return codeSecu([m.type, m.id, m.mat, m.nom, m.prenom, m.emis]); }
@@ -10871,7 +10871,7 @@ function carteRecto(m, T, u, pref){
     +txt(26.4,15.6,'NOM',1.45,{c:'#334155',poids:800,ls:0.12})+txt(26.4,19.2,m.nom,3.0,{poids:900,c:'#0f172a',max:35.5})
     +txt(26.4,21.8,'PRÉNOM(S)',1.45,{c:'#334155',poids:800,ls:0.12})+txt(26.4,25.1,m.prenom,2.7,{poids:800,c:'#0f172a',max:45})
     +txt(26.4,27.7,m.l3l,1.45,{c:'#334155',poids:800,ls:0.12})+txt(26.4,30.9,m.l3,2.35,{poids:800,c:c1,max:34})
-    +txt(26.4,33.5,'DÉLIVRÉE LE',1.45,{c:'#334155',poids:800,ls:0.12})+txt(26.4,36.6,frDe(m.emis),2.3,{poids:800,c:'#0f172a'})
+    +txt(26.4,33.5,m.dDl||'DÉLIVRÉE LE',1.45,{c:'#334155',poids:800,ls:0.12,max:16})+txt(26.4,36.6,m.dDl?(m.dD||'—'):frDe(m.emis),2.3,{poids:800,c:'#0f172a',max:16})
     +txt(43.4,33.5,'EXPIRE LE',1.45,{c:'#334155',poids:800,ls:0.12})+txt(43.4,36.6,frDe(m.expire),2.3,{poids:800,c:'#b91c1c'})
     +txt(26.4,39.3,m.l4l,1.45,{c:'#334155',poids:800,ls:0.12})+txt(26.4,42.4,m.l4||'—',2.15,{poids:800,c:'#0f172a',max:34})
     +(m.l5?txt(48,39.3,m.l5l,1.45,{c:'#334155',poids:800,ls:0.12})+txt(48,42.4,m.l5,2.15,{poids:900,c:'#b91c1c'}):'')
@@ -10895,23 +10895,35 @@ function carteRecto(m, T, u, pref){
 /* ---------- verso ---------- */
 function carteVerso(m, T, u, pref){
   var P=infoPrest(), B=cfg('badges'), c1=T.c1, c2=T.c2;
-  var code=codeBadge(m), lignes=couper(m.verso||'',54,1.75).slice(0,6);
+  var code=codeBadge(m), fz=2.05, lh=2.75, lignes=couper(m.verso||'',53,fz);
+  if(lignes.length>5){ fz=1.8; lh=2.42; lignes=couper(m.verso||'',53,fz); }
+  lignes=lignes.slice(0,6);
   var payload='AGP|'+(m.type)+'|'+(P.code||'')+'|'+m.mat+'|'+sansAccent(m.nom+' '+m.prenom).toUpperCase()+'|'+code;
+  var adresse=(P.adresse||'')+(P.tel?' — '+P.tel:'');
   var s='<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 85.6 54" width="85.6mm" height="54mm"><defs>'
     +'<clipPath id="cc'+u+'"><rect width="85.6" height="54" rx="3.2"/></clipPath></defs><g clip-path="url(#cc'+u+')">'
     +'<use href="#axFond'+pref+'"/><use href="#axRosV'+pref+'"/>'
     +'<rect width="85.6" height="7.2" fill="'+c1+'"/><rect y="7.2" width="85.6" height="0.6" fill="'+c2+'"/>'
     +txt(3,4.9,String(P.nom||'').toUpperCase(),2.4,{poids:900,c:'#fff',max:58,ls:0.08})
     +txt(82.6,4.9,m.type==='P'?'PERSONNEL':'APPRENANT',1.8,{anchor:'end',poids:800,c:'#fde68a',ls:0.25})
-    +lignes.map(function(l,i){ return txt(3,11.6+i*2.55,l,1.75,{c:'#1f2937',poids:600}); }).join('')
-    +(m.contact?txt(3,28.4,'Contact d\'urgence : '+m.contact,1.75,{c:'#b91c1c',poids:800,max:55}):'')
-    +txt(3,31.4,'En cas de perte, merci de la retourner à :',1.6,{c:'#475569',poids:700})
-    +txt(3,33.9,(P.adresse||'')+(P.tel?' — '+P.tel:''),1.6,{c:'#0f172a',poids:800,max:55})
-    +'<rect x="2.6" y="36.2" width="53" height="10.2" rx="1" fill="#fff"/>'+code128(3,37,52,6.6,m.mat,'#111827')
-    +txt(29.1,45.6,m.mat,1.7,{anchor:'middle',poids:800,c:'#111827',font:'Courier New,monospace'})
-    +txt(3,49.6,'Code de vérification',1.4,{c:'#64748b',poids:700})+txt(3,52.4,code,2.2,{poids:900,c:c1,font:'Courier New,monospace',ls:0.2});
-  if(B.qr!==false) s+='<g>'+qrSvg(60.6,9.4,22.2,payload,'#0f172a')+'</g>'+txt(71.7,33.6,'SCANNER POUR VÉRIFIER',1.25,{anchor:'middle',poids:800,c:'#334155',ls:0.05});
-  s+='<line x1="59.4" y1="47.6" x2="83.2" y2="47.6" stroke="#334155" stroke-width="0.15"/>'+txt(71.3,50,'Signature du titulaire',1.4,{anchor:'middle',c:'#475569',poids:700})
+    /* panneaux clairs : le texte reste parfaitement lisible sur le fond de securite */
+    +'<rect x="2" y="8.7" width="56.4" height="27.1" rx="1.4" fill="#fff" opacity=".93"/>'
+    +'<rect x="2" y="36.5" width="56.4" height="16.6" rx="1.4" fill="#fff" opacity=".93"/>'
+    +'<rect x="59.3" y="8.7" width="24.4" height="27.1" rx="1.4" fill="#fff" opacity=".93"/>'
+    +'<rect x="59.3" y="36.5" width="24.4" height="16.6" rx="1.4" fill="#fff" opacity=".93"/>'
+    +lignes.map(function(l,i){ return txt(3.4,11.9+i*lh,l,fz,{c:'#0f172a',poids:700}); }).join('')
+    +(m.contact?txt(3.4,28.3,'Contact d\'urgence : '+m.contact,1.95,{c:'#b91c1c',poids:800,max:53.6}):'')
+    +txt(3.4,31.2,'En cas de perte, merci de la retourner à :',1.85,{c:'#1e293b',poids:800,max:53.6})
+    +txt(3.4,34.1,adresse,1.85,{c:'#0f172a',poids:800,max:53.6})
+    +code128(3.4,37.4,53.6,6.3,m.mat,'#0f172a')
+    +txt(30.2,46.2,m.mat,2,{anchor:'middle',poids:900,c:'#0f172a',font:'Courier New,monospace',ls:0.15})
+    +txt(3.4,49.3,'DÉLIVRÉE LE '+frDe(m.emis),1.75,{c:'#1e293b',poids:800})
+    +txt(3.4,52.2,'EXPIRE LE '+frDe(m.expire),1.75,{c:'#b91c1c',poids:800})
+    +txt(57.4,49.3,'CODE DE VÉRIFICATION',1.45,{anchor:'end',c:'#334155',poids:800,ls:0.05})
+    +txt(57.4,52.3,code,2.3,{anchor:'end',poids:900,c:c1,font:'Courier New,monospace',ls:0.12});
+  if(B.qr!==false) s+=qrSvg(61.1,9.3,20.8,payload,'#0f172a')+txt(71.5,33.8,'SCANNER POUR VÉRIFIER',1.45,{anchor:'middle',poids:900,c:'#0f172a',max:22.5});
+  else s+=txt(71.5,22.5,'BADGE SÉCURISÉ',1.8,{anchor:'middle',poids:900,c:c1,max:22});
+  s+='<line x1="60.6" y1="48.3" x2="82.4" y2="48.3" stroke="#0f172a" stroke-width="0.2"/>'+txt(71.5,51.2,'Signature du titulaire',1.6,{anchor:'middle',c:'#0f172a',poids:800,max:22})
     +microTexte(u,0.75,0.75,84.1,52.5,2.6,(P.nom||'AGP')+' VERSO SECURISE '+code,0.48,eclaircir(c1,0.3))
     +'</g><rect x="0.06" y="0.06" width="85.48" height="53.88" rx="3.2" fill="none" stroke="#cbd5e1" stroke-width="0.12"/></svg>';
   return s;
@@ -10930,17 +10942,34 @@ function reperes(){
   }
   return s+'</svg>';
 }
+var LIB_FACES={paire:'recto + verso côte à côte', duplex:'recto-verso (imprimante recto-verso)', recto:'recto seul', verso:'verso seul'};
 function planches(modeles, T, face, depart){
-  var slots=[]; for(var k=0;k<(depart||0);k++) slots.push(null);
-  modeles.forEach(function(m){ slots.push(m); });
   var pages=[], uidN=0, P=infoPrest(), rep=reperes();
+  if(face==='paire'){
+    /* chaque badge : RECTO a gauche, son VERSO juste a cote a droite -> 4 badges (8 faces) par page */
+    var paires=[]; for(var k=0;k<Math.floor((depart||0)/2);k++) paires.push(null);
+    modeles.forEach(function(m){ paires.push(m); });
+    for(var q=0;q<paires.length;q+=4){
+      var lotP=paires.slice(q,q+4);
+      var h='<div class="page">'+rep+'<div class="pied">'+esc(P.nom)+' — badges : recto à gauche, verso à droite — page '+(Math.floor(q/4)+1)+'</div>';
+      lotP.forEach(function(m,r){ if(!m) return; uidN++;
+        var pr=posSlot(r*2,false), pv=posSlot(r*2+1,false);
+        h+='<div class="slot" style="left:'+pr.x+'mm;top:'+pr.y+'mm">'+carteRecto(m,T,'r'+uidN,'I')+'</div>'
+          +'<div class="slot" style="left:'+pv.x+'mm;top:'+pv.y+'mm">'+carteVerso(m,T,'v'+uidN,'I')+'</div>';
+      });
+      pages.push(h+'</div>');
+    }
+    return pages.join('');
+  }
+  var slots=[]; for(var k2=0;k2<(depart||0);k2++) slots.push(null);
+  modeles.forEach(function(m){ slots.push(m); });
   for(var p=0;p<slots.length;p+=8){
     var lot=slots.slice(p,p+8);
     function page(verso){
-      var h='<div class="page">'+rep+'<div class="pied">'+esc(P.nom)+' — badges '+(verso?'VERSO (retourner la feuille sur le bord long)':'RECTO')+' — page '+(Math.floor(p/8)+1)+'</div>';
+      var h2='<div class="page">'+rep+'<div class="pied">'+esc(P.nom)+' — badges '+(verso?'VERSO (retourner la feuille sur le bord long)':'RECTO')+' — page '+(Math.floor(p/8)+1)+'</div>';
       lot.forEach(function(m,i){ if(!m) return; var ps=posSlot(i,verso); uidN++;
-        h+='<div class="slot" style="left:'+ps.x+'mm;top:'+ps.y+'mm">'+(verso?carteVerso(m,T,'v'+uidN,'I'):carteRecto(m,T,'r'+uidN,'I'))+'</div>'; });
-      return h+'</div>';
+        h2+='<div class="slot" style="left:'+ps.x+'mm;top:'+ps.y+'mm">'+(verso?carteVerso(m,T,'v'+uidN,'I'):carteRecto(m,T,'r'+uidN,'I'))+'</div>'; });
+      return h2+'</div>';
     }
     if(face==='recto'||face==='duplex') pages.push(page(false));
     if(face==='verso'||face==='duplex') pages.push(page(true));
@@ -10971,8 +11000,8 @@ function imprimerBadges(modeles, face, depart){
       maj.push(ecrireDiscret('badges/'+k, e));
     });
     var html='<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>Badges — '+esc(infoPrest().nom)+'</title>'+POLICES+'<style>'+CSS_BADGES+'</style></head><body>'
-      +'<div class="voile"><div>🔒 <b>Document sécurisé</b><br>Le contenu des badges n\'apparaît qu\'à l\'impression.<br>'+modeles.length+' badge(s) — '+(face==='duplex'?'recto + verso':face)+'<br><button onclick="window.print()">🖨️ Imprimer</button></div></div>'
-      +defsPartagees(T,'I',logoMini)+planches(modeles,T,face||'recto',depart||0)+SCRIPT_IMPRESSION+'</body></html>';
+      +'<div class="voile"><div>🔒 <b>Document sécurisé</b><br>Le contenu des badges n\'apparaît qu\'à l\'impression.<br>'+modeles.length+' badge(s) — '+(LIB_FACES[face]||face)+'<br><button onclick="window.print()">🖨️ Imprimer</button></div></div>'
+      +defsPartagees(T,'I',logoMini)+planches(modeles,T,face||'paire',depart||0)+SCRIPT_IMPRESSION+'</body></html>';
     ouvrirImpression(html);
     Promise.all(maj).catch(function(){});
     if(!stockageOk()) toast('Badges prêts à imprimer. Le registre de vérification sera enregistré dès que le stockage des modules sera activé.','warn');
@@ -11016,7 +11045,7 @@ AX.fichePersonnel=function(id){
     +'<div class="ax-f"><label class="ax-lbl">Téléphone</label><input class="ax-inp" id="axp_tel" value="'+esc(f.tel||'')+'"></div>'
     +'<div class="ax-f"><label class="ax-lbl">Email</label><input class="ax-inp" id="axp_mail" value="'+esc(f.email||'')+'"></div>'
     +'<div class="ax-f"><label class="ax-lbl">Groupe sanguin</label><input class="ax-inp" id="axp_gs" value="'+esc(f.groupe||'')+'" placeholder="Ex : O+"></div>'
-    +'<div class="ax-f"><label class="ax-lbl">Date d\'embauche</label><input type="date" class="ax-inp" id="axp_emb" value="'+esc(f.embauche||'')+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Date d\'engagement</label><input type="date" class="ax-inp" id="axp_emb" value="'+esc(f.embauche||'')+'"></div>'
     +'<div class="ax-f"><label class="ax-lbl">Photo du badge</label><div class="ax-row"><div id="axp_ph" class="ax-ava" style="width:58px;height:58px"></div><button class="ax-btn sm b" id="axp_phc">📷 Choisir</button><button class="ax-btn sm w" id="axp_phr">Retirer</button></div>'
       +(p&&!ext&&p.user&&p.user.photo?'<div class="ax-note">Sans photo choisie ici, la photo du compte est utilisée.</div>':'')+'</div>'
     +'</div>',
@@ -11094,7 +11123,7 @@ function listeBadges(t){
   }).map(function(i){ return {id:cleIns(i), ins:i}; });
 }
 AX.badgeImprimer=function(t){
-  var face=val('axb_face_'+t)||'recto', dep=Math.max(0,(Number(val('axb_dep_'+t))||1)-1);
+  var face=val('axb_face_'+t)||'paire', dep=Math.max(0,(Number(val('axb_dep_'+t))||1)-1);
   var mods=[];
   if(t==='P') personnel().forEach(function(p){ if(SELB.P[p.id]) mods.push(modeleP(p)); });
   else lesInscrits().forEach(function(i){ if(i&&SELB.E[cleIns(i)]) mods.push(modeleE(i)); });
@@ -11102,7 +11131,7 @@ AX.badgeImprimer=function(t){
 };
 AX.badgeUn=function(t,id){
   var m = t==='P' ? modeleP(personneParId(id)) : modeleE(trouverIns(id));
-  imprimerBadges([m], 'recto', 0);
+  imprimerBadges([m], 'paire', 0);
 };
 function rendreBadges(t, apercuSeul){
   var z=el(t==='P'?'axBadgesPContenu':'axBadgesEContenu'); if(!z) return;
@@ -11117,9 +11146,9 @@ function rendreBadges(t, apercuSeul){
         +'<select class="ax-inp" style="max-width:170px" onchange="AX.badgeFiltre(\'E\',\'s\',this.value)"><option value="actifs"'+(F.s==='actifs'?' selected':'')+'>En cours</option><option value="termines"'+(F.s==='termines'?' selected':'')+'>Terminés</option><option value="tous"'+(F.s==='tous'?' selected':'')+'>Tous</option></select>':'')
       +'<button class="ax-btn w sm" onclick="AX.badgeTous(\''+t+'\',true)">☑ Tout</button><button class="ax-btn w sm" onclick="AX.badgeTous(\''+t+'\',false)">☐ Aucun</button>'
       +'</div><div class="ax-row" style="margin-top:10px">'
-      +'<label class="ax-lbl" style="margin:0">Face</label><select class="ax-inp" id="axb_face_'+t+'" style="max-width:200px"><option value="recto">Recto</option><option value="verso">Verso</option><option value="duplex">Recto + verso (recto-verso)</option></select>'
+      +'<label class="ax-lbl" style="margin:0">Face</label><select class="ax-inp" id="axb_face_'+t+'" style="max-width:340px"><option value="paire">Recto + verso côte à côte (4 badges / page)</option><option value="duplex">Recto-verso imprimante (8 badges / page)</option><option value="recto">Recto seul (8 / page)</option><option value="verso">Verso seul (8 / page)</option></select>'
       +'<label class="ax-lbl" style="margin:0">Position de départ</label><select class="ax-inp" id="axb_dep_'+t+'" style="max-width:90px">'+[1,2,3,4,5,6,7,8].map(function(n){return '<option>'+n+'</option>';}).join('')+'</select>'
-      +'<button class="ax-btn p" onclick="AX.badgeImprimer(\''+t+'\')">🖨️ Imprimer la sélection (<span id="axb_n_'+t+'">'+nbSel+'</span>) — 8 par page A4</button>'
+      +'<button class="ax-btn p" onclick="AX.badgeImprimer(\''+t+'\')">🖨️ Imprimer la sélection (<span id="axb_n_'+t+'">'+nbSel+'</span>) — recto + verso</button>'
       +'</div></div>';
     h+='<div class="ax-grid2" style="align-items:start"><div class="ax-card" style="padding:0;overflow:hidden"><div style="max-height:620px;overflow:auto">'
       +(liste.length?liste.map(function(x){
@@ -11157,7 +11186,7 @@ function rendreBadges(t, apercuSeul){
 }
 AX.rendreBadges=rendreBadges;
 /* le bouton "Badge" de la liste des inscrits utilise le nouveau badge */
-AX.badgeInscrit=function(ins){ if(!ins) return; imprimerBadges([modeleE(ins)],'recto',0); };
+AX.badgeInscrit=function(ins){ if(!ins) return; imprimerBadges([modeleE(ins)],'paire',0); };
 
 /* ================================================================
    5) ATTESTATIONS & SATISFECIT
@@ -11311,7 +11340,7 @@ var CSS_ATT='@page{size:A4 landscape;margin:0}*{box-sizing:border-box;margin:0;p
   +'.ti{text-align:center;font-family:Cinzel,Georgia,serif;font-weight:800;font-size:31pt;letter-spacing:.09em;margin-top:3mm;line-height:1.05}'
   +'.or{text-align:center;font-size:12pt;letter-spacing:.6em;margin:1.5mm 0 3mm}'
   +'.tx{font-size:13.2pt;line-height:1.75;text-align:justify;padding:0 6mm}.tx p{margin-bottom:2.2mm;text-indent:8mm}'
-  +'.nm{font-family:"Great Vibes","Brush Script MT",cursive;font-size:25pt;color:#0f172a;line-height:1;white-space:nowrap}'
+  +'.nm{font-family:"Playfair Display",Georgia,"Times New Roman",serif;font-weight:700;font-size:16pt;font-style:normal;color:#0f172a;letter-spacing:.03em;line-height:1.2;white-space:nowrap}'
   +'.tf{margin:1mm auto 2mm;border-collapse:collapse;font-family:Arial,sans-serif;font-size:9.5pt;min-width:55%}.tf th{background:#f1f5f9;padding:1.4mm 4mm;text-align:left;border-bottom:.4mm solid #94a3b8}.tf td{padding:1.1mm 4mm;border-bottom:.2mm solid #e2e8f0}'
   +'.mn{text-align:center;font-size:13pt;margin-top:1mm}.fa{text-align:right;font-size:11.5pt;font-style:italic;margin:3mm 6mm 0}.sg{margin-top:auto;padding:0 4mm}'
   +'.ftc{position:absolute;left:0;right:0;bottom:18mm;text-align:center;font-family:Arial,sans-serif;font-size:7pt;color:#64748b}'
