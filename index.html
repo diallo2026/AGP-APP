@@ -1,4 +1,10 @@
 <!DOCTYPE html>
+<!-- ============================================================
+  DOCUMENT PROPRIETAIRE — Propriete exclusive du concepteur.
+  Copie, duplication ou redistribution NON AUTORISEES.
+  Ce fichier ne vous appartient pas : il ne doit pas etre
+  reproduit, modifie ni reutilise sans l'accord du concepteur.
+  ============================================================ -->
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#060d24">
+<meta name="rights" content="Document proprietaire — copie et duplication non autorisees">
 <title>App AGP - Application de Gestions de Prestations</title>
 <link rel="manifest" href="manifest.json">
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
@@ -9550,26 +9557,38 @@ function rendreZone(z, html){
   if(id){ var b=el(id); if(b){ try{ b.focus(); if(s!=null) b.setSelectionRange(s,e); }catch(x){} } }
 }
 AX.rendreZone=rendreZone;
-function guideHtml(compact){
-  if(EXT.etat==='erreur') return '<div class="ax-warn" style="font-size:13.5px">📶 Le serveur ne répond pas pour le moment : les nouveaux modules se chargeront automatiquement dès que la connexion sera rétablie.'
+/* Vrai concepteur authentifie (voir espace concepteur / panneau protection) */
+function estConcepteur(){ return window._axConcepteur===true; }
+AX.estConcepteur=estConcepteur;
+/* Message vu par les PRESTATIONS : neutre, aucune mention de Firebase,
+   console, regles, ni du fait que les donnees sont hebergees quelque part.
+   Le guide technique n'apparait QUE dans l'espace concepteur. */
+function messageModule(){
+  if(EXT.etat==='erreur') return '<div class="ax-warn" style="font-size:13.5px">⏳ Connexion en cours… les nouveaux modules seront disponibles dans un instant.'
     +'<div style="margin-top:8px"><button class="ax-btn sm p" onclick="AX.reessayerStockage()">🔄 Réessayer</button></div></div>';
-  if(!estFondateur()) return '<div class="ax-warn" style="font-size:13.5px">🔐 Ce module n\'est pas encore activé sur le serveur de la prestation. Le Fondateur doit l\'activer (une seule fois) en suivant le guide affiché sur son compte.'
+  return '<div class="ax-warn" style="font-size:13.5px">⏳ Ces fonctionnalités ne sont pas encore disponibles sur ce compte. Elles seront activées très prochainement.'
+    +'<div style="margin-top:8px"><button class="ax-btn sm p" onclick="AX.reessayerStockage()">🔄 Réessayer</button></div></div>';
+}
+AX.messageModule=messageModule;
+/* Guide TECHNIQUE — reserve au concepteur (jamais montre aux prestations) */
+function guideHtml(compact){
+  if(EXT.etat==='erreur') return '<div class="ax-warn" style="font-size:13.5px">📶 Le serveur ne répond pas pour le moment : les modules se chargeront dès le retour de la connexion.'
     +'<div style="margin-top:8px"><button class="ax-btn sm p" onclick="AX.reessayerStockage()">🔄 Réessayer</button></div></div>';
   return '<div class="ax-warn" style="font-size:13.5px;line-height:1.7">'
-    +'<div style="font-size:15px;font-weight:900;color:#9a3412;margin-bottom:4px">🔐 Activation du stockage des nouveaux modules (une seule fois)</div>'
-    +'Les règles de sécurité de votre base Firebase n\'autorisent pas encore l\'emplacement réservé aux badges, attestations, satisfecit, factures, contrats et signatures. '
-    +'<b>Vos données existantes ne sont pas concernées et rien n\'a été modifié.</b>'
+    +'<div style="font-size:15px;font-weight:900;color:#9a3412;margin-bottom:4px">🔐 Activation du stockage des modules (concepteur — une seule fois)</div>'
+    +'Les règles de sécurité de la base n\'autorisent pas encore l\'emplacement réservé aux badges, attestations, satisfecit, factures, contrats et signatures. '
+    +'<b>Aucune donnée existante n\'est concernée.</b>'
     +(compact?'':'<ol style="margin:8px 0 8px 22px;padding:0;list-style:decimal">'
       +'<li>Ouvrez <b>console.firebase.google.com</b> → projet <b>agp-app-2f068</b> → <b>Realtime Database</b> → onglet <b>Règles</b>.</li>'
       +'<li>Dans le bloc <b>"agp_prest"</b>, au même niveau que <b>"data"</b> et <b>"info"</b>, ajoutez cette ligne :'
       +'<div style="background:#0f172a;color:#e2e8f0;font-family:Courier New,monospace;font-size:13px;padding:8px 12px;border-radius:8px;margin:6px 0;user-select:all">"ext": { ".read": true, ".write": true },</div></li>'
-      +'<li>Cliquez sur <b>Publier</b>, puis sur <b>Réessayer</b> ci-dessous.</li></ol>')
+      +'<li>Cliquez sur <b>Publier</b>, puis sur <b>Réessayer</b>.</li></ol>')
     +'<div class="ax-row"><button class="ax-btn sm w" onclick="AX.copierRegle()">📋 Copier la ligne</button><button class="ax-btn sm p" onclick="AX.reessayerStockage()">🔄 Réessayer</button></div></div>';
 }
 function erreurLecture(z){
   if(EXT.etat==='ok'&&!EXT.err) return false;
   if(EXT.etat!=='refuse'&&EXT.etat!=='erreur'&&!EXT.err) return false;
-  z.innerHTML=guideHtml(false);
+  z.innerHTML = estConcepteur() ? guideHtml(false) : messageModule();
   return true;
 }
 AX.copierRegle=function(){
@@ -9727,8 +9746,25 @@ function guideStockage(){
   _guideOuvert=modale({ titre:'🔐 Stockage des nouveaux modules', corps:guideHtml(false), boutons:[{txt:'Fermer',cls:'w'}] });
 }
 function erreurEcriture(e){
-  if(estRefus(e)){ EXT.etat='refuse'; planifierRendu(); guideStockage(); }
-  else toast('Enregistrement impossible : '+((e&&e.message)||e),'err');
+  if(estRefus(e)){ EXT.etat='refuse'; planifierRendu(); if(estConcepteur()) guideStockage(); else toast('Enregistrement momentanément indisponible. Réessayez dans un instant.','warn'); }
+  else toast('Enregistrement momentanément indisponible. Réessayez dans un instant.','warn');
+}
+/* ouverture d'un editeur : bloque seulement si acces refuse/erreur ou hors ligne.
+   En etat 'vide'/'choix' on laisse ouvrir : l'enregistrement attendra la racine. */
+function peutOuvrir(){
+  if(horsLigne()){ toast('Hors ligne : l\'enregistrement est bloqué jusqu\'au retour de la connexion.','err'); return false; }
+  if(EXT.etat==='refuse'||EXT.etat==='erreur'){ if(estConcepteur()) guideStockage(); else toast('Cette fonctionnalité n\'est pas encore disponible sur ce compte.','warn'); if(EXT.etat==='erreur'){ attacher(); } return false; }
+  if(EXT.etat==='vide') choisirRacine().then(planifierRendu);
+  return true;
+}
+AX.peutOuvrir=peutOuvrir;
+/* attend que la racine de stockage soit prete (ou echoue proprement) */
+function racinePrete(){
+  if(racine()) return Promise.resolve(true);
+  if(horsLigne()) return Promise.resolve(false);
+  if(EXT.etat==='refuse') return Promise.resolve(false);
+  if(EXT.etat==='erreur'){ attacher(); }
+  return garantirRacine().then(function(ok){ return ok&&!!racine(); });
 }
 function pretEcrire(silencieux){
   if(horsLigne()){ if(!silencieux) toast('Hors ligne : l\'enregistrement est bloqué jusqu\'au retour de la connexion.','err'); return false; }
@@ -9736,8 +9772,8 @@ function pretEcrire(silencieux){
   if(!racine()){
     if(EXT.etat==='vide') choisirRacine().then(planifierRendu);
     if(!silencieux){
-      if(EXT.etat==='refuse') guideStockage();
-      else { toast('Préparation du stockage… réessayez dans un instant.','warn'); if(EXT.etat==='erreur'||EXT.etat==='inconnu') attacher(); }
+      if(EXT.etat==='refuse'){ if(estConcepteur()) guideStockage(); else toast('Cette fonctionnalité n\'est pas encore disponible sur ce compte.','warn'); }
+      else { toast('Préparation en cours… réessayez dans un instant.','warn'); if(EXT.etat==='erreur'||EXT.etat==='inconnu') attacher(); }
     }
     return false;
   }
@@ -9756,18 +9792,22 @@ function resync(){
   f.get(f.ref(f.db, r)).then(function(sn){ EXT.d=sn.val()||{}; planifierRendu(); }).catch(function(){});
 }
 function ecrire(sous, v){
-  if(!pretEcrire()) return Promise.reject(new Error('indisponible'));
-  var f=F();
-  var pr=f.set(f.ref(f.db, racine()+'/'+sous), copie(v));
-  appliquerLocal(sous, v); planifierRendu();
-  return pr.catch(function(e){ erreurEcriture(e); resync(); throw e; });
+  return racinePrete().then(function(ok){
+    if(!ok){ erreurEcriture(new Error('stockage indisponible')); return Promise.reject(new Error('indisponible')); }
+    var f=F();
+    var pr=f.set(f.ref(f.db, racine()+'/'+sous), copie(v));
+    appliquerLocal(sous, v); planifierRendu();
+    return pr.catch(function(e){ erreurEcriture(e); resync(); throw e; });
+  });
 }
 function effacer(sous){
-  if(!pretEcrire()) return Promise.reject(new Error('indisponible'));
-  var f=F();
-  var pr=f.rm(f.ref(f.db, racine()+'/'+sous));
-  appliquerLocal(sous, null); planifierRendu();
-  return pr.catch(function(e){ erreurEcriture(e); resync(); throw e; });
+  return racinePrete().then(function(ok){
+    if(!ok){ erreurEcriture(new Error('stockage indisponible')); return Promise.reject(new Error('indisponible')); }
+    var f=F();
+    var pr=f.rm(f.ref(f.db, racine()+'/'+sous));
+    appliquerLocal(sous, null); planifierRendu();
+    return pr.catch(function(e){ erreurEcriture(e); resync(); throw e; });
+  });
 }
 /* ecriture accessoire (registre d'impression...) : jamais bloquante, jamais de message */
 function ecrireDiscret(sous, v){
@@ -9777,7 +9817,12 @@ function ecrireDiscret(sous, v){
 }
 AX.ecrireDiscret=ecrireDiscret;
 function compteur(type){
-  if(!pretEcrire()) return Promise.reject(new Error('indisponible'));
+  return racinePrete().then(function(ok){
+    if(!ok){ erreurEcriture(new Error('stockage indisponible')); return Promise.reject(new Error('indisponible')); }
+    return compteurFaire(type);
+  });
+}
+function compteurFaire(type){
   var f=F(), an=new Date().getFullYear();
   return f.tx(f.ref(f.db, racine()+'/compteurs/'+type+'_'+an), function(n){ return (Number(n)||0)+1; }).then(function(r){
     if(!r||!r.committed) throw new Error('numérotation non validée');
@@ -10182,6 +10227,15 @@ function autoriseSig(){
   return !!(k&&a.signatures&&a.signatures[k]);
 }
 AX.autoriseSig=autoriseSig;
+/* Onglets visibles par le personnel (reglage du Fondateur, par personne).
+   Par defaut visible ; le Fondateur peut masquer un onglet a un gerant. */
+function ongletAutorise(id){
+  if(estFondateur()) return true;
+  var m=moi(); if(!m) return false;
+  var o=(cfg('acces').onglets&&cfg('acces').onglets[cleUser(m)])||{};
+  return o[id]!==false;
+}
+AX.ongletAutorise=ongletAutorise;
 /* rangee HTML de signatures pour les documents imprimes */
 function rangeeSignaturesHtml(blocs, o){
   o=o||{};
@@ -10596,7 +10650,7 @@ function enregistrerSig(id, patch){
   return ecrire('signatures/'+cleFb(id), o);
 }
 AX.sigOuvrirImport=function(id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   if(!autoriseSig()){ alert('Réservé au Fondateur et aux personnes autorisées.'); return; }
   choisirFichier('image/*').then(function(f){ if(!f) return; return lireFichier(f).then(function(src){ outilSignature(id, src); }); }).catch(function(e){ toast(e.message,'err'); });
 };
@@ -10627,7 +10681,7 @@ function outilSignature(id, src){
   calc();
 }
 AX.sigDessiner=function(id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   if(!autoriseSig()){ alert('Réservé au Fondateur et aux personnes autorisées.'); return; }
   var p=personneParId(id);
   var M=modale({ titre:'✍️ Dessiner la signature — '+esc(nomPersonne(p)), corps:
@@ -10650,7 +10704,7 @@ AX.sigDessiner=function(id){
   M.q('#axs_clr').onclick=function(){ ctx.clearRect(0,0,cv.width,cv.height); traits=0; };
 };
 AX.cachetOuvrirImport=function(id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   if(!autoriseSig()){ alert('Réservé au Fondateur et aux personnes autorisées.'); return; }
   choisirFichier('image/*').then(function(f){ if(!f) return; return lireFichier(f).then(function(src){ outilCachet(id, src); }); }).catch(function(e){ toast(e.message,'err'); });
 };
@@ -10695,6 +10749,30 @@ AX.sigAutoriser=function(cle, inp){
   var a=cfg('acces'), m=Object.assign({}, a.signatures||{}); if(inp.checked) m[cle]=true; else delete m[cle];
   majCfg('acces',{signatures:m}).then(function(){ toast(inp.checked?'Accès accordé ✓':'Accès retiré ✓'); });
 };
+var ONGLETS_CTRL=[['axBadgesP','🪪 Badges Personnel'],['axBadgesE','🎫 Badges Élèves'],['axAttestations','📜 Attestations'],['axSatisfecit','🏅 Satisfecit'],['axContrats','🤝 Formations sur contrat']];
+function matriceOnglets(){
+  if(!estFondateur()) return '';
+  var ger=lesUsers().filter(function(u){return u&&u.role==='GERANT'&&!u.bloque;});
+  var acc=cfg('acces').onglets||{};
+  var h='<div class="ax-card" style="margin-bottom:14px"><div class="ax-sec">🗂️ Onglets visibles par le personnel</div>'
+    +'<div class="ax-note" style="margin-bottom:8px">Cochez les onglets que chaque gérant peut voir. (Les autorisations de <b>modification</b> et de <b>suppression</b> se règlent dans l\'onglet <b>Gérants</b>.)</div>';
+  if(!ger.length){ return h+'<div class="ax-note">Aucun gérant pour le moment.</div></div>'; }
+  h+='<div class="ax-scroll"><table class="ax-table ax-matrix"><thead><tr><th style="text-align:left">Gérant</th>'
+    +ONGLETS_CTRL.map(function(o){return '<th>'+o[1]+'</th>';}).join('')+'</tr></thead><tbody>';
+  ger.forEach(function(u){
+    var k=cleUser(u), o=acc[k]||{};
+    h+='<tr><td style="text-align:left;font-weight:800">'+esc(u.nom)+'</td>'
+      +ONGLETS_CTRL.map(function(c){ return '<td><input type="checkbox" onchange="AX.ongletAcces(\''+esc(k)+'\',\''+c[0]+'\',this)"'+(o[c[0]]!==false?' checked':'')+'></td>'; }).join('')
+      +'</tr>';
+  });
+  return h+'</tbody></table></div></div>';
+}
+AX.ongletAcces=function(k,id,inp){
+  if(!estFondateur()){ inp.checked=!inp.checked; return; }
+  var m=Object.assign({}, cfg('acces').onglets||{}), o=Object.assign({}, m[k]||{});
+  o[id]=!!inp.checked; m[k]=o;
+  majCfg('acces',{onglets:m}).then(function(){ toast('Accès mis à jour ✓'); try{ majNav(); }catch(e){} });
+};
 function rendreSignatures(){
   var z=el('axSigContenu'); if(!z) return;
   if(!EXT.pret){ z.innerHTML='<div class="ax-empty">Chargement…</div>'; return; }
@@ -10707,6 +10785,7 @@ function rendreSignatures(){
     h+='<div class="ax-card" style="margin-bottom:14px"><div class="ax-sec">🔐 Personnes autorisées à gérer les signatures &amp; cachets</div>'
       +(ger.length?'<div class="ax-row">'+ger.map(function(u){ var k=cleUser(u); return '<label class="ax-chk" style="background:#f8fafc;border:1px solid #e2e8f0;padding:7px 11px;border-radius:10px"><input type="checkbox" onchange="AX.sigAutoriser(\''+esc(k)+'\',this)"'+(a[k]?' checked':'')+'>'+esc(u.nom)+'</label>'; }).join('')+'</div>':'<div class="ax-note">Aucun gérant. Le Fondateur a toujours accès.</div>')
       +'<div class="ax-note" style="margin-top:6px">Seules ces personnes (et le Fondateur) peuvent importer, modifier ou appliquer les signatures et les cachets.</div></div>';
+    h+=matriceOnglets();
   }
   h+='<div class="ax-info" style="margin-bottom:14px">Pour chaque membre du personnel : importez la photo de sa signature (convertie automatiquement en <b>mode thermique</b>) ou dessinez-la, importez son cachet, puis cochez les documents sur lesquels ils doivent apparaître automatiquement. Chaque document permet ensuite d\'ajuster ce choix au cas par cas. Le personnel hors application s\'ajoute dans l\'onglet <b>Badges Personnel</b>.</div>';
   var liste=personnel();
@@ -10793,7 +10872,7 @@ function modeleP(p){
   var nomU=(p.prenom? p.nom : p.nom);
   return { type:'P', id:p.id, nom:String(nomU||'').toUpperCase(), prenom:p.prenom||'', l3l:'FONCTION', l3:p.fonction||'', l4l:'TÉLÉPHONE', l4:p.tel||'',
     l5l:p.groupe?'GR. SANGUIN':'', l5:p.groupe||'', dDl:'ENGAGÉ(E) LE', dD:frDe(p.embauche)||'—', mat:matPersonnel(p), photo:p.photo||'', emis:em.emisLe||isoJour(), expire:em.expireLe||addMois(em.emisLe||isoJour(), B.validiteP),
-    titre:B.titreP, verso:B.versoP, contact:'', emisOk:!!em.emisLe };
+    titre:B.titreP, verso:B.versoP, contact:'', sigTit:(sigDe(p.id)||{}).signature||'', emisOk:!!em.emisLe };
 }
 function modeleE(ins){
   var k=cleIns(ins), em=emission('E',k)||{}, B=cfg('badges');
@@ -10923,6 +11002,7 @@ function carteVerso(m, T, u, pref){
     +txt(57.4,52.3,code,2.3,{anchor:'end',poids:900,c:c1,font:'Courier New,monospace',ls:0.12});
   if(B.qr!==false) s+=qrSvg(61.1,9.3,20.8,payload,'#0f172a')+txt(71.5,33.8,'SCANNER POUR VÉRIFIER',1.45,{anchor:'middle',poids:900,c:'#0f172a',max:22.5});
   else s+=txt(71.5,22.5,'BADGE SÉCURISÉ',1.8,{anchor:'middle',poids:900,c:c1,max:22});
+  if(m.sigTit) s+='<image href="'+m.sigTit+'" x="60.7" y="37.2" width="22.2" height="10.6" preserveAspectRatio="xMidYMax meet"/>';
   s+='<line x1="60.6" y1="48.3" x2="82.4" y2="48.3" stroke="#0f172a" stroke-width="0.2"/>'+txt(71.5,51.2,'Signature du titulaire',1.6,{anchor:'middle',c:'#0f172a',poids:800,max:22})
     +microTexte(u,0.75,0.75,84.1,52.5,2.6,(P.nom||'AGP')+' VERSO SECURISE '+code,0.48,eclaircir(c1,0.3))
     +'</g><rect x="0.06" y="0.06" width="85.48" height="53.88" rx="3.2" fill="none" stroke="#cbd5e1" stroke-width="0.12"/></svg>';
@@ -11031,7 +11111,7 @@ AX.verifier=function(){
 };
 /* ---------- fiche du personnel (badge) ---------- */
 AX.fichePersonnel=function(id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var p=id?personneParId(id):null, ext=!p||p.source==='externe', f=(p&&p.fiche)||{};
   var etat={photo:(p&&p.fiche&&p.fiche.photo)||(ext&&p?p.photo:'')};
   var M=modale({ titre:p?'🪪 Fiche badge — '+esc(nomPersonne(p)):'➕ Ajouter un membre du personnel', corps:
@@ -11070,7 +11150,7 @@ AX.supprimerPersonnel=function(id){
   effacer('personnel/'+cleFb(id)).then(function(){ effacer('signatures/'+cleFb(id)).catch(function(){}); effacer('badges/'+cleFb('P_'+id)).catch(function(){}); toast('Supprimé ✓'); });
 };
 AX.badgeDates=function(type,id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var m = type==='P' ? modeleP(personneParId(id)) : modeleE(trouverIns(id));
   var k=cleFb(type+'_'+id), e=item('badges',k)||{};
   var M=modale({ titre:'📅 Dates du badge — '+esc(m.prenom+' '+m.nom), corps:
@@ -11082,7 +11162,7 @@ AX.badgeDates=function(type,id){
         ecrire('badges/'+k,o).then(function(){ toast('Dates enregistrées ✓'); api.fermer(); }); }}]});
 };
 AX.reglagesBadges=function(){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var B=cfg('badges');
   var M=modale({ titre:'⚙️ Personnaliser les badges', taille:'lg', corps:
     '<div class="ax-grid2">'
@@ -11136,7 +11216,7 @@ AX.badgeUn=function(t,id){
 function rendreBadges(t, apercuSeul){
   var z=el(t==='P'?'axBadgesPContenu':'axBadgesEContenu'); if(!z) return;
   if(!EXT.pret){ z.innerHTML='<div class="ax-empty">Chargement…</div>'; return; }
-  var banniere=(EXT.etat==='refuse'||EXT.etat==='erreur')?'<div style="margin-bottom:12px">'+guideHtml(true)+'</div>':'';
+  var banniere=(EXT.etat==='refuse'||EXT.etat==='erreur')?'<div style="margin-bottom:12px">'+(estConcepteur()?guideHtml(true):messageModule())+'</div>':'';
   var liste=listeBadges(t), F=FILTB[t];
   var nbSel=Object.keys(SELB[t]).length;
   if(!apercuSeul){
@@ -11389,7 +11469,7 @@ function creerAuto(ins){
 AX.creerAuto=creerAuto;
 /* ---------- editeur ---------- */
 AX.editerDocument=function(t, id, prerempli){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   if(!actif(t)){ alert((estSat(t)?'Les satisfecit':'Les attestations')+' ne sont pas activé(e)s. Le Fondateur peut les activer dans Paramètres.'); return; }
   var A=cfg('attestations'), exist=id?item('attestations',id):null;
   var a=copie(exist||prerempli||{ type:t, ben:{source:'eleve'}, mode:A.modeProgramme?'programme':(A.modeFormations?'formations':'module'), formations:[], dateDelivrance:isoJour(), lieu:A.lieu||infoPrest().ville||'' });
@@ -11672,7 +11752,7 @@ function apresMouvement(msg){
 }
 /* ---------- versements ---------- */
 AX.versementFacture=function(fid, vid){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var f=item('factures',fid); if(!f){ alert('Facture introuvable'); return; }
   f=copie(f); f.id=fid;
   var e=etatFacture(f), v=null;
@@ -11772,7 +11852,7 @@ function lireParticipants(M, idz){
   return Array.prototype.slice.call(M.q('#'+idz).querySelectorAll('tbody tr')).map(function(tr){ var o={}; tr.querySelectorAll('[data-pk]').forEach(function(i){ o[i.getAttribute('data-pk')]=i.value.trim(); }); return o; }).filter(function(o){ return o.nom||o.prenom; });
 }
 AX.editerContrat=function(id){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var c=id?copie(item('contrats',id)):{statut:'en_cours', dateDebut:isoJour(), client:{type:'organisation'}};
   if(!c){ alert('Contrat introuvable'); return; }
   var M=modale({ titre:id?'✏️ Contrat '+esc(c.numero||''):'➕ Nouveau contrat de formation', taille:'xl', corps:
@@ -11814,7 +11894,7 @@ AX.supprimerContrat=function(id){
 };
 /* ---------- factures ---------- */
 AX.editerFacture=function(id, contratId){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var F=cfg('factures');
   var f=id?copie(item('factures',id)):{ date:isoJour(), lignes:[], tvaTaux:F.tva||0, remise:0, conditions:F.conditions||'', contratId:contratId||'' };
   if(!f){ alert('Facture introuvable'); return; }
@@ -11953,7 +12033,7 @@ AX.imprimerFacture=function(id){
 /* ---------- rapports de formation ---------- */
 var SECTIONS_RF=[['objectifs','Contexte et objectifs'],['programme','Programme / contenu de la formation'],['deroulement','Déroulement et méthodologie'],['resultats','Résultats et évaluation'],['difficultes','Difficultés rencontrées'],['recommandations','Recommandations'],['conclusion','Conclusion']];
 AX.editerRapportF=function(id, contratId){
-  if(!pretEcrire()) return;
+  if(!peutOuvrir()) return;
   var r=id?copie(item('rapportsFormation',id)):{ date:isoJour(), contratId:contratId||'' };
   if(!r){ alert('Rapport introuvable'); return; }
   if(!id&&contratId){ var k=item('contrats',contratId); if(k){ r.titre='Rapport de formation — '+(k.objet||''); r.client=(k.client&&k.client.nom)||''; r.lieu=k.lieu||''; r.dateDebut=k.dateDebut||''; r.dateFin=k.dateFin||''; r.duree=k.duree||''; r.formateurs=k.formateurs||''; r.participants=copie(k.participants||[]); r.programme=k.formations||''; } }
@@ -12095,7 +12175,7 @@ function rendreParametres(){
   if(!z){ z=document.createElement('div'); z.id='axParamDocs'; z.className='ax-wrap'; z.style.cssText='margin-top:28px;border-top:2px solid #e2e8f0;padding-top:22px'; sec.appendChild(z); }
   if(!estFondateur()){ z.innerHTML=''; return; }
   if(!EXT.pret){ z.innerHTML='<div class="ax-empty">Chargement des réglages…</div>'; return; }
-  if(EXT.etat==='refuse'||EXT.etat==='erreur'){ z.innerHTML='<h3 class="ax-sec" style="font-size:20px">📜 Attestations, satisfecit, reçus et factures</h3>'+guideHtml(false); return; }
+  if(EXT.etat==='refuse'||EXT.etat==='erreur'){ z.innerHTML='<h3 class="ax-sec" style="font-size:20px">📜 Attestations, satisfecit, reçus et factures</h3>'+(estConcepteur()?guideHtml(false):messageModule()); return; }
   var A=cfg('attestations'), R=cfg('recus'), Fc=cfg('factures');
   function ck(id,v,l){ return '<label class="ax-chk" style="margin:3px 14px 3px 0"><input type="checkbox" id="'+id+'"'+(v?' checked':'')+'>'+l+'</label>'; }
   z.innerHTML='<h3 class="ax-sec" style="font-size:20px">📜 Attestations &amp; Satisfecit</h3>'
@@ -12197,9 +12277,11 @@ var SECTIONS_AX={ axBadgesP:function(){ rendreBadges('P'); }, axBadgesE:function
 function majNav(){
   var c=connecte();
   function vis(id, v){ var b=el(id); if(b) b.style.display=v?'block':'none'; }
-  vis('axBtnBadgesP',c); vis('axBtnBadgesE',c); vis('axBtnContrats',c);
-  vis('axBtnAtt', c&&(actif('attestation')||estFondateur()));
-  vis('axBtnSat', c&&(actif('satisfecit')||estFondateur()));
+  vis('axBtnBadgesP', c&&ongletAutorise('axBadgesP'));
+  vis('axBtnBadgesE', c&&ongletAutorise('axBadgesE'));
+  vis('axBtnContrats', c&&ongletAutorise('axContrats'));
+  vis('axBtnAtt', c&&(actif('attestation')||estFondateur())&&ongletAutorise('axAttestations'));
+  vis('axBtnSat', c&&(actif('satisfecit')||estFondateur())&&ongletAutorise('axSatisfecit'));
   vis('axBtnSig', c&&autoriseSig());
 }
 AX.majNav=majNav;
@@ -12306,6 +12388,265 @@ function brancher(){
 brancher();
 setInterval(function(){ brancher(); if(window._AGP_MODE) attacher(); majNav(); }, 1500);
 document.addEventListener('DOMContentLoaded', brancher);
+
+/* ================================================================
+   PROTECTION DU DOCUMENT — licence / anti-duplication
+   ----------------------------------------------------------------
+   Ce document est la propriété du concepteur. S'il est ouvert
+   depuis une adresse non autorisée (copie redistribuée, fichier
+   dupliqué), il se verrouille et ne fonctionne plus : seul le
+   propriétaire peut le débloquer avec son code personnel.
+
+   LIMITE HONNÊTE : une protection qui s'exécute dans le navigateur
+   DISSUADE la copie mais ne la rend pas techniquement impossible —
+   une personne très compétente peut lire/retirer le contrôle dans
+   le code. Le vrai verrou reste que les données vivent dans la base
+   du concepteur, qu'une copie ne peut pas atteindre si elle est
+   fermée côté serveur. Aucune donnée de prestation n'est touchée.
+
+   Réglages réservés au concepteur : taper « @PROTECTION » dans la
+   barre du code prestation (mot de passe concepteur demandé).
+   ================================================================ */
+(function(){
+'use strict';
+
+var OWNER = {"salt": "oHo2WdYAFAMK4qzwDDPk", "iter": 60000, "n2": 300000, "h2": "1ncu3wjzrjr2gdumayfif8"};
+var PROJET = 'agp-app-2f068';
+/* Configuration embarquée (par défaut INACTIVE : la protection ne
+   bloque rien tant que le concepteur ne l'a pas activée + enregistré
+   ses adresses autorisées — ainsi le site réel n'est jamais bloqué
+   par accident). */
+var BAKED = window.AGP_PROTECT || { actif:false, origines:[] };
+var NODE_PROT = 'agp_platform/protection';
+var LK = 'agp_lk_v1';
+
+function cfgCourante(){ return window._axProt || BAKED; }
+function orgCourant(){
+  try{
+    if(location.origin && location.origin!=='null' && location.origin.indexOf('http')===0) return location.origin;
+  }catch(e){}
+  return 'file://';
+}
+function norm(s){ return String(s||'').replace(/\/+$/,'').toLowerCase(); }
+function autorisee(org, cfg){
+  var l=(cfg&&cfg.origines)||[]; if(!Array.isArray(l)) l=Object.keys(l).map(function(k){return l[k];});
+  org=norm(org);
+  return l.some(function(o){ return norm(o)===org; });
+}
+
+/* même construction que la vérification côté « build » */
+function cyrb(str, seed){
+  var h1=0xdeadbeef^seed, h2=0x41c6ce57^seed;
+  for(var i=0,ch;i<str.length;i++){ ch=str.charCodeAt(i); h1=Math.imul(h1^ch,2654435761); h2=Math.imul(h2^ch,1597334677); }
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return 4294967296*(2097151&h2)+(h1>>>0);
+}
+function okey(d){
+  var h=OWNER.salt+'|'+d, n=Number(OWNER.iter)||60000;
+  for(var i=0;i<n;i++){ h=cyrb(h,(i%7)+1).toString(36)+cyrb(OWNER.salt+h,(i%5)+1).toString(36); }
+  return cyrb(h,97).toString(36)+cyrb(h,131).toString(36);
+}
+/* second étirement : seul son résultat figure dans le fichier */
+function etirer(h1){
+  var h=String(h1||''), n=Number(OWNER.n2)||0;
+  for(var i=0;i<n;i++){ h=cyrb(h,(i%11)+3).toString(36)+cyrb(OWNER.salt+'#'+h,(i%13)+5).toString(36); }
+  return cyrb(h,211).toString(36)+cyrb(h,307).toString(36);
+}
+/* écritures acceptées d'une même date : 12/01/1990, 12-1-1990, 1990-01-12, 12 janvier 1990… */
+var MOIS=['janv','fevr','mars','avr','mai','juin','juil','aout','sept','oct','nov','dec'];
+function variantes(code){
+  var brut=String(code||''), d=brut.replace(/\D/g,''), out=[];
+  function aj(x){ if(x && out.indexOf(x)<0) out.push(x); }
+  aj(d);
+  var t=brut.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  var J,M,A,m;
+  if((m=t.match(/^\D*(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D*$/))){ A=m[1]; M=m[2]; J=m[3]; }
+  else if((m=t.match(/^\D*(\d{1,2})\D+(\d{1,2})\D+(\d{4})\D*$/))){ J=m[1]; M=m[2]; A=m[3]; }
+  else if((m=t.match(/(\d{1,2})\s*(?:er)?\s*([a-z]{3,})\.?\s*(\d{4})/))){
+    var k=-1; for(var i=0;i<MOIS.length;i++){ if(m[2].indexOf(MOIS[i])===0||MOIS[i].indexOf(m[2].slice(0,4))===0){ k=i; break; } }
+    if(k>=0){ J=m[1]; M=String(k+1); A=m[3]; }
+  }
+  if(J&&M&&A){ var p2=function(x){ return ('0'+x).slice(-2); }; aj(p2(J)+p2(M)+A); aj(String(+J)+String(+M)+A); }
+  return out.slice(0,3);
+}
+function jeton(code){
+  if(!OWNER.h2) return null;
+  var v=variantes(code);
+  for(var i=0;i<v.length;i++){ var h1=okey(v[i]); if(etirer(h1)===OWNER.h2) return h1; }
+  return null;
+}
+function codeOwnerValide(code){ return !!jeton(code); }
+AX.codeOwnerValide=codeOwnerValide;
+/* déverrouillage mémorisé sur l'appareil (vérifié, jamais en clair) */
+var _devOK=null;
+function deverrouilleIci(){
+  if(_devOK!==null) return _devOK;
+  try{ var t=localStorage.getItem(LK); _devOK=!!(t && OWNER.h2 && etirer(t)===OWNER.h2); }catch(e){ _devOK=false; }
+  return _devOK;
+}
+function poserDeverrou(h1){ try{ localStorage.setItem(LK, h1); }catch(e){} _devOK=true; }
+/* copie branchée sur une autre base que celle du concepteur */
+function baseModifiee(){
+  try{ var o=window._agpDb&&window._agpDb.app&&window._agpDb.app.options; if(!o||!o.projectId) return false; return o.projectId!==PROJET; }catch(e){ return false; }
+}
+
+/* ---------- écran de verrouillage ---------- */
+function verrou(){
+  if(document.getElementById('axLock')) return;
+  var ov=document.createElement('div'); ov.id='axLock';
+  ov.style.cssText='position:fixed;inset:0;z-index:2147483000;background:#060d24;display:flex;align-items:center;justify-content:center;padding:18px;font-family:Arial,Helvetica,sans-serif';
+  ov.innerHTML='<div style="max-width:440px;width:100%;background:#0a1628;border:1px solid rgba(239,68,68,0.35);border-radius:18px;padding:26px;text-align:center;box-shadow:0 24px 80px rgba(0,0,0,0.6)">'
+    +'<div style="font-size:42px;margin-bottom:8px">🔒</div>'
+    +'<h2 style="font-size:17px;font-weight:800;color:#fca5a5;margin:0 0 8px">Document protégé</h2>'
+    +'<p style="font-size:12.5px;color:#94a3b8;line-height:1.6;margin:0 0 14px">Ce document est la propriété de son concepteur et ne peut pas être copié ni utilisé depuis une adresse non autorisée. Si vous en êtes le propriétaire, entrez votre code personnel pour le débloquer sur cet appareil.</p>'
+    +'<input id="axLockCode" type="password" autocomplete="off" placeholder="Code propriétaire" style="width:100%;padding:12px 14px;background:#060d24;border:1px solid rgba(239,68,68,0.3);border-radius:10px;color:#e2e8f0;font-size:15px;font-family:inherit;outline:none;box-sizing:border-box;text-align:center;letter-spacing:.12em;margin-bottom:10px">'
+    +'<button id="axLockBtn" style="width:100%;padding:12px;border:none;border-radius:10px;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Débloquer</button>'
+    +'<div id="axLockMsg" style="display:none;margin-top:10px;font-size:12px;color:#ef4444"></div>'
+    +'<div style="margin-top:14px;font-size:10px;color:#334155;line-height:1.5">Propriété exclusive — reproduction et duplication non autorisées.</div>'
+    +'</div>';
+  document.body.appendChild(ov);
+  var inp=document.getElementById('axLockCode'), btn=document.getElementById('axLockBtn'), msg=document.getElementById('axLockMsg');
+  function tenter(){
+    btn.disabled=true; btn.textContent='Vérification…';
+    setTimeout(function(){
+      var h1=jeton(inp.value);
+      if(h1){
+        // seul CET appareil est débloqué ; aucune adresse n'est autorisée pour les autres
+        poserDeverrou(h1);
+        msg.style.display='block'; msg.style.color='#22c55e'; msg.textContent='Débloqué ✓';
+        setTimeout(leverVerrou, 400);
+      } else {
+        btn.disabled=false; btn.textContent='Débloquer';
+        msg.style.display='block'; msg.style.color='#ef4444'; msg.textContent='Code incorrect.'; inp.value=''; inp.focus();
+      }
+    }, 40);
+  }
+  btn.onclick=tenter;
+  inp.addEventListener('keydown',function(e){ if(e.key==='Enter') tenter(); });
+  setTimeout(function(){ try{ inp.focus(); }catch(e){} }, 60);
+}
+function leverVerrou(){ _verrouille=false; var b=document.getElementById('axLock'); if(b) b.remove(); }
+var _verrouille=false;
+function doitVerrouiller(){
+  if(baseModifiee()) return true;                       // toujours actif : copie sur une autre base
+  var cfg=cfgCourante();
+  if(!cfg || !cfg.actif) return false;
+  return !autorisee(orgCourant(), cfg);
+}
+function evaluer(){
+  if(!doitVerrouiller() || deverrouilleIci()){ leverVerrou(); return; }
+  _verrouille=true;
+  verrou();
+}
+/* tant que c'est verrouillé : rien derrière l'écran ne reçoit le clavier */
+document.addEventListener('focusin', function(e){
+  if(!_verrouille) return; var ov=document.getElementById('axLock');
+  if(ov && !ov.contains(e.target)){ var i=document.getElementById('axLockCode'); if(i) i.focus(); }
+}, true);
+AX.evaluerProtection=evaluer;
+
+/* ---------- lecture de la config distante (nœud concepteur) ---------- */
+function fbProt(){ var f=AX.EXT&&window._agpDb?{db:window._agpDb,ref:window._agpRef,get:window._agpGet,set:window._agpSet,on:window._agpOnVal}:null; return f; }
+function chargerDistant(){
+  var f=fbProt(); if(!f||!f.get||!f.ref) return;
+  try{
+    f.get(f.ref(f.db, NODE_PROT)).then(function(sn){
+      var v=sn.val();
+      if(v && typeof v==='object'){ window._axProt=v; evaluer(); }
+    }).catch(function(){});
+    // suivi en direct (si le concepteur change la config)
+    if(f.on){ f.on(f.ref(f.db, NODE_PROT), function(sn){ var v=sn.val(); if(v&&typeof v==='object'){ window._axProt=v; evaluer(); } }, function(){}); }
+  }catch(e){}
+}
+function sauverDistant(cfg){
+  var f=fbProt(); if(!f||!f.set||!f.ref) return Promise.reject(new Error('indisponible'));
+  cfg.maj=new Date().toISOString();
+  return f.set(f.ref(f.db, NODE_PROT), cfg).then(function(){ window._axProt=cfg; evaluer(); return true; });
+}
+function autoriserAdresse(org){
+  var cfg=window._axProt||{actif:true,origines:[]};
+  cfg=JSON.parse(JSON.stringify(cfg));
+  var l=cfg.origines; if(!Array.isArray(l)) l=l?Object.keys(l).map(function(k){return l[k];}):[];
+  if(l.map(norm).indexOf(norm(org))<0) l.push(org);
+  cfg.origines=l; if(cfg.actif===undefined) cfg.actif=true;
+  return sauverDistant(cfg).catch(function(){});
+}
+
+/* ---------- panneau concepteur : @PROTECTION ---------- */
+function ouvrirPanneau(){
+  window._axConcepteur=true;
+  var org=orgCourant(), cfg=window._axProt||BAKED;
+  var liste=(cfg.origines&&(Array.isArray(cfg.origines)?cfg.origines:Object.keys(cfg.origines).map(function(k){return cfg.origines[k];})))||[];
+  var etat=AX.EXT?AX.EXT.etat:'?';
+  var html='<div class="ax-info" style="margin-bottom:12px"><b>Adresse actuelle :</b> <span style="font-family:monospace">'+esc(org)+'</span><br>'
+    +'<b>Protection :</b> '+(cfg.actif?'<span class="ax-vert">ACTIVE</span>':'désactivée')+' — <b>Adresses autorisées :</b> '+liste.length+'</div>'
+    +'<div class="ax-row" style="margin-bottom:10px">'
+    +'<button class="ax-btn '+(cfg.actif?'w':'p')+'" id="axpt_toggle">'+(cfg.actif?'⏸ Désactiver la protection':'🔒 Activer la protection')+'</button>'
+    +'<button class="ax-btn g" id="axpt_add">➕ Autoriser cette adresse</button></div>'
+    +(liste.length?'<div class="ax-scroll"><table class="ax-table"><thead><tr><th>Adresse autorisée</th><th></th></tr></thead><tbody>'
+      +liste.map(function(o,i){ return '<tr><td style="font-family:monospace;font-size:12px">'+esc(o)+'</td><td><button class="ax-btn sm r" data-rm="'+i+'">Retirer</button></td></tr>'; }).join('')
+      +'</tbody></table></div>':'<div class="ax-empty">Aucune adresse autorisée. Tant que la protection est active, seules les adresses de cette liste fonctionnent.</div>')
+    +'<div class="ax-warn" style="margin-top:12px;font-size:12px">⚠️ Activez la protection <b>uniquement après</b> avoir autorisé l\'adresse de votre site réel, sinon vos prestations seraient bloquées. Vous pourrez toujours débloquer un appareil avec votre code personnel.</div>'
+    +'<div class="ax-sep"></div><div class="ax-sec" style="font-size:14px">🗄️ Stockage des modules</div>'
+    +'<div style="font-size:12.5px">État : <b>'+esc(etat)+'</b>'+(AX.EXT&&AX.EXT.racine?(' — emplacement : <span style="font-family:monospace">'+esc(AX.EXT.racine)+'</span>'):'')+'</div>'
+    +((etat==='refuse'||etat==='erreur')?guideHtml(false):'');
+  var M=modale({ titre:'🛡️ Protection & stockage (concepteur)', taille:'lg', corps:html, boutons:[{txt:'Fermer',cls:'w'}] });
+  var Q=function(s){ return M.q(s); };
+  Q('#axpt_toggle').onclick=function(){
+    var c=JSON.parse(JSON.stringify(window._axProt||{actif:false,origines:liste}));
+    c.actif=!c.actif; c.origines=liste.slice();
+    if(c.actif && c.origines.map(norm).indexOf(norm(org))<0){
+      if(org==='file://'){ if(!confirm('Vous êtes sur un fichier ouvert localement (file://). Il ne sera PAS autorisé : toute copie locale sera bloquée, y compris celle-ci (débloquable avec votre code). Continuer ?')) return; }
+      else c.origines.push(org); // le site sur lequel le concepteur active la protection reste autorisé
+    }
+    sauverDistant(c).then(function(){ M.fermer(); ouvrirPanneau(); AX.toast&&AX.toast('Protection '+(c.actif?'activée':'désactivée')+' ✓'); }).catch(function(){ AX.toast&&AX.toast('Enregistrement impossible.','err'); });
+  };
+  Q('#axpt_add').onclick=function(){ autoriserAdresse(org).then(function(){ M.fermer(); ouvrirPanneau(); AX.toast&&AX.toast('Adresse autorisée ✓'); }); };
+  M.qa('[data-rm]').forEach(function(b){ b.onclick=function(){
+    var i=+b.getAttribute('data-rm'); var c=JSON.parse(JSON.stringify(window._axProt||{actif:cfg.actif,origines:liste})); var l=c.origines||liste; l.splice(i,1); c.origines=l;
+    sauverDistant(c).then(function(){ M.fermer(); ouvrirPanneau(); }); }; });
+}
+/* demande le mot de passe concepteur avant d'ouvrir le panneau */
+function demanderPanneau(){
+  var M=modale({ titre:'🛡️ Espace protection (concepteur)', corps:
+    '<div class="ax-f"><label class="ax-lbl">Mot de passe concepteur</label><input type="password" class="ax-inp" id="axpt_pwd" autocomplete="off"></div>',
+    boutons:[{txt:'Annuler',cls:'w'},{txt:'Accéder',cls:'p',action:function(api){
+      var v=(el('axpt_pwd')||{}).value||'';
+      if(v===window.AGP_DEV_PWD || (typeof CODE_CONCEPTEUR!=='undefined'&&v===CODE_CONCEPTEUR)){ api.fermer(); ouvrirPanneau(); }
+      else AX.toast&&AX.toast('Mot de passe incorrect.','err');
+    }}]});
+  setTimeout(function(){ try{ el('axpt_pwd').focus(); }catch(e){} },60);
+}
+AX.ouvrirProtection=demanderPanneau;
+
+/* branchement : « @PROTECTION » dans la barre du code prestation */
+function brancherProtection(){
+  var ci=el('agp-code-input');
+  if(ci&&!ci._axProt){
+    ci._axProt=true;
+    ci.addEventListener('input',function(){ if(String(ci.value||'').replace(/\s+/g,'').toUpperCase()==='@PROTECTION'){ ci.value=''; demanderPanneau(); } });
+  }
+  // le concepteur voit les guides techniques : activer le drapeau quand son panneau s'ouvre
+  if(typeof window.agpDevPanel==='function' && !window.agpDevPanel._axflag){
+    var o=window.agpDevPanel; window.agpDevPanel=function(){ window._axConcepteur=true; return o.apply(this,arguments); }; window.agpDevPanel._axflag=true;
+  }
+}
+
+/* init */
+function initProtection(){
+  evaluer();
+  chargerDistant();
+  brancherProtection();
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', initProtection);
+else initProtection();
+setInterval(function(){ brancherProtection(); if(_verrouille && !document.getElementById('axLock')) verrou(); }, 2000);
+// nouvelle évaluation quand Firebase devient disponible
+var _ptTries=0;
+var _ptInt=setInterval(function(){ _ptTries++; if(window._agpDb){ evaluer(); chargerDistant(); clearInterval(_ptInt); } if(_ptTries>40) clearInterval(_ptInt); }, 500);
+
+})();
 
 })();
 </script>
