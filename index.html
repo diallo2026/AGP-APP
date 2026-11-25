@@ -2301,6 +2301,7 @@ function agpDevImPayer(btn){
       <button onclick="showSection('axSatisfecit')" id="axBtnSat" class="menuBtn">🏅 Satisfecit</button>
       <button onclick="showSection('axContrats')" id="axBtnContrats" class="menuBtn">🤝 Formations sur contrat</button>
       <button onclick="showSection('axDecodage')" id="axBtnDecodage" class="menuBtn" style="display:none">🔓 Service de décodage</button>
+      <button onclick="showSection('axEvaluations')" id="axBtnEval" class="menuBtn" style="display:none">📝 Évaluations</button>
       <button onclick="showSection('axSignatures')" id="axBtnSig" class="menuBtn" style="display:none">✍️ Signatures &amp; Cachets</button>
       <button onclick="showSection('dashboardMensuel')" id="dashboardMensuelBtn" class="menuBtn" style="display:none">📅 Tableau Mensuel</button>
       <button onclick="showSection('rapportJournalier')" id="rapportJournalierBtn" class="menuBtn" style="display:none">📋 Rapport Journalier</button>
@@ -3124,6 +3125,10 @@ function agpDevImPayer(btn){
       <section id="axContrats" class="section bg-white rounded-3xl shadow-xl p-6 ax-wrap">
         <div class="ax-top"><div><h2 class="ax-h2">🤝 Formations sur contrat</h2><p class="ax-sub">Prestations de formation pour une organisation ou des particuliers : contrats, factures, versements, rapports de formation</p></div></div>
         <div id="axContratsContenu"></div>
+      </section>
+      <section id="axEvaluations" class="section bg-white rounded-3xl shadow-xl p-6 ax-wrap">
+        <div class="ax-top"><div><h2 class="ax-h2">📝 Évaluation des élèves</h2><p class="ax-sub">Notes théoriques et pratiques, résultats selon les critères du Fondateur, évaluations de masse programmées, classements, attestations et envoi aux tuteurs</p></div></div>
+        <div id="axEvalContenu"></div>
       </section>
       <section id="axDecodage" class="section bg-white rounded-3xl shadow-xl p-6 ax-wrap">
         <div class="ax-top"><div><h2 class="ax-h2">🔓 Service de décodage</h2><p class="ax-sub">Engagement de la personne venue décoder son appareil : identité, cause, conditions d'obtention, déclaration de non-vol, signature et témoin</p></div></div>
@@ -10299,7 +10304,8 @@ AX.txt=txt;
 var DOCS=[
   {k:'recus',l:'Reçus'},{k:'factures',l:'Factures'},{k:'attestations',l:'Attestations'},{k:'satisfecit',l:'Satisfecit'},
   {k:'rapportsFormation',l:'Rapports de formation'},{k:'badgesP',l:'Badges personnel'},{k:'badgesE',l:'Badges élèves'},{k:'rapports',l:'Rapports financiers'},
-  {k:'decodages',l:'Engagements de décodage'}
+  {k:'decodages',l:'Engagements de décodage'},
+  {k:'evaluations',l:'Fiches d\'évaluation (programmes et résultats)'}
 ];
 AX.DOCS=DOCS;
 /* liste du personnel : comptes de l'application + personnel ajoute */
@@ -10901,7 +10907,7 @@ AX.sigAutoriser=function(cle, inp){
   var a=cfg('acces'), m=Object.assign({}, a.signatures||{}); if(inp.checked) m[cle]=true; else delete m[cle];
   majCfg('acces',{signatures:m}).then(function(){ toast(inp.checked?'Accès accordé ✓':'Accès retiré ✓'); });
 };
-var ONGLETS_CTRL=[['axBadgesP','🪪 Badges Personnel'],['axBadgesE','🎫 Badges Élèves'],['axAttestations','📜 Attestations'],['axSatisfecit','🏅 Satisfecit'],['axContrats','🤝 Formations sur contrat'],['axDecodage','🔓 Décodage']];
+var ONGLETS_CTRL=[['axBadgesP','🪪 Badges Personnel'],['axBadgesE','🎫 Badges Élèves'],['axAttestations','📜 Attestations'],['axSatisfecit','🏅 Satisfecit'],['axContrats','🤝 Formations sur contrat'],['axDecodage','🔓 Décodage'],['axEvaluations','📝 Évaluations']];
 function matriceOnglets(){
   if(!estFondateur()) return '';
   var ger=lesUsers().filter(function(u){return u&&u.role==='GERANT'&&!u.bloque;});
@@ -11631,6 +11637,7 @@ function htmlDocuments(liste){
   return '<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><title>'+esc(liste.length===1?(liste[0].numero||'Document'):liste.length+' documents')+'</title>'+POLICES+'<style>'+CSS_ATT+'</style></head><body>'
     +liste.map(function(a,i){ return pageDocument(a,i); }).join('')+SCRIPT_AJUSTE_ATT+'</body></html>';
 }
+AX.htmlDocuments=htmlDocuments;   // [AGP-X5] apercu de l'attestation proposee apres une evaluation
 AX.imprimerDocuments=function(liste){
   if(!liste.length){ alert('Sélectionnez au moins un document.'); return; }
   assurerSecret().then(function(){
@@ -11641,6 +11648,8 @@ AX.imprimerDocuments=function(liste){
 /* ---------- creation automatique en fin de formation ---------- */
 function creerAuto(ins){
   if(!ins||!stockageOk()) return;
+  // [AGP-X5] passage valide par une evaluation : l'attestation suit le circuit « proposee -> acceptee / rejetee »
+  if(ins.mat && window._axEvalSansAuto && window._axEvalSansAuto[ins.mat]>Date.now()) return;
   ['attestation','satisfecit'].forEach(function(t){
     var A=cfg('attestations');
     if(!actif(t)) return;
@@ -12475,7 +12484,8 @@ function apresRJ(){
    ================================================================ */
 var SECTIONS_AX={ axBadgesP:function(){ rendreBadges('P'); }, axBadgesE:function(){ rendreBadges('E'); }, axAttestations:function(){ rendreDocuments('attestation'); },
   axSatisfecit:function(){ rendreDocuments('satisfecit'); }, axContrats:function(){ rendreContrats(); }, axSignatures:function(){ rendreSignatures(); },
-  axDecodage:function(){ if(AX.rendreDecodage) AX.rendreDecodage(); } };
+  axDecodage:function(){ if(AX.rendreDecodage) AX.rendreDecodage(); },
+  axEvaluations:function(){ if(AX.rendreEvaluations) AX.rendreEvaluations(); } };
 function majNav(){
   var c=connecte();
   function vis(id, v){ var b=el(id); if(b) b.style.display=v?'block':'none'; }
@@ -12483,6 +12493,7 @@ function majNav(){
   vis('axBtnBadgesE', c&&ongletAutorise('axBadgesE'));
   vis('axBtnContrats', c&&ongletAutorise('axContrats'));
   vis('axBtnDecodage', c&&cfg('decodage').actif===true&&ongletAutorise('axDecodage'));
+  vis('axBtnEval', c&&ongletAutorise('axEvaluations'));
   vis('axBtnAtt', c&&(actif('attestation')||estFondateur())&&ongletAutorise('axAttestations'));
   vis('axBtnSat', c&&(actif('satisfecit')||estFondateur())&&ongletAutorise('axSatisfecit'));
   vis('axBtnSig', c&&autoriseSig());
@@ -15954,6 +15965,953 @@ AX.decodageImprimer=function(id){
 /* premier rendu si l'onglet est deja affiche */
 setTimeout(function(){ try{ if(AX.sectionActive && AX.sectionActive('axDecodage')) rendre(); }catch(e){} }, 500);
 console.log('[AGP-X2] onglet Service de décodage actif');
+})();
+
+</script>
+<script>
+(function(){
+/* ================================================================
+   AGP-X5 — EVALUATION DES ELEVES
+   ----------------------------------------------------------------
+   - Criteres du Fondateur : bareme, poids theorie / pratique, moyenne
+     d'admission, notes eliminatoires, mentions, questionnaires
+     theoriques et pratiques (par defaut ou par formation).
+   - Evaluation individuelle ou de masse (programmee : date de debut
+     et de fin, eleves choisis, emploi du temps calcule
+     automatiquement, programme imprimable avec les photos).
+   - Resultat automatique : ADMIS (passe au module suivant) ou A
+     REPRENDRE ; classement ; fiche de resultats imprimable / PDF avec
+     photos et rangs ; envoi aux tuteurs par WhatsApp (un par un ou
+     message groupe).
+   - Admis : passage valide (le module est marque « termine » par la
+     fonction habituelle de l'application) et attestation PROPOSEE :
+     acceptee -> elle est delivree ; rejetee -> en attente.
+   STOCKAGE : noeud ajoute des modules (ext) : evaluations/<id>,
+   sessionsEval/<id>, config/evaluation. Les noeuds « data » et
+   « info » ne sont jamais reecrits par ce module (le seul geste sur
+   « data » est le passage valide, fait par la fonction existante
+   changerStatutLogiciel, comme depuis « Formations en attente »).
+   ================================================================ */
+var AX = window.AX;
+if(!AX){ console.warn('[AGP-X5] noyau AX absent : onglet Evaluations inactif'); return; }
+
+/* ---------------- outils ---------------- */
+function esc(v){ return AX.esc ? AX.esc(v) : String(v==null?'':v); }
+function el(id){ return document.getElementById(id); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function isoDe(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function isoJour(){ return isoDe(new Date()); }
+function frDe(iso){ if(!iso) return ''; var p=String(iso).slice(0,10).split('-'); return p.length===3 ? p[2]+'/'+p[1]+'/'+p[0] : String(iso); }
+function dateDeFr(s){ var m=/^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(String(s||'')); if(m) return m[3]+'-'+pad2(m[2])+'-'+pad2(m[1]); var d=new Date(s); return isNaN(d.getTime())?'':isoDe(d); }
+function nb(v){ var n=parseFloat(String(v==null?'':v).replace(',','.')); return isNaN(n)?null:n; }
+function arrondi(n){ return n==null ? null : Math.round(n*100)/100; }
+function noteTxt(n){ return n==null ? '—' : String(arrondi(n)).replace('.',','); }
+function chiffres(t){ return String(t||'').replace(/\D/g,''); }
+function norm(s){ return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().trim(); }
+function cleFb(s){ return String(s||'').replace(/[.#$\[\]\/]/g,'_'); }
+function nouvelId(p){ return (p||'ev')+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function role(){ try{ return currentRole||''; }catch(e){ return ''; } }
+function nomCourant(){ try{ return currentUser||''; }catch(e){ return ''; } }
+function estFondateur(){ return role()==='FONDATEUR'; }
+function peutModif(){ try{ return !!peutModifier(); }catch(e){ return estFondateur(); } }
+function peutSupp(){ try{ return !!peutSupprimer(); }catch(e){ return estFondateur(); } }
+function majPremiere(t){ t=String(t||'').trim(); return t ? t.charAt(0).toUpperCase()+t.slice(1) : ''; }
+function nomEleve(e){ e=e||{}; return majPremiere(e.prenom)+' '+String(e.nom||'').toUpperCase(); }
+function lesInscrits(){ try{ return Array.isArray(inscrits)?inscrits.filter(Boolean):[]; }catch(e){ return []; } }
+function catalogue(){ try{ return Array.isArray(formations)?formations.filter(Boolean):[]; }catch(e){ return []; } }
+function centre(){
+  var p=window._agpCurrentPrest||{}, nom=p.centreNom||'', logo=p.logo||'';
+  try{ if(typeof _getPrestInfo==='function'){ var x=_getPrestInfo(); return { nom:x.nom||nom, adresse:x.adresse||p.adresse||p.ville||'', tel:x.tel||p.tel||'', logo:x.logo||logo, ville:p.ville||'' }; } }catch(e){}
+  return { nom:nom, adresse:p.adresse||p.ville||'', tel:p.tel||'', logo:logo, ville:p.ville||'' };
+}
+function numeroWhatsapp(n){
+  var s=chiffres(n);
+  if(!s) return '';
+  if(s.indexOf('00')===0) s=s.slice(2);
+  if(s.length===9) s='224'+s;
+  return s;
+}
+var JOURS=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'], JOURS_L=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+function jourLong(iso){ var p=String(iso).split('-'); var d=new Date(+p[0],+p[1]-1,+p[2]); return JOURS_L[d.getDay()]+' '+frDe(iso); }
+
+/* ---------------- eleves ---------------- */
+function cleIns(i){ return AX.cleIns ? AX.cleIns(i) : cleFb(i._id||('M_'+(i.mat||''))); }
+function trouverIns(cle, mat){ return AX.trouverIns ? AX.trouverIns(cle, mat) : null; }
+function photoIns(i){ return (AX.photoIns && i) ? AX.photoIns(i) : ''; }
+function modulesIns(i){ return AX.modulesIns ? AX.modulesIns(i) : []; }
+function eleveDe(ins){ return { cle:cleIns(ins), mat:ins.mat||'', nom:ins.nom||'', prenom:ins.prenom||'', tel:ins.tel||'', tuteur:ins.tuteur||'' }; }
+function telTuteur(e){ var i=trouverIns(e.cle, e.mat); return (i&&i.tel)||e.tel||''; }
+function nomTuteur(e){ var i=trouverIns(e.cle, e.mat); return (i&&i.tuteur)||e.tuteur||''; }
+function photoDe(e){ var i=trouverIns(e.cle, e.mat); return i ? photoIns(i) : ''; }
+
+/* ---------------- criteres du Fondateur ---------------- */
+var DEFAUT={ sur:20, poidsT:40, poidsP:60, seuil:10, elimT:0, elimP:0,
+  mentions:[{min:16,l:'Très bien'},{min:14,l:'Bien'},{min:12,l:'Assez bien'},{min:10,l:'Passable'}],
+  theorie:[{q:'Questionnaire théorique',sur:20}], pratique:[{q:'Épreuve pratique',sur:20}], parFormation:{}, prefixe:'EVAL' };
+function crit(){
+  var c=AX.cfg('evaluation')||{}, o={};
+  Object.keys(DEFAUT).forEach(function(k){ o[k]=(c[k]===undefined||c[k]===null||c[k]==='') ? JSON.parse(JSON.stringify(DEFAUT[k])) : c[k]; });
+  ['sur','poidsT','poidsP','seuil','elimT','elimP'].forEach(function(k){ var v=nb(o[k]); o[k]=v==null?DEFAUT[k]:v; });
+  if(!(o.sur>0)) o.sur=20;
+  o.mentions=(Array.isArray(o.mentions)?o.mentions:[]).filter(function(m){ return m&&m.l; }).map(function(m){ return {min:nb(m.min)||0, l:m.l}; }).sort(function(a,b){ return b.min-a.min; });
+  o.theorie=liste(o.theorie); o.pratique=liste(o.pratique);
+  o.parFormation=o.parFormation||{};
+  return o;
+}
+function liste(v){ return (Array.isArray(v)?v:(v?Object.keys(v).map(function(k){return v[k];}):[])).filter(function(x){ return x&&x.q; }).map(function(x){ return { q:String(x.q), sur:nb(x.sur)||20 }; }); }
+function questionnaires(formation){
+  var c=crit(), p=c.parFormation[cleFb(norm(formation))];
+  var t=p?liste(p.theorie):[], pr=p?liste(p.pratique):[];
+  return { theorie:(p&&(t.length||pr.length))?t:c.theorie, pratique:(p&&(t.length||pr.length))?pr:c.pratique, propre:!!(p&&(t.length||pr.length)) };
+}
+
+/* ---------------- calcul du resultat ---------------- */
+function calcul(ev, c){
+  c=c||crit();
+  function moy(l){
+    var s=0, n=0, manque=0;
+    (l||[]).forEach(function(x){ var v=nb(x.note), sur=nb(x.sur)||c.sur; if(v==null){ manque++; return; } s+=Math.max(0,Math.min(v,sur))/sur*c.sur; n++; });
+    return { m:n?s/n:null, n:n, manque:manque, total:(l||[]).length };
+  }
+  var T=moy(ev.theorie), P=moy(ev.pratique);
+  var wT=T.total?c.poidsT:0, wP=P.total?c.poidsP:0;
+  var complet=(T.total+P.total)>0 && !T.manque && !P.manque;
+  var moyenne=null;
+  if(T.m!=null || P.m!=null){
+    var a=(T.m!=null?T.m*wT:0)+(P.m!=null?P.m*wP:0), w=(T.m!=null?wT:0)+(P.m!=null?wP:0);
+    moyenne = w ? a/w : ((T.m!=null&&P.m!=null)?(T.m+P.m)/2:(T.m!=null?T.m:P.m));
+  }
+  var r={ moyT:arrondi(T.m), moyP:arrondi(P.m), moyenne:arrondi(moyenne), complet:complet, motif:'' };
+  if(!complet){ r.resultat='incomplet'; return r; }
+  var raisons=[];
+  if(moyenne<c.seuil) raisons.push('moyenne inférieure à '+noteTxt(c.seuil)+'/'+c.sur);
+  if(c.elimT>0 && T.m!=null && T.m<c.elimT) raisons.push('note théorique éliminatoire (moins de '+noteTxt(c.elimT)+')');
+  if(c.elimP>0 && P.m!=null && P.m<c.elimP) raisons.push('note pratique éliminatoire (moins de '+noteTxt(c.elimP)+')');
+  r.resultat=raisons.length?'reprise':'admis';
+  r.motif=raisons.join(' ; ');
+  if(r.resultat==='admis'){ var m=c.mentions.find(function(x){ return moyenne>=x.min; }); r.mention=m?m.l:''; }
+  return r;
+}
+/* une evaluation validee garde ses resultats ; sinon ils suivent les criteres actuels */
+function res(ev){ return (ev.valide && ev.fige) ? ev.fige : calcul(ev); }
+function badgeResultat(r){
+  if(r.resultat==='admis') return '<span class="ax-pill ok">ADMIS'+(r.mention?' — '+esc(r.mention):'')+'</span>';
+  if(r.resultat==='reprise') return '<span class="ax-pill ko">À REPRENDRE</span>';
+  return '<span class="ax-pill gr">Notes incomplètes</span>';
+}
+function classement(evs){
+  var l=evs.map(function(e){ return { e:e, r:res(e) }; });
+  l.sort(function(a,b){ var x=a.r.moyenne==null?-1:a.r.moyenne, y=b.r.moyenne==null?-1:b.r.moyenne; return y-x || nomEleve(a.e.eleve).localeCompare(nomEleve(b.e.eleve)); });
+  var rang=0, prec=null;
+  l.forEach(function(x, i){ if(x.r.moyenne==null){ x.rang=null; return; } if(x.r.moyenne!==prec){ rang=i+1; prec=x.r.moyenne; } x.rang=rang; });
+  return l;
+}
+function rangTxt(r){ return r==null ? '—' : (r===1 ? '1er' : r+'e'); }
+
+/* ---------------- donnees du module ---------------- */
+function evaluations(){ return AX.coll('evaluations'); }
+function sessions(){ return AX.coll('sessionsEval').sort(function(a,b){ return String(b.dateDebut||'').localeCompare(String(a.dateDebut||'')) || (b.cree||0)-(a.cree||0); }); }
+function evalsDeSession(id){ return evaluations().filter(function(e){ return e.sessionId===id; }); }
+function attestations(){ return AX.coll('attestations'); }
+function attestationExistante(ev){
+  var n=norm(ev.formation);
+  return attestations().find(function(a){
+    if((a.type||'attestation')!=='attestation' || !a.ben) return false;
+    var meme=(a.ben.cle&&a.ben.cle===ev.eleve.cle) || (norm(a.ben.nom)+'|'+norm(a.ben.prenom))===(norm(ev.eleve.nom)+'|'+norm(ev.eleve.prenom));
+    return meme && (a.formations||[]).some(function(f){ return norm(f.nom)===n; });
+  })||null;
+}
+
+/* ================================================================
+   ONGLET
+   ================================================================ */
+var vue='resultats', F={ q:'', formation:'', resultat:'' };
+function menuVues(){
+  var v=[['resultats','📋 Résultats'],['sessions','🗓️ Évaluations de masse'],['attestations','📜 Attestations à décider']];
+  if(estFondateur()) v.push(['criteres','⚙️ Critères']);
+  var n=aDecider().length;
+  return '<div class="ax-row no-print" style="gap:6px;flex-wrap:wrap;margin-bottom:12px">'
+    +v.map(function(x){ return '<button class="ax-btn '+(vue===x[0]?'p':'w')+'" onclick="AX.evalVue(\''+x[0]+'\')">'+x[1]+(x[0]==='attestations'&&n?' <span class="ax-pill ko" style="margin-left:4px">'+n+'</span>':'')+'</button>'; }).join('')
+    +'</div>';
+}
+AX.evalVue=function(v){ vue=v; rendre(); };
+AX.evalFiltre=function(k, v){ F[k]=String(v||''); rendre(); };
+
+function rendre(){
+  var z=el('axEvalContenu'); if(!z) return;
+  if(AX.erreurLecture && AX.erreurLecture(z)) return;
+  if(vue==='criteres' && !estFondateur()) vue='resultats';
+  var h=menuVues();
+  if(vue==='resultats') h+=vueResultats();
+  else if(vue==='sessions') h+=vueSessions();
+  else if(vue==='attestations') h+=vueAttestations();
+  else h+=vueCriteres();
+  AX.rendreZone(z,h);
+  if(vue==='criteres') brancherCriteres(z);
+}
+AX.rendreEvaluations=rendre;
+
+function formationsConnues(){
+  var s={};
+  catalogue().forEach(function(f){ if(f.nom) s[f.nom]=1; });
+  evaluations().forEach(function(e){ if(e.formation) s[e.formation]=1; });
+  return Object.keys(s).sort();
+}
+function optionsFormations(v, vide){ return '<option value="">'+(vide||'Toutes les formations')+'</option>'+formationsConnues().map(function(f){ return '<option'+(f===v?' selected':'')+'>'+esc(f)+'</option>'; }).join(''); }
+
+function vueResultats(){
+  var l=evaluations().filter(function(e){
+    var r=res(e);
+    if(F.formation && e.formation!==F.formation) return false;
+    if(F.resultat && r.resultat!==F.resultat) return false;
+    if(F.q && norm(nomEleve(e.eleve)+' '+(e.eleve.mat||'')+' '+e.formation).indexOf(norm(F.q))<0) return false;
+    return true;
+  });
+  var cl=classement(l);
+  var tot={ admis:0, reprise:0, incomplet:0 }; cl.forEach(function(x){ tot[x.r.resultat]++; });
+  var h='<div class="ax-row no-print" style="gap:8px;flex-wrap:wrap;margin-bottom:10px">'
+    +'<button class="ax-btn p" onclick="AX.evalNouvelle()">➕ Évaluer un élève</button>'
+    +'<select class="ax-inp" style="max-width:220px" onchange="AX.evalFiltre(\'formation\',this.value)">'+optionsFormations(F.formation)+'</select>'
+    +'<select class="ax-inp" style="max-width:190px" onchange="AX.evalFiltre(\'resultat\',this.value)">'
+      +[['','Tous les résultats'],['admis','Admis'],['reprise','À reprendre'],['incomplet','Notes incomplètes']].map(function(o){ return '<option value="'+o[0]+'"'+(F.resultat===o[0]?' selected':'')+'>'+o[1]+'</option>'; }).join('')+'</select>'
+    +'<input class="ax-inp" placeholder="🔍 Nom, matricule…" value="'+esc(F.q)+'" onchange="AX.evalFiltre(\'q\',this.value)" style="flex:1;min-width:160px">'
+    +(cl.length?'<button class="ax-btn w" onclick="AX.evalImprimerListe()">🏆 Imprimer le classement</button>':'')
+    +'</div>';
+  if(!cl.length) return h+'<div class="ax-empty">Aucune évaluation'+(F.formation||F.resultat||F.q?' ne correspond aux filtres.':' pour le moment. Commencez par « Évaluer un élève » ou programmez une évaluation de masse.')+'</div>';
+  h+='<div class="ax-note" style="margin-bottom:6px">'+cl.length+' évaluation(s) — <b style="color:#15803d">'+tot.admis+' admis</b> · <b style="color:#b91c1c">'+tot.reprise+' à reprendre</b> · '+tot.incomplet+' incomplète(s)</div>';
+  h+='<div class="ax-scroll"><table class="ax-table"><thead><tr><th>Rang</th><th>Élève</th><th>Formation</th><th>Théorie</th><th>Pratique</th><th>Moyenne</th><th>Résultat</th><th>Suite</th><th class="no-print"></th></tr></thead><tbody>';
+  cl.forEach(function(x){
+    var e=x.e, r=x.r, ph=photoDe(e.eleve), s=e.sessionId?AX.item('sessionsEval',e.sessionId):null;
+    h+='<tr><td style="font-weight:800">'+rangTxt(x.rang)+'</td>'
+      +'<td><div style="display:flex;gap:8px;align-items:center">'+(ph?'<img src="'+ph+'" style="width:32px;height:40px;object-fit:cover;border-radius:6px">':'')
+      +'<div><b>'+esc(nomEleve(e.eleve))+'</b><br><span style="color:#64748b;font-size:12px">'+esc(e.eleve.mat||'')+' · '+esc(frDe(e.date))+(s?' · '+esc(s.numero||''):'')+'</span></div></div></td>'
+      +'<td>'+esc(e.formation)+'</td><td>'+noteTxt(r.moyT)+'</td><td>'+noteTxt(r.moyP)+'</td>'
+      +'<td style="font-weight:800">'+noteTxt(r.moyenne)+'</td><td>'+badgeResultat(r)+(r.motif?'<div class="ax-note">'+esc(r.motif)+'</div>':'')+'</td>'
+      +'<td>'+suiteHtml(e, r)+'</td>'
+      +'<td class="no-print" style="white-space:nowrap">'
+        +(peutModif()||!e.valide?'<button class="ax-btn sm w" title="Notes" onclick="AX.evalEditer(\''+esc(e.id)+'\')">✏️</button> ':'')
+        +'<button class="ax-btn sm w" title="Envoyer au tuteur (WhatsApp)" onclick="AX.evalWhatsappUn(\''+esc(e.id)+'\')">💬</button> '
+        +(peutSupp()?'<button class="ax-btn sm w" style="color:#b91c1c" title="Supprimer" onclick="AX.evalSupprimer(\''+esc(e.id)+'\')">🗑️</button>':'')
+      +'</td></tr>';
+  });
+  return h+'</tbody></table></div>';
+}
+function suiteHtml(e, r){
+  if(r.resultat==='reprise') return '<span style="color:#b91c1c;font-weight:700">Reprend le module</span><br><button class="ax-btn sm w no-print" onclick="AX.evalRattrapage(\''+esc(e.id)+'\')">↻ Nouvelle évaluation</button>';
+  if(r.resultat!=='admis') return '<span class="ax-note">—</span>';
+  var h='';
+  if(e.passage&&e.passage.fait) h+='<span style="color:#15803d;font-weight:700">✓ Passé au module suivant</span>';
+  else h+='<button class="ax-btn sm p no-print" onclick="AX.evalValiderUn(\''+esc(e.id)+'\')">✅ Valider le passage</button>';
+  var a=e.attestation||{};
+  if(a.etat==='acceptee') h+='<br><span class="ax-pill ok">📜 Attestation '+esc(a.numero||'')+'</span>';
+  else if(a.etat==='rejetee') h+='<br><span class="ax-pill gr">📜 Attestation en attente</span> <button class="ax-btn sm w no-print" onclick="AX.evalAttestation(\''+esc(e.id)+'\')">Revoir</button>';
+  else if(a.etat==='proposee') h+='<br><button class="ax-btn sm b no-print" onclick="AX.evalAttestation(\''+esc(e.id)+'\')">📜 Attestation proposée</button>';
+  return h;
+}
+
+function vueSessions(){
+  var l=sessions();
+  var h='<div class="ax-row no-print" style="gap:8px;margin-bottom:10px"><button class="ax-btn p" onclick="AX.evalSession()">➕ Programmer une évaluation de masse</button></div>';
+  if(!l.length) return h+'<div class="ax-empty">Aucune évaluation de masse programmée.</div>';
+  l.forEach(function(s){
+    var evs=evalsDeSession(s.id), cl=classement(evs), adm=cl.filter(function(x){ return x.r.resultat==='admis'; }).length,
+        rep=cl.filter(function(x){ return x.r.resultat==='reprise'; }).length, notes=cl.filter(function(x){ return x.r.resultat!=='incomplet'; }).length;
+    var etat=s.valideLe?'<span class="ax-pill ok">Résultats validés</span>':(notes?'<span class="ax-pill bl">Notes : '+notes+'/'+(s.eleves||[]).length+'</span>':(s.dateDebut>isoJour()?'<span class="ax-pill gr">Programmée</span>':'<span class="ax-pill bl">En cours</span>'));
+    h+='<div class="ax-card" style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">'
+      +'<div><div style="font-weight:800;color:#172554;font-size:15px">'+esc(s.numero||'')+' — '+esc(s.titre||'Évaluation')+'</div>'
+      +'<div class="ax-note">'+esc(s.formation||'')+' · du '+esc(frDe(s.dateDebut))+' au '+esc(frDe(s.dateFin))+' · '+(s.eleves||[]).length+' élève(s)'+(s.lieu?' · '+esc(s.lieu):'')+'</div>'
+      +'<div style="margin-top:4px">'+etat+(notes?' <span class="ax-note">'+adm+' admis · '+rep+' à reprendre</span>':'')+'</div></div>'
+      +'<div class="ax-row no-print" style="gap:6px;flex-wrap:wrap;align-items:flex-start">'
+        +'<button class="ax-btn sm b" onclick="AX.evalProgramme(\''+esc(s.id)+'\')">🗓️ Programme + photos</button>'
+        +'<button class="ax-btn sm p" onclick="AX.evalNotesSession(\''+esc(s.id)+'\')">✍️ Saisir les notes</button>'
+        +'<button class="ax-btn sm b" onclick="AX.evalResultats(\''+esc(s.id)+'\')">🏆 Fiche de résultats</button>'
+        +'<button class="ax-btn sm w" onclick="AX.evalWhatsapp(\''+esc(s.id)+'\')">💬 Tuteurs</button>'
+        +(!s.valideLe&&notes?'<button class="ax-btn sm p" onclick="AX.evalValiderSession(\''+esc(s.id)+'\')">✅ Valider les résultats</button>':'')
+        +(peutModif()?'<button class="ax-btn sm w" onclick="AX.evalSession(\''+esc(s.id)+'\')">✏️</button>':'')
+        +(peutSupp()?'<button class="ax-btn sm w" style="color:#b91c1c" onclick="AX.evalSupprimerSession(\''+esc(s.id)+'\')">🗑️</button>':'')
+      +'</div></div></div>';
+  });
+  return h;
+}
+
+function aDecider(){ return evaluations().filter(function(e){ var a=e.attestation||{}; return e.valide && res(e).resultat==='admis' && (a.etat==='proposee'||a.etat==='rejetee'); }); }
+function vueAttestations(){
+  var l=aDecider();
+  var h='<div class="ax-note" style="margin-bottom:8px">Après la validation des résultats, une attestation est proposée pour chaque élève admis. <b>Acceptée</b> : elle est délivrée (numérotée, imprimable). <b>Rejetée</b> : elle reste ici en attente.</div>';
+  if(!AX.attActif || !AX.attActif('attestation')) h+='<div class="ax-warn" style="margin-bottom:8px">Les attestations ne sont pas activées : le Fondateur peut les activer dans <b>Paramètres</b>. Les propositions restent en attente jusque-là.</div>';
+  if(!l.length) return h+'<div class="ax-empty">Aucune attestation à décider.</div>';
+  h+='<div class="ax-scroll"><table class="ax-table"><thead><tr><th>Élève</th><th>Formation</th><th>Moyenne</th><th>Mention</th><th>État</th><th class="no-print"></th></tr></thead><tbody>';
+  l.forEach(function(e){
+    var r=res(e), a=e.attestation||{}, ph=photoDe(e.eleve);
+    h+='<tr><td><div style="display:flex;gap:8px;align-items:center">'+(ph?'<img src="'+ph+'" style="width:32px;height:40px;object-fit:cover;border-radius:6px">':'')+'<b>'+esc(nomEleve(e.eleve))+'</b></div></td>'
+      +'<td>'+esc(e.formation)+'</td><td>'+noteTxt(r.moyenne)+'</td><td>'+esc(r.mention||'')+'</td>'
+      +'<td>'+(a.etat==='rejetee'?'<span class="ax-pill gr">Rejetée — en attente</span>':'<span class="ax-pill bl">Proposée</span>')+'</td>'
+      +'<td class="no-print"><button class="ax-btn sm p" onclick="AX.evalAttestation(\''+esc(e.id)+'\')">📜 Voir la proposition</button></td></tr>';
+  });
+  return h+'</tbody></table></div>';
+}
+
+/* ================================================================
+   CRITERES (Fondateur)
+   ================================================================ */
+var critFormation='';
+function lignesQ(id, l){
+  return '<div id="'+id+'" class="axev-ql">'+l.map(function(x){ return ligneQ(x); }).join('')+'</div>'
+    +'<button class="ax-btn sm w" type="button" data-ajout="'+id+'">+ Ajouter un questionnaire</button>';
+}
+function ligneQ(x){
+  x=x||{q:'',sur:20};
+  return '<div class="ax-row axev-q" style="gap:6px;margin-bottom:6px"><input class="ax-inp" data-k="q" value="'+esc(x.q)+'" placeholder="Intitulé du questionnaire" style="flex:1">'
+    +'<span class="ax-note">noté sur</span><input class="ax-inp" data-k="sur" type="number" min="1" value="'+esc(x.sur)+'" style="width:80px">'
+    +'<button class="ax-btn sm w" type="button" data-suppr="1" style="color:#b91c1c">✕</button></div>';
+}
+function lireQ(z, id){
+  return Array.prototype.slice.call(z.querySelectorAll('#'+id+' .axev-q')).map(function(r){
+    return { q:String(r.querySelector('[data-k="q"]').value||'').trim(), sur:nb(r.querySelector('[data-k="sur"]').value)||20 };
+  }).filter(function(x){ return x.q; });
+}
+function brancherListesQ(z){
+  z.querySelectorAll('[data-ajout]').forEach(function(b){ b.onclick=function(){ var c=z.querySelector('#'+b.getAttribute('data-ajout')); var d=document.createElement('div'); d.innerHTML=ligneQ(); c.appendChild(d.firstChild); brancherListesQ(z); }; });
+  z.querySelectorAll('[data-suppr]').forEach(function(b){ b.onclick=function(){ b.closest('.axev-q').remove(); }; });
+}
+function vueCriteres(){
+  var c=crit(), qf=critFormation?questionnaires(critFormation):null;
+  function n(id, v, l, s){ return '<div class="ax-f"><label class="ax-lbl">'+l+'</label><input class="ax-inp" type="number" step="0.25" id="'+id+'" value="'+esc(v)+'">'+(s?'<div class="ax-note">'+s+'</div>':'')+'</div>'; }
+  return '<div class="ax-card" style="margin-bottom:12px"><div class="ax-sec">⚙️ Critères d\'évaluation définis par le Fondateur</div>'
+    +'<div class="ax-grid3">'+n('axev_sur',c.sur,'Barème (notes ramenées sur)')+n('axev_pt',c.poidsT,'Poids de la théorie (%)')+n('axev_pp',c.poidsP,'Poids de la pratique (%)')+'</div>'
+    +'<div class="ax-grid3">'+n('axev_seuil',c.seuil,'Moyenne minimale pour passer','En dessous : l\'élève reprend le module')
+      +n('axev_et',c.elimT,'Note théorique éliminatoire','0 = aucune')+n('axev_ep',c.elimP,'Note pratique éliminatoire','0 = aucune')+'</div>'
+    +'<div class="ax-lbl" style="margin-top:6px">Mentions (moyenne minimale → mention)</div>'
+    +'<div class="ax-grid4">'+[0,1,2,3].map(function(i){ var m=c.mentions[i]||{min:'',l:''}; return '<div class="ax-row" style="gap:4px"><input class="ax-inp" type="number" step="0.25" id="axev_mm'+i+'" value="'+esc(m.min)+'" style="width:80px"><input class="ax-inp" id="axev_ml'+i+'" value="'+esc(m.l)+'" placeholder="Mention"></div>'; }).join('')+'</div>'
+    +'<div class="ax-grid2" style="margin-top:12px;align-items:start"><div><div class="ax-sec" style="font-size:14px">📝 Questionnaires théoriques (par défaut)</div>'+lignesQ('axev_qt', c.theorie)+'</div>'
+    +'<div><div class="ax-sec" style="font-size:14px">🛠️ Questionnaires pratiques (par défaut)</div>'+lignesQ('axev_qp', c.pratique)+'</div></div>'
+    +'<div class="ax-row" style="margin-top:12px;gap:8px"><button class="ax-btn p" id="axev_csave">💾 Enregistrer les critères</button></div></div>'
+    +'<div class="ax-card"><div class="ax-sec">🎓 Questionnaires propres à une formation (facultatif)</div>'
+    +'<div class="ax-row" style="gap:8px;margin-bottom:8px"><select class="ax-inp" id="axev_cf" style="max-width:300px">'+optionsFormations(critFormation,'— Choisir une formation —')+'</select>'
+      +(qf?'<span class="ax-note">'+(qf.propre?'Questionnaires propres à cette formation':'Utilise les questionnaires par défaut')+'</span>':'')+'</div>'
+    +(critFormation?'<div class="ax-grid2" style="align-items:start"><div><div class="ax-lbl">Théoriques</div>'+lignesQ('axev_fqt', qf.propre?qf.theorie:[])+'</div>'
+      +'<div><div class="ax-lbl">Pratiques</div>'+lignesQ('axev_fqp', qf.propre?qf.pratique:[])+'</div></div>'
+      +'<div class="ax-row" style="margin-top:10px;gap:8px"><button class="ax-btn p" id="axev_fsave">💾 Enregistrer pour '+esc(critFormation)+'</button>'
+      +(qf.propre?'<button class="ax-btn w" id="axev_fdef">↺ Revenir aux questionnaires par défaut</button>':'')+'</div>'
+      :'<div class="ax-note">Choisissez une formation pour lui donner ses propres questionnaires (sinon ceux par défaut s\'appliquent).</div>')
+    +'</div>';
+}
+function brancherCriteres(z){
+  brancherListesQ(z);
+  var sv=z.querySelector('#axev_csave');
+  if(sv) sv.onclick=function(){
+    function v(id){ return nb(z.querySelector('#'+id).value); }
+    var mentions=[0,1,2,3].map(function(i){ return { min:v('axev_mm'+i), l:String(z.querySelector('#axev_ml'+i).value||'').trim() }; }).filter(function(m){ return m.l && m.min!=null; });
+    var o={ sur:v('axev_sur')||20, poidsT:v('axev_pt')==null?40:v('axev_pt'), poidsP:v('axev_pp')==null?60:v('axev_pp'), seuil:v('axev_seuil')==null?10:v('axev_seuil'),
+      elimT:v('axev_et')||0, elimP:v('axev_ep')||0, mentions:mentions, theorie:lireQ(z,'axev_qt'), pratique:lireQ(z,'axev_qp') };
+    if(!o.theorie.length && !o.pratique.length){ alert('Indiquez au moins un questionnaire (théorique ou pratique).'); return; }
+    if((o.poidsT+o.poidsP)<=0){ alert('Les poids de la théorie et de la pratique ne peuvent pas être tous les deux à 0.'); return; }
+    sv.disabled=true;
+    AX.majCfg('evaluation', o).then(function(){ AX.toast('Critères d\'évaluation enregistrés ✓','ok'); try{ ajouterHistorique('Critères d\'évaluation modifiés'); }catch(e){} sv.disabled=false; rendre(); }).catch(function(){ sv.disabled=false; });
+  };
+  var cf=z.querySelector('#axev_cf'); if(cf) cf.onchange=function(){ critFormation=cf.value; rendre(); };
+  var fs=z.querySelector('#axev_fsave');
+  if(fs) fs.onclick=function(){
+    var pf=Object.assign({}, crit().parFormation);
+    var t=lireQ(z,'axev_fqt'), p=lireQ(z,'axev_fqp');
+    if(!t.length && !p.length){ alert('Ajoutez au moins un questionnaire, ou utilisez « Revenir aux questionnaires par défaut ».'); return; }
+    pf[cleFb(norm(critFormation))]={ formation:critFormation, theorie:t, pratique:p };
+    AX.majCfg('evaluation', { parFormation:pf }).then(function(){ AX.toast('Questionnaires de '+critFormation+' enregistrés ✓','ok'); rendre(); });
+  };
+  var fd=z.querySelector('#axev_fdef');
+  if(fd) fd.onclick=function(){
+    var pf=Object.assign({}, crit().parFormation); delete pf[cleFb(norm(critFormation))];
+    AX.majCfg('evaluation', { parFormation:pf }).then(function(){ AX.toast('Questionnaires par défaut rétablis pour '+critFormation,'ok'); rendre(); });
+  };
+}
+
+/* ================================================================
+   SAISIE DES NOTES — EVALUATION INDIVIDUELLE
+   ================================================================ */
+function grilleNotes(prefixe, l){
+  return '<table class="ax-table" style="margin-bottom:6px"><thead><tr><th>Questionnaire</th><th style="width:110px">Note</th><th style="width:90px">Sur</th></tr></thead><tbody>'
+    +l.map(function(x, i){ return '<tr><td>'+esc(x.q)+'</td><td><input class="ax-inp axev-n" inputmode="decimal" data-g="'+prefixe+'" data-i="'+i+'" value="'+esc(x.note==null?'':String(x.note).replace('.',','))+'" style="padding:6px 8px"></td><td>'+esc(x.sur)+'</td></tr>'; }).join('')
+    +(l.length?'':'<tr><td colspan="3" class="ax-note">Aucun questionnaire de ce type.</td></tr>')+'</tbody></table>';
+}
+function lireGrille(z, prefixe, l){
+  return l.map(function(x, i){ var inp=z.querySelector('.axev-n[data-g="'+prefixe+'"][data-i="'+i+'"]'); var v=inp?nb(inp.value):null; return { q:x.q, sur:x.sur, note:v==null?null:v }; });
+}
+function resumeHtml(r){
+  var c=crit();
+  return '<div class="ax-card" style="background:#f8fafc"><div class="ax-grid4" style="text-align:center">'
+    +'<div><div class="ax-note">Théorie</div><div style="font-size:20px;font-weight:800">'+noteTxt(r.moyT)+'</div></div>'
+    +'<div><div class="ax-note">Pratique</div><div style="font-size:20px;font-weight:800">'+noteTxt(r.moyP)+'</div></div>'
+    +'<div><div class="ax-note">Moyenne /'+c.sur+'</div><div style="font-size:20px;font-weight:800;color:#172554">'+noteTxt(r.moyenne)+'</div></div>'
+    +'<div><div class="ax-note">Résultat</div><div style="margin-top:4px">'+badgeResultat(r)+'</div></div></div>'
+    +(r.motif?'<div class="ax-note" style="margin-top:6px;color:#b91c1c">'+esc(r.motif)+'</div>':'')
+    +'<div class="ax-note" style="margin-top:6px">Critères : théorie '+c.poidsT+' % · pratique '+c.poidsP+' % · admis à partir de '+noteTxt(c.seuil)+'/'+c.sur
+      +(c.elimT?' · théorie éliminatoire < '+noteTxt(c.elimT):'')+(c.elimP?' · pratique éliminatoire < '+noteTxt(c.elimP):'')+'</div></div>';
+}
+function dialogueEval(ev){
+  var nouveau=!ev;
+  ev=ev?JSON.parse(JSON.stringify(ev)):{ eleve:null, formation:'', date:isoJour(), theorie:[], pratique:[], observation:'' };
+  if(ev.valide && !peutModif()){ alert('Résultat déjà validé : modification réservée au Fondateur ou aux personnes autorisées.'); return; }
+  var eleves=lesInscrits().slice().sort(function(a,b){ return (a.nom+a.prenom).localeCompare(b.nom+b.prenom); });
+  var corps='<div class="ax-grid2"><div class="ax-f"><label class="ax-lbl">Élève *</label>'
+    +(nouveau?'<input class="ax-inp" id="axev_q" placeholder="🔍 Filtrer par nom ou matricule" style="margin-bottom:6px"><select class="ax-inp" id="axev_el" size="5"></select>'
+             :'<div style="font-weight:800;padding:8px 0">'+esc(nomEleve(ev.eleve))+' — '+esc(ev.eleve.mat||'')+'</div>')+'</div>'
+    +'<div><div class="ax-f"><label class="ax-lbl">Formation / module évalué *</label>'+(nouveau?'<select class="ax-inp" id="axev_f"></select>':'<div style="font-weight:800;padding:8px 0">'+esc(ev.formation)+'</div>')+'</div>'
+    +'<div class="ax-f"><label class="ax-lbl">Date de l\'évaluation</label><input class="ax-inp" type="date" id="axev_d" value="'+esc(ev.date||isoJour())+'"></div></div></div>'
+    +'<div id="axev_grilles"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Observation (facultatif)</label><input class="ax-inp" id="axev_obs" value="'+esc(ev.observation||'')+'"></div>'
+    +'<div id="axev_res"></div>';
+  var M=AX.modale({ titre:nouveau?'➕ Évaluer un élève':'✏️ Notes — '+esc(nomEleve(ev.eleve)), taille:'lg', corps:corps,
+    boutons:[{txt:'Annuler',cls:'w'},{txt:'💾 Enregistrer',cls:'p',action:function(api,bt){ sauver(api,bt); }}] });
+  var z=M.m, qs={ theorie:ev.theorie, pratique:ev.pratique };
+  function eleveChoisi(){ if(!nouveau) return ev.eleve; var k=z.querySelector('#axev_el').value; var i=eleves.find(function(x){ return cleIns(x)===k; }); return i?eleveDe(i):null; }
+  function formationChoisie(){ return nouveau ? z.querySelector('#axev_f').value : ev.formation; }
+  function remplirEleves(){
+    var q=norm(z.querySelector('#axev_q').value), cur=z.querySelector('#axev_el').value;
+    z.querySelector('#axev_el').innerHTML=eleves.filter(function(i){ return !q || norm(i.nom+' '+i.prenom+' '+i.mat).indexOf(q)>=0; })
+      .map(function(i){ return '<option value="'+esc(cleIns(i))+'">'+esc(nomEleve(i))+' — '+esc(i.mat||'')+'</option>'; }).join('');
+    if(cur) z.querySelector('#axev_el').value=cur;
+  }
+  function remplirFormations(){
+    var e=eleveChoisi(), ins=e?trouverIns(e.cle, e.mat):null, l=ins?modulesIns(ins):[];
+    var s=z.querySelector('#axev_f');
+    s.innerHTML=l.length ? l.map(function(m){ return '<option value="'+esc(m.nom)+'">'+esc(m.nom)+(m.statut==='termine'?' (terminé)':m.statut==='abandonne'?' (abandonné)':'')+'</option>'; }).join('')
+      : '<option value="">— Choisissez d\'abord un élève —</option>';
+    var enCours=l.find(function(m){ return (m.statut||'en_cours')==='en_cours'; }); if(enCours) s.value=enCours.nom;
+    chargerQuestionnaires(true);
+  }
+  function chargerQuestionnaires(reset){
+    var f=formationChoisie(), q=questionnaires(f);
+    function fusion(ancien, defs){ return defs.map(function(d){ var a=(ancien||[]).find(function(x){ return x.q===d.q; }); return { q:d.q, sur:d.sur, note:a?a.note:null }; })
+      .concat((ancien||[]).filter(function(a){ return !defs.some(function(d){ return d.q===a.q; }); })); }
+    if(reset || nouveau){ qs.theorie=fusion(reset?[]:qs.theorie, q.theorie); qs.pratique=fusion(reset?[]:qs.pratique, q.pratique); }
+    z.querySelector('#axev_grilles').innerHTML='<div class="ax-grid2" style="align-items:start"><div><div class="ax-sec" style="font-size:14px">📝 Notes théoriques</div>'+grilleNotes('t', qs.theorie)+'</div>'
+      +'<div><div class="ax-sec" style="font-size:14px">🛠️ Notes pratiques</div>'+grilleNotes('p', qs.pratique)+'</div></div>';
+    z.querySelectorAll('.axev-n').forEach(function(i){ i.addEventListener('input', majRes); });
+    majRes();
+  }
+  function lire(){ return { theorie:lireGrille(z,'t',qs.theorie), pratique:lireGrille(z,'p',qs.pratique) }; }
+  function majRes(){ z.querySelector('#axev_res').innerHTML=resumeHtml(calcul(lire())); }
+  if(nouveau){
+    z.querySelector('#axev_q').oninput=remplirEleves; remplirEleves();
+    z.querySelector('#axev_el').onchange=remplirFormations;
+    z.querySelector('#axev_f').onchange=function(){ chargerQuestionnaires(true); };
+    remplirFormations();
+  } else chargerQuestionnaires(!(ev.theorie||[]).length && !(ev.pratique||[]).length);   /* rattrapage : questionnaires vierges */
+  function sauver(api, bt){
+    var e=eleveChoisi(), f=formationChoisie();
+    if(!e){ alert('Choisissez l\'élève.'); return; }
+    if(!f){ alert('Choisissez la formation évaluée.'); return; }
+    var n=lire(), rec=Object.assign({}, ev, { eleve:e, formation:f, date:z.querySelector('#axev_d').value||isoJour(), theorie:n.theorie, pratique:n.pratique,
+      observation:String(z.querySelector('#axev_obs').value||'').trim(), majLe:Date.now(), majPar:nomCourant() });
+    delete rec.nouveauRattrapage;
+    if(!rec.id) rec.id=nouvelId('ev'); if(!rec.cree){ rec.cree=Date.now(); rec.creePar=nomCourant(); }
+    var r=calcul(rec); rec.resultat=r.resultat; rec.moyenne=r.moyenne;
+    if(rec.valide) rec.fige=r;          /* modification apres validation : nouveaux resultats figes */
+    bt.disabled=true;
+    AX.ecrire('evaluations/'+cleFb(rec.id), rec).then(function(){
+      AX.toast('Évaluation enregistrée — '+(r.resultat==='admis'?'ADMIS':r.resultat==='reprise'?'À REPRENDRE':'notes incomplètes')+' ✓','ok');
+      try{ ajouterHistorique('Évaluation '+f+' — '+nomEleve(e)+' : '+noteTxt(r.moyenne)); }catch(x){}
+      api.fermer(); rendre();
+    }).catch(function(){ bt.disabled=false; });
+  }
+}
+AX.evalNouvelle=function(){ if(AX.peutOuvrir && !AX.peutOuvrir()) return; dialogueEval(null); };
+AX.evalEditer=function(id){ var e=AX.item('evaluations',id); if(!e) return; e=JSON.parse(JSON.stringify(e)); e.id=e.id||id; dialogueEval(e); };
+AX.evalRattrapage=function(id){
+  var e=AX.item('evaluations',id); if(!e) return;
+  dialogueEval({ eleve:e.eleve, formation:e.formation, date:isoJour(), theorie:[], pratique:[], observation:'Rattrapage', rattrapageDe:id, nouveauRattrapage:true });
+};
+AX.evalSupprimer=function(id){
+  if(!peutSupp()){ alert('Suppression non autorisée.'); return; }
+  var e=AX.item('evaluations',id); if(!e) return;
+  if(!confirm('Supprimer l\'évaluation de '+nomEleve(e.eleve)+' ('+e.formation+') ? Le statut du module de l\'élève n\'est pas modifié.')) return;
+  AX.effacer('evaluations/'+cleFb(id)).then(function(){ AX.toast('Évaluation supprimée','ok'); rendre(); });
+};
+
+/* ================================================================
+   EVALUATION DE MASSE : PROGRAMMATION ET EMPLOI DU TEMPS
+   ================================================================ */
+function minutes(h){ var m=/^(\d{1,2}):(\d{2})/.exec(String(h||'')); return m ? (+m[1])*60+(+m[2]) : null; }
+function heureDe(min){ return pad2(Math.floor(min/60))+':'+pad2(min%60); }
+/* creneaux : jours choisis entre debut et fin, de heureDebut a heureFin, duree par creneau */
+function creneaux(s){
+  var out=[], d0=s.dateDebut, d1=s.dateFin, hd=minutes(s.heureDebut), hf=minutes(s.heureFin), du=Math.max(5, nb(s.duree)||30);
+  if(!d0||!d1||hd==null||hf==null||hf<=hd) return out;
+  var p=d0.split('-'), d=new Date(+p[0],+p[1]-1,+p[2]), fin=d1;
+  for(var k=0; k<400 && isoDe(d)<=fin; k++){
+    if((s.jours||[]).indexOf(d.getDay())>=0){
+      for(var t=hd; t+du<=hf; t+=du) out.push({ date:isoDe(d), heure:heureDe(t), fin:heureDe(t+du) });
+    }
+    d.setDate(d.getDate()+1);
+  }
+  return out;
+}
+/* repartition automatique des eleves sur les creneaux */
+function planifier(s, eleves){
+  var cr=creneaux(s), par=Math.max(1, nb(s.parCreneau)||1), places=cr.length*par, out=[], manque=0;
+  if(!cr.length) return { planning:[], manque:eleves.length, creneaux:0 };
+  var parJour={}; cr.forEach(function(c){ (parJour[c.date]=parJour[c.date]||[]).push(c); });
+  var jours=Object.keys(parJour).sort();
+  if(s.repartition==='etale' && jours.length>1){
+    /* meme nombre d'eleves chaque jour, au plus tot dans la journee */
+    var quota=Math.ceil(eleves.length/jours.length), i=0;
+    jours.forEach(function(j){
+      var cj=parJour[j], cap=Math.min(quota, cj.length*par);
+      for(var n=0; n<cap && i<eleves.length; n++, i++){ var c=cj[Math.floor(n/par)]; out.push(Object.assign({}, eleves[i], { date:c.date, heure:c.heure, fin:c.fin })); }
+    });
+    /* reste eventuel : premiers creneaux encore libres */
+    if(i<eleves.length){
+      var occ={}; out.forEach(function(o){ var k=o.date+'|'+o.heure; occ[k]=(occ[k]||0)+1; });
+      cr.forEach(function(c){ while(i<eleves.length && (occ[c.date+'|'+c.heure]||0)<par){ out.push(Object.assign({}, eleves[i], { date:c.date, heure:c.heure, fin:c.fin })); occ[c.date+'|'+c.heure]=(occ[c.date+'|'+c.heure]||0)+1; i++; } });
+    }
+    manque=eleves.length-out.length;
+  } else {
+    eleves.forEach(function(e, i){ var c=cr[Math.floor(i/par)]; if(c) out.push(Object.assign({}, e, { date:c.date, heure:c.heure, fin:c.fin })); else manque++; });
+  }
+  return { planning:out, manque:manque, creneaux:cr.length, places:places };
+}
+function dialogueSession(s){
+  var nouveau=!s;
+  if(!nouveau && !peutModif()){ alert('Modification non autorisée.'); return; }
+  var dem=new Date(Date.now()+864e5), fin=new Date(Date.now()+5*864e5);
+  s=s?JSON.parse(JSON.stringify(s)):{ titre:'', formation:'', lieu:'', dateDebut:isoDe(dem), dateFin:isoDe(fin), jours:[1,2,3,4,5,6], heureDebut:'08:00', heureFin:'16:00', duree:30, parCreneau:4, repartition:'etale', theorieCommune:{ date:'', heure:'' }, eleves:[] };
+  var choisis={}; (s.eleves||[]).forEach(function(e){ choisis[e.cle]=1; });
+  var corps='<div class="ax-grid2"><div class="ax-f"><label class="ax-lbl">Intitulé *</label><input class="ax-inp" id="axes_t" value="'+esc(s.titre)+'" placeholder="Ex : Évaluation de fin de module — Novembre"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Formation / module évalué *</label><select class="ax-inp" id="axes_f">'+optionsFormations(s.formation,'— Choisir —')+'</select></div></div>'
+    +'<div class="ax-grid4"><div class="ax-f"><label class="ax-lbl">Début *</label><input type="date" class="ax-inp" id="axes_d0" value="'+esc(s.dateDebut)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Fin *</label><input type="date" class="ax-inp" id="axes_d1" value="'+esc(s.dateFin)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">De</label><input type="time" class="ax-inp" id="axes_h0" value="'+esc(s.heureDebut)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">À</label><input type="time" class="ax-inp" id="axes_h1" value="'+esc(s.heureFin)+'"></div></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Jours d\'évaluation</label><div class="ax-row" style="gap:10px;flex-wrap:wrap">'
+      +[1,2,3,4,5,6,0].map(function(j){ return '<label class="ax-chk"><input type="checkbox" class="axes-j" value="'+j+'"'+((s.jours||[]).indexOf(j)>=0?' checked':'')+'>'+JOURS[j]+'</label>'; }).join('')+'</div></div>'
+    +'<div class="ax-grid4"><div class="ax-f"><label class="ax-lbl">Durée d\'un passage (min)</label><input type="number" min="5" class="ax-inp" id="axes_du" value="'+esc(s.duree)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Élèves par passage</label><input type="number" min="1" class="ax-inp" id="axes_pc" value="'+esc(s.parCreneau)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Répartition</label><select class="ax-inp" id="axes_rep"><option value="etale"'+(s.repartition!=='tot'?' selected':'')+'>Sur toute la période</option><option value="tot"'+(s.repartition==='tot'?' selected':'')+'>Au plus tôt</option></select></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Salle / lieu</label><input class="ax-inp" id="axes_l" value="'+esc(s.lieu||'')+'"></div></div>'
+    +'<div class="ax-grid2"><div class="ax-f"><label class="ax-lbl">Épreuve théorique commune (facultatif) — date</label><input type="date" class="ax-inp" id="axes_td" value="'+esc((s.theorieCommune||{}).date||'')+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">heure</label><input type="time" class="ax-inp" id="axes_th" value="'+esc((s.theorieCommune||{}).heure||'')+'"></div></div>'
+    +'<div class="ax-sec" style="font-size:14px;margin-top:6px">👥 Élèves à évaluer</div>'
+    +'<div class="ax-row" style="gap:8px;margin-bottom:6px;flex-wrap:wrap"><input class="ax-inp" id="axes_q" placeholder="🔍 Filtrer" style="flex:1;min-width:150px">'
+    +'<label class="ax-chk"><input type="checkbox" id="axes_enc" checked>Seulement ceux qui suivent cette formation (en cours)</label>'
+    +'<button class="ax-btn sm w" type="button" id="axes_tous">☑ Tous</button><button class="ax-btn sm w" type="button" id="axes_aucun">☐ Aucun</button></div>'
+    +'<div id="axes_liste" style="max-height:240px;overflow:auto;border:1px solid #e2e8f0;border-radius:10px;padding:6px"></div>'
+    +'<div class="ax-sec" style="font-size:14px;margin-top:10px">🗓️ Emploi du temps calculé automatiquement</div><div id="axes_plan"></div>';
+  var M=AX.modale({ titre:nouveau?'🗓️ Programmer une évaluation de masse':'✏️ '+esc(s.numero||'Évaluation'), taille:'xl', corps:corps,
+    boutons:[{txt:'Annuler',cls:'w'},{txt:'💾 Enregistrer la programmation',cls:'p',action:function(api,bt){ sauver(api,bt,false); }},
+             {txt:'💾 Enregistrer et imprimer le programme',cls:'p',action:function(api,bt){ sauver(api,bt,true); }}] });
+  var z=M.m, Q=function(x){ return z.querySelector(x); };
+  function lireS(){
+    return Object.assign({}, s, { titre:String(Q('#axes_t').value||'').trim(), formation:Q('#axes_f').value, dateDebut:Q('#axes_d0').value, dateFin:Q('#axes_d1').value,
+      heureDebut:Q('#axes_h0').value, heureFin:Q('#axes_h1').value, jours:Array.prototype.slice.call(z.querySelectorAll('.axes-j:checked')).map(function(x){ return +x.value; }),
+      duree:nb(Q('#axes_du').value)||30, parCreneau:nb(Q('#axes_pc').value)||1, repartition:Q('#axes_rep').value, lieu:String(Q('#axes_l').value||'').trim(),
+      theorieCommune:{ date:Q('#axes_td').value||'', heure:Q('#axes_th').value||'' } });
+  }
+  function candidats(){
+    var f=Q('#axes_f').value, enc=Q('#axes_enc').checked, q=norm(Q('#axes_q').value);
+    return lesInscrits().filter(function(i){
+      if(q && norm(i.nom+' '+i.prenom+' '+i.mat).indexOf(q)<0) return false;
+      if(enc && f) return modulesIns(i).some(function(m){ return norm(m.nom)===norm(f) && (m.statut||'en_cours')==='en_cours'; });
+      return true;
+    }).sort(function(a,b){ return (a.nom+a.prenom).localeCompare(b.nom+b.prenom); });
+  }
+  function peindreListe(){
+    var l=candidats();
+    Q('#axes_liste').innerHTML=l.length ? l.map(function(i){ var k=cleIns(i), ph=photoIns(i);
+      return '<label class="ax-chk" style="display:flex;gap:8px;align-items:center;padding:3px 2px"><input type="checkbox" class="axes-e" value="'+esc(k)+'"'+(choisis[k]?' checked':'')+'>'
+        +(ph?'<img src="'+ph+'" style="width:26px;height:32px;object-fit:cover;border-radius:5px">':'<span style="width:26px;text-align:center">👤</span>')
+        +'<span><b>'+esc(nomEleve(i))+'</b> <span class="ax-note">'+esc(i.mat||'')+'</span></span></label>'; }).join('')
+      : '<div class="ax-note">Aucun élève ne correspond'+(Q('#axes_enc').checked?' (aucun élève ne suit cette formation en ce moment — décochez le filtre pour voir tout le monde)':'')+'.</div>';
+    z.querySelectorAll('.axes-e').forEach(function(c){ c.onchange=function(){ if(c.checked) choisis[c.value]=1; else delete choisis[c.value]; peindrePlan(); }; });
+    peindrePlan();
+  }
+  function elevesChoisis(){
+    return lesInscrits().filter(function(i){ return choisis[cleIns(i)]; }).sort(function(a,b){ return (a.nom+a.prenom).localeCompare(b.nom+b.prenom); }).map(eleveDe);
+  }
+  function peindrePlan(){
+    var x=lireS(), e=elevesChoisis(), p=planifier(x, e);
+    var h='';
+    if(!e.length) h='<div class="ax-note">Cochez les élèves à évaluer.</div>';
+    else if(!p.creneaux) h='<div class="ax-warn">Aucun créneau : vérifiez les dates, les heures et les jours.</div>';
+    else {
+      h+='<div class="ax-note" style="margin-bottom:6px">'+e.length+' élève(s) · '+p.creneaux+' passage(s) de '+x.duree+' min · '+x.parCreneau+' élève(s) par passage'+(x.theorieCommune.date?' · épreuve théorique commune le '+frDe(x.theorieCommune.date)+(x.theorieCommune.heure?' à '+x.theorieCommune.heure:''):'')+'</div>';
+      if(p.manque) h+='<div class="ax-warn" style="margin-bottom:6px">⚠️ '+p.manque+' élève(s) sans créneau : allongez la période, les heures, ou augmentez le nombre d\'élèves par passage.</div>';
+      h+='<div class="ax-scroll" style="max-height:220px"><table class="ax-table"><thead><tr><th>Date</th><th>Heure</th><th>Élève</th></tr></thead><tbody>'
+        +p.planning.map(function(o){ return '<tr><td>'+esc(jourLong(o.date))+'</td><td>'+esc(o.heure)+' – '+esc(o.fin)+'</td><td>'+esc(nomEleve(o))+'</td></tr>'; }).join('')+'</tbody></table></div>';
+    }
+    Q('#axes_plan').innerHTML=h;
+    return p;
+  }
+  ['#axes_d0','#axes_d1','#axes_h0','#axes_h1','#axes_du','#axes_pc','#axes_rep','#axes_td','#axes_th'].forEach(function(x){ Q(x).addEventListener('change', peindrePlan); });
+  z.querySelectorAll('.axes-j').forEach(function(c){ c.onchange=peindrePlan; });
+  Q('#axes_f').onchange=peindreListe; Q('#axes_enc').onchange=peindreListe; Q('#axes_q').oninput=peindreListe;
+  Q('#axes_tous').onclick=function(){ candidats().forEach(function(i){ choisis[cleIns(i)]=1; }); peindreListe(); };
+  Q('#axes_aucun').onclick=function(){ choisis={}; peindreListe(); };
+  peindreListe();
+  function sauver(api, bt, imprimer){
+    var x=lireS(), e=elevesChoisis();
+    if(!x.titre){ alert('Indiquez l\'intitulé de l\'évaluation.'); return; }
+    if(!x.formation){ alert('Choisissez la formation évaluée.'); return; }
+    if(!x.dateDebut || !x.dateFin || x.dateFin<x.dateDebut){ alert('Vérifiez les dates de début et de fin.'); return; }
+    if(!e.length){ alert('Sélectionnez au moins un élève.'); return; }
+    var p=planifier(x, e);
+    if(p.manque && !confirm(p.manque+' élève(s) n\'ont pas de créneau dans cette période. Enregistrer quand même ?')) return;
+    x.eleves=p.planning.concat(e.filter(function(o){ return !p.planning.some(function(q){ return q.cle===o.cle; }); }));
+    x.id=x.id||nouvelId('se'); if(!x.cree){ x.cree=Date.now(); x.creePar=nomCourant(); } x.majLe=Date.now();
+    bt.disabled=true;
+    var num = x.numero ? Promise.resolve(x.numero) : AX.numero(crit().prefixe||'EVAL','evaluation');
+    num.then(function(n){ x.numero=n; return AX.ecrire('sessionsEval/'+cleFb(x.id), x); }).then(function(){
+      AX.toast('Évaluation '+x.numero+' programmée ✓','ok');
+      try{ ajouterHistorique('Évaluation programmée '+x.numero+' — '+x.formation+' ('+e.length+' élève(s))'); }catch(y){}
+      api.fermer(); vue='sessions'; rendre();
+      if(imprimer) imprimerProgramme(x);
+    }).catch(function(){ bt.disabled=false; });
+  }
+}
+AX.evalSession=function(id){ if(AX.peutOuvrir && !AX.peutOuvrir()) return; var s=id?AX.item('sessionsEval',id):null; if(s){ s=JSON.parse(JSON.stringify(s)); s.id=s.id||id; } dialogueSession(s); };
+AX.evalSupprimerSession=function(id){
+  if(!peutSupp()){ alert('Suppression non autorisée.'); return; }
+  var s=AX.item('sessionsEval',id); if(!s) return;
+  var n=evalsDeSession(id).length;
+  if(!confirm('Supprimer l\'évaluation '+(s.numero||'')+'?'+(n?' Les '+n+' notes saisies sont conservées dans « Résultats ».':''))) return;
+  AX.effacer('sessionsEval/'+cleFb(id)).then(function(){ AX.toast('Évaluation supprimée','ok'); rendre(); });
+};
+
+/* ---------- saisie des notes de toute la session ---------- */
+AX.evalNotesSession=function(id){
+  var s=AX.item('sessionsEval',id); if(!s) return;
+  var q=questionnaires(s.formation), evs=evalsDeSession(id), parCle={}; evs.forEach(function(e){ parCle[e.eleve.cle]=e; });
+  var cols=q.theorie.map(function(x){ return { g:'t', q:x.q, sur:x.sur }; }).concat(q.pratique.map(function(x){ return { g:'p', q:x.q, sur:x.sur }; }));
+  if(!cols.length){ alert('Aucun questionnaire défini : le Fondateur doit les définir dans « Critères ».'); return; }
+  var l=(s.eleves||[]).slice().sort(function(a,b){ return nomEleve(a).localeCompare(nomEleve(b)); });
+  function noteDe(ev, g, qn){ var lst=ev?(g==='t'?ev.theorie:ev.pratique):null; var x=(lst||[]).find(function(y){ return y.q===qn; }); return x&&x.note!=null?String(x.note).replace('.',','):''; }
+  var corps='<div class="ax-note" style="margin-bottom:8px">'+esc(s.numero)+' — '+esc(s.formation)+' · notes sur le barème de chaque questionnaire · les résultats se calculent seuls selon les critères du Fondateur.</div>'
+    +'<div class="ax-scroll"><table class="ax-table" id="axen_t"><thead><tr><th>Élève</th>'
+    +cols.map(function(c){ return '<th style="min-width:86px">'+(c.g==='t'?'📝 ':'🛠️ ')+esc(c.q)+'<div class="ax-note">/'+esc(c.sur)+'</div></th>'; }).join('')+'<th>Moyenne</th><th>Résultat</th></tr></thead><tbody>'
+    +l.map(function(e, i){ var ev=parCle[e.cle], ph=photoDe(e);
+      return '<tr data-i="'+i+'"><td><div style="display:flex;gap:6px;align-items:center">'+(ph?'<img src="'+ph+'" style="width:28px;height:34px;object-fit:cover;border-radius:5px">':'')+'<b>'+esc(nomEleve(e))+'</b></div></td>'
+        +cols.map(function(c, j){ return '<td><input class="ax-inp axen-n" inputmode="decimal" data-j="'+j+'" value="'+esc(noteDe(ev,c.g,c.q))+'" style="padding:5px 6px;width:76px"'+(ev&&ev.valide&&!peutModif()?' disabled':'')+'></td>'; }).join('')
+        +'<td class="axen-m" style="font-weight:800"></td><td class="axen-r"></td></tr>'; }).join('')+'</tbody></table></div>';
+  var M=AX.modale({ titre:'✍️ Notes — '+esc(s.titre||s.numero), taille:'xl', corps:corps,
+    boutons:[{txt:'Fermer',cls:'w'},{txt:'💾 Enregistrer les notes',cls:'p',action:function(api,bt){ sauver(api,bt); }}] });
+  var z=M.m;
+  function lireLigne(tr){
+    var o={ theorie:[], pratique:[] };
+    cols.forEach(function(c, j){ var v=nb(tr.querySelector('.axen-n[data-j="'+j+'"]').value); (c.g==='t'?o.theorie:o.pratique).push({ q:c.q, sur:c.sur, note:v==null?null:v }); });
+    return o;
+  }
+  function maj(tr){ var r=calcul(lireLigne(tr)); tr.querySelector('.axen-m').textContent=noteTxt(r.moyenne); tr.querySelector('.axen-r').innerHTML=badgeResultat(r); }
+  z.querySelectorAll('#axen_t tbody tr').forEach(function(tr){ maj(tr); tr.querySelectorAll('.axen-n').forEach(function(inp){ inp.addEventListener('input', function(){ maj(tr); }); }); });
+  function sauver(api, bt){
+    bt.disabled=true;
+    var ops=[], n=0;
+    z.querySelectorAll('#axen_t tbody tr').forEach(function(tr){
+      var e=l[+tr.getAttribute('data-i')], o=lireLigne(tr), ev=parCle[e.cle];
+      var saisi=o.theorie.concat(o.pratique).some(function(x){ return x.note!=null; });
+      if(!saisi && !ev) return;
+      if(ev && ev.valide && !peutModif()) return;
+      var rec=Object.assign({}, ev||{ id:cleFb(id+'_'+e.cle), sessionId:id, eleve:{ cle:e.cle, mat:e.mat, nom:e.nom, prenom:e.prenom, tel:e.tel||'', tuteur:e.tuteur||'' }, formation:s.formation, cree:Date.now(), creePar:nomCourant() },
+        { theorie:o.theorie, pratique:o.pratique, date:(ev&&ev.date)||e.date||isoJour(), majLe:Date.now(), majPar:nomCourant() });
+      var r=calcul(rec); rec.resultat=r.resultat; rec.moyenne=r.moyenne; if(rec.valide) rec.fige=r;
+      ops.push(AX.ecrire('evaluations/'+cleFb(rec.id), rec)); n++;
+    });
+    Promise.all(ops).then(function(){
+      AX.toast(n+' fiche(s) de notes enregistrée(s) ✓','ok');
+      try{ if(n) ajouterHistorique('Notes saisies — '+s.numero+' ('+n+' élève(s))'); }catch(x){}
+      api.fermer(); rendre();
+    }).catch(function(){ bt.disabled=false; });
+  }
+};
+
+/* ================================================================
+   VALIDATION DES RESULTATS : PASSAGE ET ATTESTATION PROPOSEE
+   ================================================================ */
+window._axEvalSansAuto = window._axEvalSansAuto || {};
+function passer(ev){
+  /* l'eleve admis passe au module suivant : le module evalue est marque « termine »
+     par la fonction habituelle de l'application (comme depuis « Formations en attente ») */
+  var ins=trouverIns(ev.eleve.cle, ev.eleve.mat);
+  if(!ins) return { fait:false, note:'élève introuvable dans les inscrits' };
+  var l=Array.isArray(ins.logicielsList)?ins.logicielsList:[], idx=-1;
+  l.forEach(function(x, i){ if(idx<0 && x && norm(x.nom)===norm(ev.formation)) idx=i; });
+  if(idx<0) return { fait:false, note:'module à marquer « terminé » dans Formations en attente' };
+  if((l[idx].statut||'')!=='termine' && typeof window.changerStatutLogiciel==='function'){
+    window._axEvalSansAuto[ins.mat]=Date.now()+8000;        /* l'attestation suit le circuit proposition / acceptation */
+    window.changerStatutLogiciel(ins.mat, idx, 'termine');
+  }
+  var suivant=l.find(function(x, i){ return i!==idx && x && (x.statut||'en_cours')==='en_cours'; });
+  return { fait:true, le:Date.now(), par:nomCourant(), suivant:suivant?suivant.nom:'' };
+}
+function valider(evs){
+  var a=0, r=0, ops=[], aProposer=[];
+  evs.forEach(function(ev){
+    var x=calcul(ev);
+    if(x.resultat==='incomplet' || ev.valide) return;
+    var rec=Object.assign({}, ev, { valide:true, valideLe:Date.now(), validePar:nomCourant(), fige:x, resultat:x.resultat, moyenne:x.moyenne });
+    if(x.resultat==='admis'){
+      a++;
+      rec.passage=passer(rec);
+      var ex=attestationExistante(rec);
+      rec.attestation = ex ? { etat:'acceptee', id:ex.id, numero:ex.numero||'', le:Date.now() } : { etat:'proposee', le:Date.now() };
+      if(!ex) aProposer.push(rec);
+    } else r++;
+    ops.push(AX.ecrire('evaluations/'+cleFb(rec.id), rec));
+  });
+  return Promise.all(ops).then(function(){
+    try{ ajouterHistorique('Résultats validés : '+a+' admis, '+r+' à reprendre'); }catch(e){}
+    return { admis:a, reprise:r, aProposer:aProposer };
+  });
+}
+AX.evalValiderSession=function(id){
+  if(!peutModif()){ alert('Validation réservée au Fondateur ou aux personnes autorisées.'); return; }
+  var s=AX.item('sessionsEval',id); if(!s) return;
+  var evs=evalsDeSession(id), cl=evs.map(function(e){ return calcul(e); });
+  var adm=cl.filter(function(x){ return x.resultat==='admis'; }).length, rep=cl.filter(function(x){ return x.resultat==='reprise'; }).length,
+      inc=(s.eleves||[]).length-adm-rep;
+  if(!adm && !rep){ alert('Aucune note complète à valider.'); return; }
+  if(!confirm('Valider les résultats de '+(s.numero||'')+' ?\n\n✅ '+adm+' admis : le module « '+s.formation+' » sera marqué terminé et une attestation leur sera proposée.\n🔁 '+rep+' à reprendre : ils restent sur le module.'+(inc?'\n⏳ '+inc+' élève(s) sans notes complètes : non concernés.':''))) return;
+  valider(evs).then(function(x){
+    var maj=Object.assign({}, s, { valideLe:Date.now(), validePar:nomCourant() }); delete maj.id;
+    return AX.ecrire('sessionsEval/'+cleFb(id), Object.assign(maj, { id:id })).then(function(){ return x; });
+  }).then(function(x){
+    AX.toast('Résultats validés : '+x.admis+' admis, '+x.reprise+' à reprendre ✓','ok');
+    if(x.aProposer.length){ vue='attestations'; }
+    rendre();
+  });
+};
+AX.evalValiderUn=function(id){
+  if(!peutModif()){ alert('Validation réservée au Fondateur ou aux personnes autorisées.'); return; }
+  var e=AX.item('evaluations',id); if(!e) return;
+  var x=calcul(e);
+  if(x.resultat!=='admis'){ alert('Cet élève n\'est pas admis.'); return; }
+  if(!confirm(nomEleve(e.eleve)+' est admis(e) ('+noteTxt(x.moyenne)+'/'+crit().sur+').\n\nValider le passage au module suivant ? Le module « '+e.formation+' » sera marqué terminé et l\'attestation lui sera proposée.')) return;
+  valider([Object.assign({ id:id }, e)]).then(function(r){ rendre(); if(r.aProposer.length) setTimeout(function(){ AX.evalAttestation(id); }, 400); });
+};
+
+/* ---------- attestation proposee : accepter (delivrer) ou rejeter (attendre) ---------- */
+function synchroAttestations(){
+  /* une attestation delivree par l'editeur des attestations est reconnue ici */
+  evaluations().forEach(function(e){
+    var a=e.attestation||{};
+    if(e.valide && (a.etat==='proposee'||a.etat==='rejetee')){
+      var ex=attestationExistante(e);
+      if(ex) AX.ecrireDiscret ? AX.ecrireDiscret('evaluations/'+cleFb(e.id), Object.assign({}, e, { attestation:{ etat:'acceptee', id:ex.id, numero:ex.numero||'', le:Date.now() } }))
+                              : AX.ecrire('evaluations/'+cleFb(e.id), Object.assign({}, e, { attestation:{ etat:'acceptee', id:ex.id, numero:ex.numero||'', le:Date.now() } }));
+    }
+  });
+}
+function attestationProposee(e){
+  var A=AX.cfg('attestations')||{}, ins=trouverIns(e.eleve.cle, e.eleve.mat), c=AX.infoCatalogue?AX.infoCatalogue(e.formation):null, r=res(e);
+  return { type:'attestation', ben:{ source:'eleve', cle:e.eleve.cle, mat:e.eleve.mat||'', nom:e.eleve.nom||'', prenom:e.eleve.prenom||'', tel:e.eleve.tel||'' },
+    mode:'programme', formations:[{ nom:e.formation, duree:(c&&c.duree)||'' }], periodeDebut:ins?dateDeFr(ins.date):'', periodeFin:e.date||isoJour(),
+    duree:(c&&c.duree)||'', mention:r.mention||'', motif:'', lieu:A.lieu||centre().ville||'', dateDelivrance:isoJour() };
+}
+AX.evalAttestation=function(id){
+  var e=AX.item('evaluations',id); if(!e) return;
+  e=Object.assign({ id:id }, e);
+  var ex=attestationExistante(e);
+  if(ex){ AX.toast('Attestation déjà délivrée : '+(ex.numero||''),'ok'); synchroAttestations(); rendre(); return; }
+  if(!AX.attActif || !AX.attActif('attestation')){
+    alert('Les attestations ne sont pas activées. Le Fondateur peut les activer dans Paramètres ; la proposition reste en attente.'); return;
+  }
+  var rec=attestationProposee(e), r=res(e), A=AX.cfg('attestations')||{};
+  var corps='<div class="ax-info" style="margin-bottom:8px"><b>'+esc(nomEleve(e.eleve))+'</b> — '+esc(e.formation)+' : moyenne <b>'+noteTxt(r.moyenne)+'/'+crit().sur+'</b>'+(r.mention?', mention <b>'+esc(r.mention)+'</b>':'')
+    +'. Conception proposée de son attestation :</div>'
+    +'<div id="axea_pz" style="width:100%;aspect-ratio:297/210;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;position:relative;background:#f8fafc"><iframe id="axea_if" style="border:0;width:297mm;height:210mm;transform-origin:0 0;position:absolute;left:0;top:0"></iframe></div>'
+    +'<div class="ax-note" style="margin-top:8px"><b>Accepter</b> : l\'attestation est délivrée (numérotée) et s\'imprime. <b>Modifier</b> : ouvre l\'éditeur des attestations avec cette proposition. <b>Rejeter</b> : la proposition reste en attente dans « Attestations à décider ».</div>';
+  var M=AX.modale({ titre:'📜 Attestation proposée', taille:'xl', corps:corps, boutons:[
+    {txt:'⏸ Rejeter (en attente)',cls:'w',action:function(api){
+      AX.ecrire('evaluations/'+cleFb(id), Object.assign({}, e, { attestation:{ etat:'rejetee', le:Date.now(), par:nomCourant() } })).then(function(){ AX.toast('Attestation mise en attente','ok'); api.fermer(); rendre(); }); }},
+    {txt:'✏️ Modifier la conception',cls:'b',action:function(api){ api.fermer(); AX.editerDocument('attestation', null, rec); }},
+    {txt:'✅ Accepter et délivrer',cls:'p',action:function(api,bt){
+      bt.disabled=true;
+      var cle=cleFb('eval_'+id).slice(0,180);
+      AX.numero(A.prefixeAtt||'ATT','ATT').then(function(num){
+        var doc=Object.assign({}, rec, { numero:num, creeLe:new Date().toISOString(), creePar:nomCourant() });
+        return AX.ecrire('attestations/'+cle, doc).then(function(){ return doc; });
+      }).then(function(doc){
+        return AX.ecrire('evaluations/'+cleFb(id), Object.assign({}, e, { attestation:{ etat:'acceptee', id:cle, numero:doc.numero, le:Date.now(), par:nomCourant() } })).then(function(){ return doc; });
+      }).then(function(doc){
+        AX.toast('Attestation '+doc.numero+' délivrée ✓','ok');
+        try{ ajouterHistorique('Attestation '+doc.numero+' — '+nomEleve(e.eleve)+' (évaluation)'); }catch(x){}
+        api.fermer(); rendre();
+        AX.imprimerDocuments([Object.assign({ id:cle }, doc)]);
+      }).catch(function(){ bt.disabled=false; });
+    }}] });
+  try{
+    var f=M.q('#axea_if'), z=M.q('#axea_pz');
+    f.srcdoc=AX.htmlDocuments([Object.assign({ id:'apercu', numero:'(numéro attribué à la délivrance)' }, rec)]);
+    setTimeout(function(){ f.style.transform='scale('+(z.clientWidth/(297*3.7795))+')'; }, 30);
+  }catch(x){ M.q('#axea_pz').innerHTML='<div class="ax-note" style="padding:20px">Aperçu indisponible — utilisez « Modifier la conception ».</div>'; }
+};
+
+/* ================================================================
+   WHATSAPP AUX TUTEURS
+   ================================================================ */
+function messageTuteur(ev, rang, total, s){
+  var C=centre(), r=res(ev), c=crit(), tu=nomTuteur(ev.eleve);
+  var t='Bonjour '+(tu||'Madame, Monsieur')+',\n'
+    +C.nom+' vous communique les résultats de '+nomEleve(ev.eleve)+(ev.eleve.mat?' ('+ev.eleve.mat+')':'')+' à l\'évaluation'+(s?' « '+(s.titre||s.numero)+' »':'')+' — '+ev.formation+' :\n'
+    +'• Théorie : '+noteTxt(r.moyT)+'/'+c.sur+'\n• Pratique : '+noteTxt(r.moyP)+'/'+c.sur+'\n• Moyenne : '+noteTxt(r.moyenne)+'/'+c.sur+(r.mention?' — mention '+r.mention:'')+'\n'
+    +(rang?'• Rang : '+rangTxt(rang)+(total?' sur '+total:'')+'\n':'')
+    +(r.resultat==='admis' ? 'Décision : ADMIS(E) — passe au module suivant. Félicitations !\n'
+      : r.resultat==='reprise' ? 'Décision : À REPRENDRE'+(r.motif?' ('+r.motif+')':'')+'. L\'élève reprendra le module pour consolider ses acquis.\n' : 'Résultat en cours de saisie.\n')
+    +'Cordialement,\n'+C.nom+(C.tel?' — '+C.tel:'');
+  return t;
+}
+function ouvrirWa(num, texte){ var u='https://wa.me/'+(num?num:'')+'?text='+encodeURIComponent(texte); window.open(u, '_blank'); }
+AX.evalWhatsappUn=function(id){
+  var e=AX.item('evaluations',id); if(!e) return;
+  var num=numeroWhatsapp(telTuteur(e.eleve));
+  if(!num){ alert('Aucun numéro de téléphone pour le tuteur de '+nomEleve(e.eleve)+'.'); return; }
+  var s=e.sessionId?AX.item('sessionsEval',e.sessionId):null, rang=null, tot=null;
+  if(s){ var cl=classement(evalsDeSession(e.sessionId)); var x=cl.find(function(y){ return y.e.id===e.id || y.e.eleve.cle===e.eleve.cle; }); rang=x?x.rang:null; tot=cl.filter(function(y){ return y.rang; }).length; }
+  ouvrirWa(num, messageTuteur(e, rang, tot, s));
+};
+AX.evalWhatsapp=function(id){
+  var s=AX.item('sessionsEval',id); if(!s) return;
+  var cl=classement(evalsDeSession(id)).filter(function(x){ return x.r.resultat!=='incomplet'; }), tot=cl.length, envoyes={};
+  if(!cl.length){ alert('Aucun résultat complet à envoyer.'); return; }
+  var C=centre(), c=crit();
+  var groupe='📋 Résultats de l\'évaluation « '+(s.titre||s.numero)+' » — '+s.formation+' ('+C.nom+')\n\n'
+    +cl.map(function(x){ return rangTxt(x.rang)+' — '+nomEleve(x.e.eleve)+' : '+noteTxt(x.r.moyenne)+'/'+c.sur+' — '+(x.r.resultat==='admis'?'ADMIS'+(x.r.mention?' ('+x.r.mention+')':''):'À REPRENDRE'); }).join('\n')
+    +'\n\nAdmis : '+cl.filter(function(x){ return x.r.resultat==='admis'; }).length+'/'+tot+'.\n'+C.nom+(C.tel?' — '+C.tel:'');
+  var corps='<div class="ax-note" style="margin-bottom:8px">Chaque tuteur reçoit son message personnel (notes, moyenne, rang, décision). WhatsApp s\'ouvre pour chaque envoi : appuyez sur « Envoyer » dans WhatsApp puis revenez ici.</div>'
+    +'<div class="ax-row" style="gap:8px;margin-bottom:10px;flex-wrap:wrap"><button class="ax-btn p" id="axew_suiv">▶ Envoyer au tuteur suivant</button>'
+    +'<button class="ax-btn b" id="axew_grp">👥 Message groupé (classement complet)</button><button class="ax-btn w" id="axew_cop">📋 Copier le message groupé</button></div>'
+    +'<div class="ax-scroll" style="max-height:360px"><table class="ax-table"><thead><tr><th>Rang</th><th>Élève</th><th>Tuteur</th><th>Téléphone</th><th></th></tr></thead><tbody>'
+    +cl.map(function(x, i){ var tel=telTuteur(x.e.eleve), num=numeroWhatsapp(tel);
+      return '<tr data-i="'+i+'"><td>'+rangTxt(x.rang)+'</td><td>'+esc(nomEleve(x.e.eleve))+'</td><td>'+esc(nomTuteur(x.e.eleve)||'—')+'</td><td>'+esc(tel||'—')+'</td>'
+        +'<td>'+(num?'<button class="ax-btn sm p axew-e" data-i="'+i+'">💬 Envoyer</button> <span class="axew-ok" data-i="'+i+'"></span>':'<span class="ax-note">pas de numéro</span>')+'</td></tr>'; }).join('')
+    +'</tbody></table></div>';
+  var M=AX.modale({ titre:'💬 Résultats aux tuteurs — '+esc(s.numero||''), taille:'lg', corps:corps, boutons:[{txt:'Fermer',cls:'w'}] });
+  function envoyer(i){
+    var x=cl[i], num=numeroWhatsapp(telTuteur(x.e.eleve)); if(!num) return;
+    ouvrirWa(num, messageTuteur(x.e, x.rang, tot, s)); envoyes[i]=1;
+    var o=M.q('.axew-ok[data-i="'+i+'"]'); if(o) o.innerHTML='<span class="ax-pill ok">ouvert ✓</span>';
+  }
+  M.qa('.axew-e').forEach(function(b){ b.onclick=function(){ envoyer(+b.getAttribute('data-i')); }; });
+  M.q('#axew_suiv').onclick=function(){
+    for(var i=0;i<cl.length;i++){ if(!envoyes[i] && numeroWhatsapp(telTuteur(cl[i].e.eleve))){ envoyer(i); return; } }
+    AX.toast('Tous les tuteurs ont été contactés ✓','ok');
+  };
+  M.q('#axew_grp').onclick=function(){ ouvrirWa('', groupe); };
+  M.q('#axew_cop').onclick=function(){ try{ navigator.clipboard.writeText(groupe).then(function(){ AX.toast('Message groupé copié ✓','ok'); }); }catch(e){ prompt('Copiez le message :', groupe); } };
+  M.textes={ groupe:groupe, un:function(i){ return messageTuteur(cl[i].e, cl[i].rang, tot, s); } };
+  AX._evalWa=M.textes;
+};
+
+/* ================================================================
+   IMPRESSIONS (fenetre d'impression : « Imprimer » ou « Enregistrer en PDF »)
+   ================================================================ */
+var CSS_IMP='@page{size:A4;margin:9mm 10mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;margin:0;font-size:9.5pt;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+  +'.ent{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #172554;padding-bottom:5px}.ent img{height:15mm;max-width:30mm;object-fit:contain}'
+  +'.ent .n{font-size:14pt;font-weight:800;color:#172554}.ent .s{font-size:8.5pt;color:#475569}'
+  +'h1{font-size:13pt;text-align:center;margin:6px 0 1px;color:#172554;letter-spacing:.04em}.st{text-align:center;font-size:9pt;color:#334155;margin-bottom:5px}'
+  +'.inf{display:flex;flex-wrap:wrap;gap:4px 14px;justify-content:center;font-size:8.5pt;color:#334155;margin-bottom:5px}.inf b{color:#0f172a}'
+  +'table{width:100%;border-collapse:collapse}th{background:#172554;color:#fff;font-size:8pt;padding:3px 4px;text-align:left}td{border-bottom:1px solid #e2e8f0;padding:1px 4px;vertical-align:middle;font-size:9pt}'
+  +'tr:nth-child(even) td{background:#f8fafc}.ph{display:block;object-fit:cover;border-radius:3px;border:1px solid #cbd5e1;background:#f1f5f9}'
+  +'.ok{color:#15803d;font-weight:800}.ko{color:#b91c1c;font-weight:800}.c{text-align:center}.b{font-weight:800}'
+  +'.cols{display:flex;gap:8px}.cols>div{flex:1;min-width:0}.tot{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin:6px 0}'
+  +'.tot div{border:1px solid #cbd5e1;border-radius:6px;padding:3px 10px;text-align:center;font-size:8pt;color:#475569}.tot b{display:block;font-size:12pt;color:#172554}'
+  +'.pied{margin-top:5px;font-size:7.5pt;color:#64748b;text-align:center;border-top:1px solid #e2e8f0;padding-top:3px}.sig{margin-top:8px}';
+function entete(C){ return '<div class="ent">'+(C.logo?'<img src="'+C.logo+'">':'')+'<div><div class="n">'+esc(C.nom)+'</div><div class="s">'+esc([C.adresse,C.tel].filter(Boolean).join(' · '))+'</div></div></div>'; }
+function signatures(){
+  var b=[]; try{ b=AX.blocsSignature('evaluations')||[]; }catch(e){}
+  return b.length ? '<div class="sig">'+AX.rangeeSignaturesHtml(b,{ h:'30mm', hz:'18mm', max:'55mm' })+'</div>' : '';
+}
+/* vignettes legeres pour l'impression (les photos d'inscription peuvent etre lourdes) */
+function vignettes(eleves){
+  var out={};
+  return Promise.all(eleves.map(function(e){
+    var p=photoDe(e); if(!p){ out[e.cle]=''; return null; }
+    return (AX.redim ? AX.redim(p, 150, 190, 'image/jpeg', 0.82) : Promise.resolve(p)).then(function(v){ out[e.cle]=v; }, function(){ out[e.cle]=p; });
+  })).then(function(){ return out; });
+}
+function img(src, h){ return src ? '<img class="ph" src="'+src+'" style="height:'+h+'mm;width:'+(h*0.8).toFixed(1)+'mm">' : '<div class="ph" style="height:'+h+'mm;width:'+(h*0.8).toFixed(1)+'mm"></div>'; }
+
+/* ---------- programme de l'evaluation : emploi du temps + liste des eleves avec photos, sur une page ---------- */
+function imprimerProgramme(s){
+  var l=(s.eleves||[]).slice().sort(function(a,b){ return String(a.date||'9').localeCompare(String(b.date||'9')) || String(a.heure||'').localeCompare(String(b.heure||'')) || nomEleve(a).localeCompare(nomEleve(b)); });
+  vignettes(l).then(function(V){
+    var C=centre(), n=l.length, cols=n>18?2:1, parCol=Math.ceil(n/cols)||1;
+    var dispo=cols===1?200:208, h=Math.max(6.5, Math.min(15, dispo/parCol-0.6));
+    function table(part, debut){
+      return '<table><thead><tr><th class="c">N°</th><th>Photo</th><th>Élève</th><th>Date</th><th>Heure</th></tr></thead><tbody>'
+        +part.map(function(e, i){ return '<tr style="height:'+(h+0.6).toFixed(1)+'mm"><td class="c b">'+(debut+i+1)+'</td><td>'+img(V[e.cle], h)+'</td>'
+          +'<td><b>'+esc(nomEleve(e))+'</b><br><span style="font-size:7.5pt;color:#64748b">'+esc(e.mat||'')+'</span></td>'
+          +'<td style="font-size:8.5pt">'+(e.date?esc(jourLong(e.date)):'<span class="ko">à fixer</span>')+'</td><td class="b" style="white-space:nowrap">'+esc(e.heure?e.heure+(e.fin?' – '+e.fin:''):'')+'</td></tr>'; }).join('')
+        +'</tbody></table>';
+    }
+    var parJour={}; l.forEach(function(e){ if(e.date) parJour[e.date]=(parJour[e.date]||0)+1; });
+    var corps=cols===1 ? table(l,0) : '<div class="cols"><div>'+table(l.slice(0,parCol),0)+'</div><div>'+table(l.slice(parCol),parCol)+'</div></div>';
+    var tc=s.theorieCommune||{};
+    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Programme '+esc(s.numero||'')+'</title><style>'+CSS_IMP+'</style></head><body>'
+      +entete(C)+'<h1>PROGRAMME DE L\'ÉVALUATION</h1><div class="st">'+esc(s.numero||'')+' — '+esc(s.titre||'')+'</div>'
+      +'<div class="inf"><span>Formation : <b>'+esc(s.formation)+'</b></span><span>Du <b>'+esc(frDe(s.dateDebut))+'</b> au <b>'+esc(frDe(s.dateFin))+'</b></span>'
+        +'<span>Horaires : <b>'+esc(s.heureDebut)+' – '+esc(s.heureFin)+'</b> (passages de '+esc(s.duree)+' min, '+esc(s.parCreneau)+' élève(s))</span>'+(s.lieu?'<span>Lieu : <b>'+esc(s.lieu)+'</b></span>':'')
+        +(tc.date?'<span>Épreuve théorique commune : <b>'+esc(jourLong(tc.date))+(tc.heure?' à '+esc(tc.heure):'')+'</b></span>':'')+'<span>Effectif : <b>'+n+'</b></span></div>'
+      +corps
+      +'<div class="inf" style="margin-top:5px">'+Object.keys(parJour).sort().map(function(d){ return '<span>'+esc(jourLong(d))+' : <b>'+parJour[d]+'</b></span>'; }).join('')+'</div>'
+      +signatures()+'<div class="pied">'+esc(C.nom)+' — programme établi le '+esc(frDe(isoJour()))+'. Chaque élève se présente 10 minutes avant son heure de passage.</div>'
+      +AX.SCRIPT_IMPRESSION+'</body></html>';
+    AX.ouvrirImpression(html);
+  });
+}
+AX.evalProgramme=function(id){ var s=AX.item('sessionsEval',id); if(s) imprimerProgramme(Object.assign({ id:id }, s)); };
+
+/* ---------- fiche de resultats selon le classement ---------- */
+function imprimerResultats(evs, meta){
+  var cl=classement(evs), c=crit();
+  vignettes(cl.map(function(x){ return x.e.eleve; })).then(function(V){
+    var C=centre(), n=cl.length, notes=cl.filter(function(x){ return x.r.moyenne!=null; }),
+        adm=cl.filter(function(x){ return x.r.resultat==='admis'; }).length, rep=cl.filter(function(x){ return x.r.resultat==='reprise'; }).length,
+        moyG=notes.length?notes.reduce(function(a,x){ return a+x.r.moyenne; },0)/notes.length:null;
+    var h=Math.max(7, Math.min(13, 190/(n||1)-0.8));
+    var med=['🥇','🥈','🥉'];
+    var html='<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Résultats '+esc(meta.numero||'')+'</title><style>'+CSS_IMP+'</style></head><body>'
+      +entete(C)+'<h1>FICHE DE RÉSULTATS — CLASSEMENT</h1><div class="st">'+esc([meta.numero, meta.titre].filter(Boolean).join(' — '))+'</div>'
+      +'<div class="inf">'+(meta.formation?'<span>Formation : <b>'+esc(meta.formation)+'</b></span>':'')+(meta.periode?'<span>'+meta.periode+'</span>':'')
+        +'<span>Critères : théorie <b>'+c.poidsT+' %</b> · pratique <b>'+c.poidsP+' %</b> · admis à partir de <b>'+noteTxt(c.seuil)+'/'+c.sur+'</b>'+(c.elimT?' · théorie éliminatoire < '+noteTxt(c.elimT):'')+(c.elimP?' · pratique éliminatoire < '+noteTxt(c.elimP):'')+'</span></div>'
+      +'<div class="tot"><div><b>'+n+'</b>évalués</div><div><b class="ok">'+adm+'</b>admis</div><div><b class="ko">'+rep+'</b>à reprendre</div>'
+        +'<div><b>'+(notes.length?Math.round(adm/Math.max(1,adm+rep)*100):0)+' %</b>de réussite</div><div><b>'+noteTxt(moyG)+'</b>moyenne générale</div></div>'
+      +'<table><thead><tr><th class="c">Rang</th><th>Photo</th><th>Élève</th><th class="c">Théorie</th><th class="c">Pratique</th><th class="c">Moyenne /'+c.sur+'</th><th>Mention</th><th>Décision</th></tr></thead><tbody>'
+      +cl.map(function(x){ var r=x.r;
+        return '<tr style="height:'+(h+0.8).toFixed(1)+'mm"><td class="c b" style="font-size:10.5pt">'+(x.rang&&x.rang<=3?med[x.rang-1]+' ':'')+rangTxt(x.rang)+'</td><td>'+img(V[x.e.eleve.cle], h)+'</td>'
+          +'<td><b>'+esc(nomEleve(x.e.eleve))+'</b><br><span style="font-size:7.5pt;color:#64748b">'+esc(x.e.eleve.mat||'')+(meta.formation?'':' · '+esc(x.e.formation))+'</span></td>'
+          +'<td class="c">'+noteTxt(r.moyT)+'</td><td class="c">'+noteTxt(r.moyP)+'</td><td class="c b" style="font-size:10.5pt">'+noteTxt(r.moyenne)+'</td><td>'+esc(r.mention||'')+'</td>'
+          +'<td>'+(r.resultat==='admis'?'<span class="ok">ADMIS</span><br><span style="font-size:7.5pt">passe au module suivant</span>'
+                 :r.resultat==='reprise'?'<span class="ko">À REPRENDRE</span>'+(r.motif?'<br><span style="font-size:7pt">'+esc(r.motif)+'</span>':'')
+                 :'<span style="color:#64748b">notes incomplètes</span>')+'</td></tr>'; }).join('')
+      +'</tbody></table>'
+      +signatures()+'<div class="pied">'+esc(C.nom)+' — fiche établie le '+esc(frDe(isoJour()))+'.</div>'
+      +AX.SCRIPT_IMPRESSION+'</body></html>';
+    AX.ouvrirImpression(html);
+  });
+}
+AX.evalResultats=function(id){
+  var s=AX.item('sessionsEval',id); if(!s) return;
+  var evs=evalsDeSession(id);
+  if(!evs.length){ alert('Aucune note saisie pour cette évaluation.'); return; }
+  imprimerResultats(evs, { numero:s.numero, titre:s.titre, formation:s.formation, periode:'Du <b>'+esc(frDe(s.dateDebut))+'</b> au <b>'+esc(frDe(s.dateFin))+'</b>' });
+};
+AX.evalImprimerListe=function(){
+  var l=evaluations().filter(function(e){
+    var r=res(e);
+    if(F.formation && e.formation!==F.formation) return false;
+    if(F.resultat && r.resultat!==F.resultat) return false;
+    if(F.q && norm(nomEleve(e.eleve)+' '+(e.eleve.mat||'')+' '+e.formation).indexOf(norm(F.q))<0) return false;
+    return true;
+  });
+  imprimerResultats(l, { titre:'Classement des évaluations', formation:F.formation||'' });
+};
+
+/* ---------------- demarrage ---------------- */
+var rendreBase=rendre;
+rendre=function(){ try{ synchroAttestations(); }catch(e){} return rendreBase(); };
+AX.rendreEvaluations=rendre;
+/* les attestations du circuit d'evaluation sont proposees puis acceptees : pas de creation automatique en double */
+setTimeout(function(){ try{ if(AX.sectionActive && AX.sectionActive('axEvaluations')) rendre(); }catch(e){} }, 500);
+console.log('[AGP-X5] onglet Évaluations actif');
 })();
 
 </script>
