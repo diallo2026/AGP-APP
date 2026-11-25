@@ -15526,7 +15526,8 @@ enregistrerServiceWorker();
      - sa signature : photo convertie automatiquement en signature
        thermique (ou signee directement sur l'ecran), placee la ou il
        doit signer sur le document imprime
-     - son temoin : nom, prenom, telephone
+     - photos : la personne, son appareil, et son temoin s'il y en a un
+     - son temoin (FACULTATIF) : nom, prenom, telephone, photo, signature
    STOCKAGE : comme les autres nouveaux modules, dans le noeud ajoute
    <emplacement des modules>/decodages/<id> (ext). Les noeuds « data »
    et « info » de la prestation ne sont jamais touches.
@@ -15613,11 +15614,12 @@ function rendre(){
     var c=d.client||{}, a=d.appareil||{}, t=d.temoin||{}, dbl=memeImei(a.imei, d.id).length;
     h+='<tr><td style="font-weight:800;white-space:nowrap">'+esc(d.numero||'—')+'</td>'
       +'<td style="white-space:nowrap">'+esc(frDe(d.date))+'</td>'
-      +'<td><b>'+esc(majPremiere(c.prenom)+' '+String(c.nom||'').toUpperCase())+'</b><br><span style="color:#64748b;font-size:12px">📞 '+esc(c.tel||'')+' · '+esc(c.quartier||'')+'</span></td>'
-      +'<td>'+esc([a.marque,a.modele].filter(Boolean).join(' '))+(a.imei?'<br><span style="color:#64748b;font-size:12px">IMEI/Série : '+esc(a.imei)+'</span>':'')
+      +'<td><div style="display:flex;gap:8px;align-items:center">'+(c.photo?'<img src="'+c.photo+'" style="width:34px;height:42px;object-fit:cover;border-radius:6px;flex-shrink:0">':'')
+      +'<div><b>'+esc(majPremiere(c.prenom)+' '+String(c.nom||'').toUpperCase())+'</b><br><span style="color:#64748b;font-size:12px">📞 '+esc(c.tel||'')+' · '+esc(c.quartier||'')+'</span></div></div></td>'
+      +'<td>'+(a.photo?'<img src="'+a.photo+'" style="width:38px;height:38px;object-fit:cover;border-radius:6px;float:left;margin-right:6px">':'')+esc([a.marque,a.modele].filter(Boolean).join(' '))+(a.imei?'<br><span style="color:#64748b;font-size:12px">IMEI/Série : '+esc(a.imei)+'</span>':'')
       +(dbl?'<br><span class="ax-pill ko" title="Cet IMEI figure déjà dans un autre engagement">⚠️ IMEI déjà vu ('+dbl+')</span>':'')+'</td>'
       +'<td>'+esc(d.cause||'')+'</td>'
-      +'<td>'+esc(majPremiere(t.prenom)+' '+String(t.nom||'').toUpperCase())+'<br><span style="color:#64748b;font-size:12px">📞 '+esc(t.tel||'')+'</span></td>'
+      +'<td>'+(aTemoin(t)?esc(majPremiere(t.prenom)+' '+String(t.nom||'').toUpperCase())+'<br><span style="color:#64748b;font-size:12px">📞 '+esc(t.tel||'')+'</span>':'<span style="color:#94a3b8">— aucun</span>')+'</td>'
       +'<td class="no-print" style="white-space:nowrap"><button class="ax-btn sm p" onclick="AX.decodageImprimer(\''+esc(d.id)+'\')">🖨️</button> '
       +(peutModif()?'<button class="ax-btn sm w" onclick="AX.decodageEditer(\''+esc(d.id)+'\')">✏️</button> ':'')
       +(peutSupp()?'<button class="ax-btn sm w" style="color:#b91c1c" onclick="AX.decodageSupprimer(\''+esc(d.id)+'\')">🗑️</button>':'')
@@ -15663,21 +15665,98 @@ function champ(id, lbl, v, o){
 }
 function bloc(titre, contenu){ return '<div class="ax-card" style="margin-bottom:12px"><div class="ax-sec">'+titre+'</div>'+contenu+'</div>'; }
 
+/* ---------- photos (personne, appareil, temoin) : reduites avant enregistrement ---------- */
+function photoHtml(id, lbl, src, o){
+  o=o||{};
+  return '<div class="ax-f"><label class="ax-lbl">'+lbl+(o.req?' <span style="color:#dc2626">*</span>':'')+'</label>'
+    +'<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">'
+    +'<div id="'+id+'_box" style="width:'+(o.w||96)+'px;height:'+(o.h||118)+'px;border-radius:12px;border:1px dashed #94a3b8;background:#f8fafc;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">'
+    +(src?'<img src="'+src+'" style="width:100%;height:100%;object-fit:cover">':'<span style="font-size:30px;opacity:.45">'+(o.icone||'📷')+'</span>')+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:6px"><div class="ax-row" style="gap:6px;flex-wrap:wrap">'
+    +'<button class="ax-btn p sm" type="button" id="'+id+'_btn">📷 Prendre / choisir une photo</button>'
+    +'<button class="ax-btn w sm" type="button" id="'+id+'_ret" style="color:#b91c1c">Retirer</button></div>'
+    +(o.note?'<div class="ax-note">'+o.note+'</div>':'')+'</div></div></div>';
+}
+function brancherPhoto(z, id, initiale, maxW, maxH, icone){
+  var src=initiale||'', box=z.querySelector('#'+id+'_box');
+  function peindre(msg){ box.innerHTML = msg ? '<span style="font-size:12px;color:#64748b;text-align:center;padding:6px">'+msg+'</span>'
+    : (src ? '<img src="'+src+'" style="width:100%;height:100%;object-fit:cover">' : '<span style="font-size:30px;opacity:.45">'+(icone||'📷')+'</span>'); }
+  z.querySelector('#'+id+'_ret').onclick=function(){ src=''; peindre(); };
+  z.querySelector('#'+id+'_btn').onclick=function(){
+    AX.choisirFichier('image/*').then(function(f){
+      if(!f) return;
+      peindre('⏳ Préparation…');
+      return AX.lireFichier(f).then(function(d){ return AX.redim(d, maxW, maxH, 'image/jpeg', 0.8); })
+        .then(function(d){ src=d; peindre(); });
+    }).catch(function(){ peindre(); AX.toast('Photo illisible : reprenez la photo.','err'); });
+  };
+  return function(){ return src; };
+}
+/* ---------- signature (personne ou temoin) : photo convertie en signature thermique, ou trace a l'ecran ---------- */
+var IDS_CLIENT={ photo:'dc_sig_photo', dessin:'dc_sig_dessin', eff:'dc_sig_eff', img:'dc_sig_img', vide:'dc_sig_vide', zone:'dc_pad_zone', pad:'dc_pad', padEff:'dc_pad_eff', padOk:'dc_pad_ok' };
+var IDS_TEMOIN={ photo:'dc_tsig_photo', dessin:'dc_tsig_dessin', eff:'dc_tsig_eff', img:'dc_tsig_img', vide:'dc_tsig_vide', zone:'dc_tpad_zone', pad:'dc_tpad', padEff:'dc_tpad_eff', padOk:'dc_tpad_ok' };
+function sigHtml(I, sig){
+  return '<div class="ax-row" style="gap:8px;flex-wrap:wrap"><button class="ax-btn p" type="button" id="'+I.photo+'">📷 Photo de la signature</button>'
+    +'<button class="ax-btn w" type="button" id="'+I.dessin+'">✍️ Signer sur l\'écran</button>'
+    +'<button class="ax-btn w" type="button" id="'+I.eff+'" style="color:#b91c1c">Retirer</button></div>'
+    +'<div class="ax-imgbox ax-damier" style="height:130px;margin-top:10px;display:flex;align-items:center;justify-content:center"><img id="'+I.img+'" style="max-height:120px;max-width:95%'+(sig?'':';display:none')+'"'+(sig?' src="'+sig+'"':'')+'><span id="'+I.vide+'" style="color:#94a3b8;font-size:13px'+(sig?';display:none':'')+'">Aucune signature</span></div>'
+    +'<div id="'+I.zone+'" style="display:none;margin-top:10px"><canvas class="ax-pad" id="'+I.pad+'" style="width:100%;height:170px;touch-action:none;background:#fff;border:1px dashed #94a3b8;border-radius:12px"></canvas>'
+    +'<div class="ax-row" style="margin-top:6px;gap:8px"><button class="ax-btn w sm" type="button" id="'+I.padEff+'">Effacer</button><button class="ax-btn p sm" type="button" id="'+I.padOk+'">✅ Utiliser cette signature</button></div></div>';
+}
+function brancherSignature(z, I, initiale){
+  var sig=initiale||'';
+  function poserSig(s){
+    sig=s||''; var im=z.querySelector('#'+I.img), v=z.querySelector('#'+I.vide);
+    if(sig){ im.src=sig; im.style.display=''; v.style.display='none'; } else { im.removeAttribute('src'); im.style.display='none'; v.style.display=''; }
+  }
+  z.querySelector('#'+I.eff).onclick=function(){ poserSig(''); };
+  z.querySelector('#'+I.photo).onclick=function(){
+    /* l'etat de la conversion s'affiche dans le cadre (pas de message flottant :
+       sur telephone il cacherait le bouton Enregistrer) */
+    var vide=z.querySelector('#'+I.vide);
+    AX.choisirFichier('image/*').then(function(f){
+      if(!f) return;
+      poserSig(''); vide.textContent='⏳ Conversion en signature thermique…';
+      return AX.lireFichier(f).then(function(src){ return AX.signatureThermique(src,{ couleur:'#0b1f6b', seuil:'auto', epaisseur:1 }); })
+        .then(function(png){ vide.textContent='Aucune signature'; poserSig(png); });
+    }).catch(function(){ vide.textContent='Aucune signature'; AX.toast('Image de signature illisible : reprenez la photo sur une feuille blanche.','err'); });
+  };
+  var cv=z.querySelector('#'+I.pad), ctx=null, traits=0, dessin=false, last=null;
+  function dim(){ var r=cv.getBoundingClientRect(), k=window.devicePixelRatio||1; cv.width=Math.max(300,Math.round(r.width*k)); cv.height=Math.max(120,Math.round(r.height*k)); ctx=cv.getContext('2d'); ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0b1f6b'; ctx.lineWidth=3.2*(cv.width/600); traits=0; }
+  function pos(e){ var r=cv.getBoundingClientRect(); return { x:(e.clientX-r.left)*cv.width/r.width, y:(e.clientY-r.top)*cv.height/r.height }; }
+  z.querySelector('#'+I.dessin).onclick=function(){ z.querySelector('#'+I.zone).style.display='block'; setTimeout(dim,30); };
+  cv.addEventListener('pointerdown',function(e){ if(!ctx) dim(); dessin=true; last=pos(e); try{ cv.setPointerCapture(e.pointerId); }catch(x){} e.preventDefault(); });
+  cv.addEventListener('pointermove',function(e){ if(!dessin) return; var p2=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p2.x,p2.y); ctx.stroke(); last=p2; traits++; e.preventDefault(); });
+  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ cv.addEventListener(ev,function(){ dessin=false; }); });
+  z.querySelector('#'+I.padEff).onclick=function(){ if(ctx) ctx.clearRect(0,0,cv.width,cv.height); traits=0; };
+  z.querySelector('#'+I.padOk).onclick=function(){
+    if(!traits){ alert('Signez dans le cadre.'); return; }
+    /* meme traitement que la photo : trait net, fond transparent */
+    var fond=document.createElement('canvas'); fond.width=cv.width; fond.height=cv.height;
+    var fx=fond.getContext('2d'); fx.fillStyle='#fff'; fx.fillRect(0,0,fond.width,fond.height); fx.drawImage(cv,0,0);
+    AX.signatureThermique(fond.toDataURL('image/png'),{ couleur:'#0b1f6b', seuil:200 }).then(function(png){
+      poserSig(png); z.querySelector('#'+I.zone).style.display='none';
+    });
+  };
+  return function(){ return sig; };
+}
+
 function formulaire(d){
   if(AX.peutOuvrir && !AX.peutOuvrir()) return;
   var nouveau=!d;
   d=d?JSON.parse(JSON.stringify(d)):{ client:{}, appareil:{}, obtention:{}, temoin:{} };
   var c=d.client||{}, a=d.appareil||{}, ob=d.obtention||{}, t=d.temoin||{};
-  var sig=d.signature||'';
   var corps=''
     +bloc('👤 Personne venue pour le décodage',
       '<div class="ax-grid2">'+champ('dc_nom','Nom',c.nom,{req:1})+champ('dc_prenom','Prénom',c.prenom,{req:1})+'</div>'
       +'<div class="ax-grid2">'+champ('dc_tel','Téléphone',c.tel,{req:1,type:'tel',ph:'Ex : 622 00 00 00'})+champ('dc_prof','Profession',c.profession,{req:1})+'</div>'
-      +'<div class="ax-grid2">'+champ('dc_adr','Adresse',c.adresse,{req:1})+champ('dc_quartier','Quartier',c.quartier,{req:1})+'</div>')
+      +'<div class="ax-grid2">'+champ('dc_adr','Adresse',c.adresse,{req:1})+champ('dc_quartier','Quartier',c.quartier,{req:1})+'</div>'
+      +photoHtml('dc_ph_client','Photo de la personne',c.photo,{req:1,icone:'👤',note:'Photo du visage, prise au moment de l\'engagement.'}))
     +bloc('📱 Appareil à décoder',
       '<div class="ax-grid3">'+champ('dc_type','Type',a.type,{sel:TYPES})+champ('dc_marque','Marque',a.marque,{req:1,ph:'Ex : Samsung, iPhone, Tecno'})+champ('dc_modele','Modèle',a.modele)+'</div>'
       +'<div class="ax-grid2">'+champ('dc_imei','IMEI / N° de série',a.imei,{ph:'Composez *#06# pour l\'IMEI'})+champ('dc_verrou','Verrou à retirer',a.verrou,{sel:VERROUS})+'</div>'
-      +'<div id="dc_imei_av" style="display:none" class="ax-warn"></div>')
+      +'<div id="dc_imei_av" style="display:none" class="ax-warn"></div>'
+      +photoHtml('dc_ph_app','Photo de l\'appareil',a.photo,{req:1,w:118,h:118,icone:'📱',note:'Face avant de l\'appareil (et si possible l\'étiquette IMEI).'}))
     +bloc('❓ Cause du décodage',
       champ('dc_cause','Raison pour laquelle le code doit être cassé',d.cause,{req:1,sel:CAUSES})
       +champ('dc_cause_det','Explication de la personne',d.causeDetail,{area:1,rows:2,ph:'Ce qui s\'est passé, depuis quand…'}))
@@ -15689,21 +15768,20 @@ function formulaire(d){
       '<div id="dc_decl_txt" style="white-space:pre-line;background:#fff7ed;border:1px solid #fed7aa;border-radius:12px;padding:12px;font-size:13.5px;line-height:1.6;color:#7c2d12"></div>'
       +'<label class="ax-chk" style="margin-top:10px;font-weight:800;color:#7c2d12;display:flex;gap:8px;align-items:flex-start">'
       +'<input type="checkbox" id="dc_decl"'+(d.declarationAcceptee?' checked':'')+' style="margin-top:3px"> Je certifie sur l\'honneur que cet appareil n\'a été ni volé ni braqué, et que les informations ci-dessus sont exactes. <span style="color:#dc2626">*</span></label>')
-    +bloc('👥 Témoin',
-      '<div class="ax-grid3">'+champ('dc_tnom','Nom du témoin',t.nom,{req:1})+champ('dc_tprenom','Prénom du témoin',t.prenom,{req:1})+champ('dc_ttel','Téléphone du témoin',t.tel,{req:1,type:'tel'})+'</div>'
-      +'<div class="ax-note">Le témoin signe à la main sur le document imprimé.</div>')
     +bloc('✍️ Signature de la personne',
       '<div class="ax-note" style="margin-bottom:8px">Photographiez la signature faite sur une feuille blanche : elle est convertie automatiquement en <b>signature thermique</b> (fond retiré, trait net) et placée à l\'endroit où la personne doit signer. Elle peut aussi signer directement sur l\'écran.</div>'
-      +'<div class="ax-row" style="gap:8px;flex-wrap:wrap"><button class="ax-btn p" type="button" id="dc_sig_photo">📷 Photo de la signature</button>'
-      +'<button class="ax-btn w" type="button" id="dc_sig_dessin">✍️ Signer sur l\'écran</button>'
-      +'<button class="ax-btn w" type="button" id="dc_sig_eff" style="color:#b91c1c">Retirer</button></div>'
-      +'<div class="ax-imgbox ax-damier" style="height:130px;margin-top:10px;display:flex;align-items:center;justify-content:center"><img id="dc_sig_img" style="max-height:120px;max-width:95%'+(sig?'':';display:none')+'"'+(sig?' src="'+sig+'"':'')+'><span id="dc_sig_vide" style="color:#94a3b8;font-size:13px'+(sig?';display:none':'')+'">Aucune signature</span></div>'
-      +'<div id="dc_pad_zone" style="display:none;margin-top:10px"><canvas class="ax-pad" id="dc_pad" style="width:100%;height:170px;touch-action:none;background:#fff;border:1px dashed #94a3b8;border-radius:12px"></canvas>'
-      +'<div class="ax-row" style="margin-top:6px;gap:8px"><button class="ax-btn w sm" type="button" id="dc_pad_eff">Effacer</button><button class="ax-btn p sm" type="button" id="dc_pad_ok">✅ Utiliser cette signature</button></div></div>');
+      +sigHtml(IDS_CLIENT, d.signature||''))
+    +bloc('👥 Témoin <span style="font-weight:600;color:#64748b;font-size:12px">(facultatif)</span>',
+      '<div class="ax-note" style="margin-bottom:8px">Laissez vide s\'il n\'y a pas de témoin. S\'il y en a un, son nom, son prénom et son téléphone sont demandés ; sa photo et sa signature sont conseillées.</div>'
+      +'<div class="ax-grid3">'+champ('dc_tnom','Nom du témoin',t.nom)+champ('dc_tprenom','Prénom du témoin',t.prenom)+champ('dc_ttel','Téléphone du témoin',t.tel,{type:'tel'})+'</div>'
+      +photoHtml('dc_ph_tem','Photo du témoin',t.photo,{icone:'👤'})
+      +'<div class="ax-lbl" style="margin-top:10px">Signature du témoin</div>'
+      +sigHtml(IDS_TEMOIN, t.signature||'')
+      +'<div class="ax-note" style="margin-top:6px">Sans signature enregistrée ici, le témoin signe à la main sur le document imprimé.</div>');
 
   var M=AX.modale({ titre:(nouveau?'➕ Nouvel engagement de décodage':'✏️ Engagement '+esc(d.numero||'')), taille:'lg', corps:corps,
-    boutons:[{txt:'Annuler',cls:'w'},{txt:'💾 Enregistrer',cls:'p',action:function(api,bt){ enregistrer(api,bt,d,nouveau,sig); }},
-             {txt:'💾 Enregistrer et imprimer',cls:'p',action:function(api,bt){ enregistrer(api,bt,d,nouveau,sig,true); }}] });
+    boutons:[{txt:'Annuler',cls:'w'},{txt:'💾 Enregistrer',cls:'p',action:function(api,bt){ enregistrer(api,bt,d,nouveau); }},
+             {txt:'💾 Enregistrer et imprimer',cls:'p',action:function(api,bt){ enregistrer(api,bt,d,nouveau,true); }}] });
   var z=M.m;
   function majDecl(){
     var x={ client:{ nom:val(z,'dc_nom'), prenom:val(z,'dc_prenom') }, declaration:d.declaration };
@@ -15721,76 +15799,58 @@ function formulaire(d){
       +'. Vérifiez la provenance de l\'appareil.';
   }
   z.querySelector('#dc_imei').addEventListener('input',majImei); majImei();
-  function poserSig(s){
-    sig=s||''; var im=z.querySelector('#dc_sig_img'), v=z.querySelector('#dc_sig_vide');
-    if(sig){ im.src=sig; im.style.display=''; v.style.display='none'; } else { im.removeAttribute('src'); im.style.display='none'; v.style.display=''; }
-  }
-  z.querySelector('#dc_sig_eff').onclick=function(){ poserSig(''); };
-  z.querySelector('#dc_sig_photo').onclick=function(){
-    /* l'etat de la conversion s'affiche dans le cadre de la signature (pas de
-       message flottant : sur telephone il cacherait le bouton Enregistrer) */
-    var vide=z.querySelector('#dc_sig_vide');
-    AX.choisirFichier('image/*').then(function(f){
-      if(!f) return;
-      poserSig(''); vide.textContent='⏳ Conversion en signature thermique…';
-      return AX.lireFichier(f).then(function(src){ return AX.signatureThermique(src,{ couleur:'#0b1f6b', seuil:'auto', epaisseur:1 }); })
-        .then(function(png){ vide.textContent='Aucune signature'; poserSig(png); });
-    }).catch(function(){ vide.textContent='Aucune signature'; AX.toast('Image de signature illisible : reprenez la photo sur une feuille blanche.','err'); });
+  M.lire={
+    sig: brancherSignature(z, IDS_CLIENT, d.signature),
+    tsig: brancherSignature(z, IDS_TEMOIN, t.signature),
+    phClient: brancherPhoto(z, 'dc_ph_client', c.photo, 600, 750, '👤'),
+    phApp: brancherPhoto(z, 'dc_ph_app', a.photo, 900, 900, '📱'),
+    phTem: brancherPhoto(z, 'dc_ph_tem', t.photo, 600, 750, '👤')
   };
-  /* tablette de signature sur l'ecran */
-  var cv=z.querySelector('#dc_pad'), ctx=null, traits=0, dessin=false, last=null;
-  function dim(){ var r=cv.getBoundingClientRect(), k=window.devicePixelRatio||1; cv.width=Math.max(300,Math.round(r.width*k)); cv.height=Math.max(120,Math.round(r.height*k)); ctx=cv.getContext('2d'); ctx.lineCap='round'; ctx.lineJoin='round'; ctx.strokeStyle='#0b1f6b'; ctx.lineWidth=3.2*(cv.width/600); traits=0; }
-  function pos(e){ var r=cv.getBoundingClientRect(); return { x:(e.clientX-r.left)*cv.width/r.width, y:(e.clientY-r.top)*cv.height/r.height }; }
-  z.querySelector('#dc_sig_dessin').onclick=function(){ z.querySelector('#dc_pad_zone').style.display='block'; setTimeout(dim,30); };
-  cv.addEventListener('pointerdown',function(e){ if(!ctx) dim(); dessin=true; last=pos(e); try{ cv.setPointerCapture(e.pointerId); }catch(x){} e.preventDefault(); });
-  cv.addEventListener('pointermove',function(e){ if(!dessin) return; var p2=pos(e); ctx.beginPath(); ctx.moveTo(last.x,last.y); ctx.lineTo(p2.x,p2.y); ctx.stroke(); last=p2; traits++; e.preventDefault(); });
-  ['pointerup','pointercancel','pointerleave'].forEach(function(ev){ cv.addEventListener(ev,function(){ dessin=false; }); });
-  z.querySelector('#dc_pad_eff').onclick=function(){ if(ctx) ctx.clearRect(0,0,cv.width,cv.height); traits=0; };
-  z.querySelector('#dc_pad_ok').onclick=function(){
-    if(!traits){ alert('Signez dans le cadre.'); return; }
-    /* meme traitement que la photo : trait net, fond transparent */
-    var fond=document.createElement('canvas'); fond.width=cv.width; fond.height=cv.height;
-    var fx=fond.getContext('2d'); fx.fillStyle='#fff'; fx.fillRect(0,0,fond.width,fond.height); fx.drawImage(cv,0,0);
-    AX.signatureThermique(fond.toDataURL('image/png'),{ couleur:'#0b1f6b', seuil:200 }).then(function(png){
-      poserSig(png); z.querySelector('#dc_pad_zone').style.display='none';
-    });
-  };
-  M.lireSig=function(){ return sig; };
+  M.lireSig=M.lire.sig;
   M.d=d;
 }
-function lireFormulaire(z){
-  return {
-    client:{ nom:val(z,'dc_nom'), prenom:val(z,'dc_prenom'), tel:val(z,'dc_tel'), profession:val(z,'dc_prof'), adresse:val(z,'dc_adr'), quartier:val(z,'dc_quartier') },
-    appareil:{ type:val(z,'dc_type'), marque:val(z,'dc_marque'), modele:val(z,'dc_modele'), imei:val(z,'dc_imei'), verrou:val(z,'dc_verrou') },
+function lireFormulaire(z, L){
+  var f={
+    client:{ nom:val(z,'dc_nom'), prenom:val(z,'dc_prenom'), tel:val(z,'dc_tel'), profession:val(z,'dc_prof'), adresse:val(z,'dc_adr'), quartier:val(z,'dc_quartier'), photo:L.phClient() },
+    appareil:{ type:val(z,'dc_type'), marque:val(z,'dc_marque'), modele:val(z,'dc_modele'), imei:val(z,'dc_imei'), verrou:val(z,'dc_verrou'), photo:L.phApp() },
     cause:val(z,'dc_cause'), causeDetail:val(z,'dc_cause_det'),
     obtention:{ mode:val(z,'dc_mode'), date:val(z,'dc_odate'), lieu:val(z,'dc_olieu'), contact:val(z,'dc_ocontact'), preuve:val(z,'dc_preuve'), details:val(z,'dc_odet') },
-    temoin:{ nom:val(z,'dc_tnom'), prenom:val(z,'dc_tprenom'), tel:val(z,'dc_ttel') },
+    temoin:{ nom:val(z,'dc_tnom'), prenom:val(z,'dc_tprenom'), tel:val(z,'dc_ttel'), photo:L.phTem(), signature:L.tsig() },
+    signature:L.sig(),
     declarationAcceptee:!!(z.querySelector('#dc_decl')||{}).checked
   };
+  return f;
 }
-function manquants(f, sig){
+function aTemoin(t){ t=t||{}; return !!(t.nom||t.prenom||t.tel||t.photo||t.signature); }
+function manquants(f){
   var m=[];
   if(!f.client.nom) m.push('nom'); if(!f.client.prenom) m.push('prénom');
   if(chiffres(f.client.tel).length<8) m.push('téléphone de la personne');
   if(!f.client.adresse) m.push('adresse'); if(!f.client.quartier) m.push('quartier'); if(!f.client.profession) m.push('profession');
+  if(!f.client.photo) m.push('photo de la personne');
   if(!f.appareil.marque) m.push('marque de l\'appareil');
+  if(!f.appareil.photo) m.push('photo de l\'appareil');
   if(!f.cause) m.push('cause du décodage');
   if(!f.obtention.mode) m.push('conditions d\'obtention');
   if(!f.declarationAcceptee) m.push('déclaration sur l\'honneur (case à cocher)');
-  if(!f.temoin.nom) m.push('nom du témoin'); if(!f.temoin.prenom) m.push('prénom du témoin');
-  if(chiffres(f.temoin.tel).length<8) m.push('téléphone du témoin');
-  if(!sig) m.push('signature de la personne');
+  if(!f.signature) m.push('signature de la personne');
+  /* temoin facultatif : s'il est indique, son identite et son telephone sont demandes */
+  if(aTemoin(f.temoin)){
+    if(!f.temoin.nom) m.push('nom du témoin'); if(!f.temoin.prenom) m.push('prénom du témoin');
+    if(chiffres(f.temoin.tel).length<8) m.push('téléphone du témoin');
+  }
   return m;
 }
-function enregistrer(api, bt, d, nouveau, sigInitiale, imprimerApres){
-  var z=api.m, f=lireFormulaire(z), sig=(api.lireSig?api.lireSig():sigInitiale);
-  var m=manquants(f, sig);
+function enregistrer(api, bt, d, nouveau, imprimerApres){
+  var z=api.m, f=lireFormulaire(z, api.lire);
+  var m=manquants(f);
   if(m.length){ alert('À compléter : '+m.join(', ')+'.'); return; }
   bt.disabled=true;
   var maintenant=Date.now(), id=d.id||nouvelId();
   var rec={ id:id, numero:d.numero||'', date:d.date||isoJour(), cree:d.cree||maintenant,
-    client:f.client, appareil:f.appareil, cause:f.cause, causeDetail:f.causeDetail, obtention:f.obtention, temoin:f.temoin,
-    declaration:d.declaration||reglages().declaration, declarationAcceptee:true, signature:sig,
+    client:f.client, appareil:f.appareil, cause:f.cause, causeDetail:f.causeDetail, obtention:f.obtention,
+    temoin:aTemoin(f.temoin)?f.temoin:null,
+    declaration:d.declaration||reglages().declaration, declarationAcceptee:true, signature:f.signature,
     recuPar:d.recuPar||nomCourant()||'', modifieLe:nouveau?null:maintenant, modifiePar:nouveau?null:(nomCourant()||'') };
   var numero = rec.numero ? Promise.resolve(rec.numero) : AX.numero(reglages().prefixe,'decodage');
   numero.then(function(n){
@@ -15835,43 +15895,51 @@ AX.decodageReglages=function(){
 /* ---------------- impression A4 ---------------- */
 function ligneInfo(l, v){ return '<tr><td class="l">'+l+'</td><td>'+(v?esc(v):'<span class="vide">—</span>')+'</td></tr>'; }
 function imprimer(d){
-  var c=d.client||{}, a=d.appareil||{}, ob=d.obtention||{}, t=d.temoin||{}, C=centre(), r=reglages();
+  var c=d.client||{}, a=d.appareil||{}, ob=d.obtention||{}, t=d.temoin||{}, C=centre(), r=reglages(), tem=aTemoin(t);
   var blocs=[]; try{ blocs=AX.blocsSignature('decodages')||[]; }catch(e){}
   var prest = blocs.length ? AX.rangeeSignaturesHtml(blocs.slice(0,1),{ h:'34mm', hz:'22mm', max:'60mm' })
     : '<div class="sigbox"><div class="t">Pour la prestation</div><div class="zone"></div><div class="n">'+esc(d.recuPar||'')+'</div></div>';
+  function ph(src, cls, alt){ return '<div class="ph '+cls+'">'+(src?'<img src="'+src+'" alt="'+alt+'">':'<span>'+alt+'</span>')+'</div>'; }
   var html='<!DOCTYPE html><html lang="fr"><head><meta charset="utf-8"><title>Engagement '+esc(d.numero)+'</title>'
-    +'<style>@page{size:A4;margin:12mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:10.5pt;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
-    +'.ent{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #172554;padding-bottom:6px}.ent img{height:16mm;max-width:30mm;object-fit:contain}'
-    +'.ent .n{font-size:15pt;font-weight:800;color:#172554}.ent .s{font-size:9pt;color:#475569}'
-    +'h1{font-size:13.5pt;text-align:center;margin:8px 0 2px;letter-spacing:.04em;color:#172554}.ref{text-align:center;font-size:9.5pt;color:#334155;margin-bottom:6px}'
-    +'.bx{border:1px solid #cbd5e1;border-radius:6px;padding:5px 8px;margin-top:6px;page-break-inside:avoid}.bx h2{font-size:10pt;margin:0 0 3px;color:#172554;text-transform:uppercase;letter-spacing:.05em}'
-    +'table{width:100%;border-collapse:collapse}td{padding:1.5px 4px;vertical-align:top;font-size:10pt}td.l{width:40%;color:#475569}.vide{color:#cbd5e1}'
-    +'.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}.decl{white-space:pre-line;line-height:1.45;font-size:10pt;background:#fff7ed;border:1.5px solid #fdba74;border-radius:6px;padding:7px 9px;margin-top:6px}'
-    +'.chk{font-weight:800;margin-top:5px}.sigs{display:flex;justify-content:space-between;gap:10px;margin-top:10px;page-break-inside:avoid}'
-    +'.sigbox{flex:1;text-align:center;min-height:36mm}.sigbox .t{font-weight:800;font-size:10pt}.sigbox .zone{height:22mm;display:flex;align-items:center;justify-content:center}'
-    +'.sigbox .zone img{max-height:21mm;max-width:95%}.sigbox .n{border-top:1px solid #334155;padding-top:1mm;font-weight:700;font-size:9.5pt}.sigbox .p{font-size:8.5pt;color:#475569}'
-    +'.lu{font-size:8.5pt;font-style:italic;color:#475569}.pied{margin-top:8px;font-size:8pt;color:#64748b;text-align:center;border-top:1px solid #e2e8f0;padding-top:4px}</style></head><body>'
+    +'<style>@page{size:A4;margin:10mm 12mm}*{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#0f172a;font-size:10pt;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact}'
+    +'.ent{display:flex;align-items:center;gap:12px;border-bottom:2.5px solid #172554;padding-bottom:5px}.ent img{height:15mm;max-width:30mm;object-fit:contain}'
+    +'.ent .n{font-size:14.5pt;font-weight:800;color:#172554}.ent .s{font-size:9pt;color:#475569}'
+    +'h1{font-size:13pt;text-align:center;margin:6px 0 2px;letter-spacing:.04em;color:#172554}.ref{text-align:center;font-size:9.5pt;color:#334155;margin-bottom:4px}'
+    +'.bx{border:1px solid #cbd5e1;border-radius:6px;padding:4px 8px;margin-top:5px;page-break-inside:avoid}.bx h2{font-size:9.5pt;margin:0 0 2px;color:#172554;text-transform:uppercase;letter-spacing:.05em}'
+    +'.av{display:flex;gap:8px;align-items:flex-start}.av>.in{flex:1;min-width:0}'
+    +'.ph{flex-shrink:0;border:1px solid #94a3b8;border-radius:4px;overflow:hidden;display:flex;align-items:center;justify-content:center;background:#f8fafc}'
+    +'.ph img{width:100%;height:100%;object-fit:cover}.ph span{font-size:7pt;color:#94a3b8;text-align:center;padding:2px}'
+    +'.ph.id{width:24mm;height:30mm}.ph.app{width:26mm;height:26mm}.ph.tem{width:18mm;height:22mm}'
+    +'table{width:100%;border-collapse:collapse}td{padding:1.2px 4px;vertical-align:top;font-size:9.5pt}td.l{width:40%;color:#475569}.vide{color:#cbd5e1}'
+    +'.g2{display:grid;grid-template-columns:1fr 1fr;gap:0 10px}.decl{white-space:pre-line;line-height:1.4;font-size:9.5pt;background:#fff7ed;border:1.5px solid #fdba74;border-radius:6px;padding:6px 9px;margin-top:5px}'
+    +'.chk{font-weight:800;margin-top:4px}.sigs{display:flex;justify-content:space-between;gap:10px;margin-top:8px;page-break-inside:avoid}'
+    +'.sigbox{flex:1;text-align:center;min-height:34mm}.sigbox .t{font-weight:800;font-size:10pt}.sigbox .zone{height:21mm;display:flex;align-items:center;justify-content:center}'
+    +'.sigbox .zone img{max-height:20mm;max-width:95%}.sigbox .n{border-top:1px solid #334155;padding-top:1mm;font-weight:700;font-size:9.5pt}.sigbox .p{font-size:8.5pt;color:#475569}'
+    +'.lu{font-size:8.5pt;font-style:italic;color:#475569}.pied{margin-top:6px;font-size:8pt;color:#64748b;text-align:center;border-top:1px solid #e2e8f0;padding-top:3px}</style></head><body>'
     +'<div class="ent">'+(C.logo?'<img src="'+C.logo+'">':'')+'<div><div class="n">'+esc(C.nom)+'</div><div class="s">'+esc([C.adresse,C.tel].filter(Boolean).join(' · '))+'</div></div></div>'
     +'<h1>ENGAGEMENT ET DÉCLARATION SUR L\'HONNEUR<br>SERVICE DE DÉCODAGE D\'APPAREIL</h1>'
     +'<div class="ref">N° <b>'+esc(d.numero)+'</b> — le '+esc(frDe(d.date))+(d.cree?' à '+esc(heure(d.cree)):'')+(d.recuPar?' — reçu par '+esc(d.recuPar):'')+'</div>'
-    +'<div class="bx"><h2>La personne venue pour le décodage</h2><div class="g2"><table>'
+    +'<div class="bx"><h2>La personne venue pour le décodage</h2><div class="av"><div class="in"><div class="g2"><table>'
       +ligneInfo('Nom',String(c.nom||'').toUpperCase())+ligneInfo('Prénom',majPremiere(c.prenom))+ligneInfo('Téléphone',c.tel)+'</table><table>'
       +ligneInfo('Profession',c.profession)+ligneInfo('Adresse',c.adresse)+ligneInfo('Quartier',c.quartier)+'</table></div></div>'
-    +'<div class="bx"><h2>L\'appareil</h2><div class="g2"><table>'
+      +ph(c.photo,'id','Photo')+'</div></div>'
+    +'<div class="bx"><h2>L\'appareil</h2><div class="av"><div class="in"><div class="g2"><table>'
       +ligneInfo('Type',a.type)+ligneInfo('Marque',a.marque)+ligneInfo('Modèle',a.modele)+'</table><table>'
       +ligneInfo('IMEI / N° de série',a.imei)+ligneInfo('Verrou à retirer',a.verrou)+'</table></div></div>'
+      +ph(a.photo,'app','Photo de l\'appareil')+'</div></div>'
     +'<div class="bx"><h2>Cause du décodage</h2><table>'+ligneInfo('Raison',d.cause)+(d.causeDetail?ligneInfo('Explication',d.causeDetail):'')+'</table></div>'
     +'<div class="bx"><h2>Conditions d\'obtention de l\'appareil</h2><div class="g2"><table>'
       +ligneInfo('Mode d\'obtention',ob.mode)+ligneInfo('Date',frDe(ob.date))+ligneInfo('Justificatif',ob.preuve)+'</table><table>'
       +ligneInfo('Lieu / vendeur / donateur',ob.lieu)+ligneInfo('Contact',ob.contact)+ligneInfo('Précisions',ob.details)+'</table></div></div>'
     +'<div class="decl"><b>DÉCLARATION SUR L\'HONNEUR — </b>'+esc(declarationTexte(d))
       +'<div class="chk">☑ Je certifie sur l\'honneur que cet appareil n\'a été ni volé ni braqué.</div></div>'
-    +'<div class="bx"><h2>Témoin</h2><table>'+ligneInfo('Nom et prénom',String(t.nom||'').toUpperCase()+' '+majPremiere(t.prenom))+ligneInfo('Téléphone',t.tel)+'</table></div>'
+    +(tem?'<div class="bx"><h2>Témoin</h2><div class="av"><div class="in"><table>'+ligneInfo('Nom et prénom',String(t.nom||'').toUpperCase()+' '+majPremiere(t.prenom))+ligneInfo('Téléphone',t.tel)+'</table></div>'
+      +(t.photo?ph(t.photo,'tem','Photo'):'')+'</div></div>':'')
     +'<div class="sigs">'
       +'<div class="sigbox"><div class="t">La personne</div><div class="lu">« Lu et approuvé »</div><div class="zone">'+(d.signature?'<img src="'+d.signature+'">':'')+'</div>'
         +'<div class="n">'+esc(majPremiere(c.prenom)+' '+String(c.nom||'').toUpperCase())+'</div><div class="p">📞 '+esc(c.tel||'')+'</div></div>'
-      +'<div class="sigbox"><div class="t">Le témoin</div><div class="lu">Signature</div><div class="zone"></div>'
-        +'<div class="n">'+esc(majPremiere(t.prenom)+' '+String(t.nom||'').toUpperCase())+'</div><div class="p">📞 '+esc(t.tel||'')+'</div></div>'
+      +(tem?'<div class="sigbox"><div class="t">Le témoin</div><div class="lu">Signature</div><div class="zone">'+(t.signature?'<img src="'+t.signature+'">':'')+'</div>'
+        +'<div class="n">'+esc(majPremiere(t.prenom)+' '+String(t.nom||'').toUpperCase())+'</div><div class="p">📞 '+esc(t.tel||'')+'</div></div>':'')
       +'<div class="sigbox" style="flex:1.1">'+prest+'</div>'
     +'</div>'
     +'<div class="pied">'+esc(r.note||('Document établi par '+(C.nom||'la prestation')+' — à conserver.'))+'</div>'
