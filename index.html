@@ -2722,6 +2722,7 @@ function agpDevImPayer(btn){
           <input type="number" id="depenseMontant" placeholder="Montant (GNF)" class="inp">
           <button onclick="addDepense()" class="bg-red-600 text-white rounded-xl font-bold">Enregistrer</button>
         </div>
+        <div id="axDepProg" class="no-print" style="margin-bottom:14px"></div>
         <div class="overflow-x-auto">
           <table class="w-full text-sm"><thead>
             <tr class="bg-red-600 text-white">
@@ -5482,24 +5483,48 @@ function remplirFiltreAnneesDepenses(){
   if(cur) sel.value=cur;
 }
 
+// [AGP-X7] Les filtres choisis restent appliques : renderDepenses() est appele
+// sans argument a chaque rafraichissement (synchronisation, saisie...) ; il
+// relit desormais les filtres au lieu de reafficher toutes les depenses.
+var _agpDepFiltreUtilise=false;
+function _agpValDep(id){ var e=document.getElementById(id); return e?e.value:''; }
+function _agpFiltreDepensesActif(){
+  var mois=_agpValDep('filtreDepenseMois'), annee=_agpValDep('filtreDepenseAnnee');
+  var NOMS=['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+  if(mois&&annee) return NOMS[parseInt(mois,10)]+' '+annee;
+  if(annee) return 'année '+annee;
+  if(mois) return NOMS[parseInt(mois,10)];
+  return null;
+}
+function _agpDepensesFiltrees(force){
+  var mois=_agpValDep('filtreDepenseMois'), annee=_agpValDep('filtreDepenseAnnee'), tri=_agpValDep('filtreDepenseTri')||'date_desc';
+  // un mois choisi sans annee : c'est le mois de l'annee en cours (pas le meme mois de toutes les annees)
+  if(mois&&!annee){
+    annee=String(new Date().getFullYear());
+    var sa=document.getElementById('filtreDepenseAnnee');
+    if(sa){ if(![].some.call(sa.options,function(o){return o.value===annee;})){ var o=document.createElement('option'); o.value=annee; o.textContent=annee; sa.appendChild(o); } sa.value=annee; }
+  }
+  if(!force&&!_agpDepFiltreUtilise&&!mois&&!annee) return depenses;
+  var data=depenses.filter(function(d){ return d&&typeof d==='object'; });
+  if(mois) data=data.filter(function(d){var dd=parseDateFR(d.date);return dd&&(dd.getMonth()+1)===parseInt(mois,10);});
+  if(annee) data=data.filter(function(d){var dd=parseDateFR(d.date);return dd&&dd.getFullYear()===parseInt(annee,10);});
+  function t(d){ var x=parseDateFR(d&&d.date); return x?x.getTime():0; }
+  if(tri==='date_desc') data.sort(function(a,b){return t(b)-t(a);});
+  else if(tri==='date_asc') data.sort(function(a,b){return t(a)-t(b);});
+  else if(tri==='montant_desc') data.sort(function(a,b){return agpNombre(b.montant)-agpNombre(a.montant);});
+  else if(tri==='montant_asc') data.sort(function(a,b){return agpNombre(a.montant)-agpNombre(b.montant);});
+  return data;
+}
 function appliquerFiltresDepenses(){
-  var mois=document.getElementById('filtreDepenseMois')?document.getElementById('filtreDepenseMois').value:'';
-  var annee=document.getElementById('filtreDepenseAnnee')?document.getElementById('filtreDepenseAnnee').value:'';
-  var tri=document.getElementById('filtreDepenseTri')?document.getElementById('filtreDepenseTri').value:'date_desc';
-  var data=depenses.slice();
-  if(mois) data=data.filter(function(d){var dd=parseDateFR(d.date);return dd&&(dd.getMonth()+1)===parseInt(mois);});
-  if(annee) data=data.filter(function(d){var dd=parseDateFR(d.date);return dd&&dd.getFullYear()===parseInt(annee);});
-  if(tri==='date_desc') data.sort(function(a,b){return parseDateFR(b.date)-parseDateFR(a.date);});
-  else if(tri==='date_asc') data.sort(function(a,b){return parseDateFR(a.date)-parseDateFR(b.date);});
-  else if(tri==='montant_desc') data.sort(function(a,b){return b.montant-a.montant;});
-  else if(tri==='montant_asc') data.sort(function(a,b){return a.montant-b.montant;});
-  renderDepenses(data);
+  _agpDepFiltreUtilise=true;
+  renderDepenses(_agpDepensesFiltrees(true));
 }
 
 function reinitFiltresDepenses(){
   ['filtreDepenseMois','filtreDepenseAnnee','filtreDepenseTri'].forEach(function(id){
     var el=document.getElementById(id);if(el)el.value=id==='filtreDepenseTri'?'date_desc':'';
   });
+  _agpDepFiltreUtilise=false;
   renderDepenses();
 }
 
@@ -5650,7 +5675,7 @@ function renderDepenses(filteredData){
   const tt=document.getElementById('totalDepenseText');
   if(!tbody) return;
   remplirFiltreAnneesDepenses();
-  const data=filteredData||depenses;
+  const data=filteredData||_agpDepensesFiltrees(false);
   tbody.innerHTML='';
   data.forEach(function(dep,idx){
     const realIdx=depenses.indexOf(dep);
@@ -5675,7 +5700,11 @@ function renderDepenses(filteredData){
     }
     tbody.appendChild(tr);
   });
-  if(tt) tt.innerText=totalDepenses.toLocaleString()+' GNF';
+  if(tt){
+    var _fl=_agpFiltreDepensesActif();
+    tt.innerText=_fl ? data.reduce(function(s,d){return s+agpNombre(d&&d.montant);},0).toLocaleString()+' GNF — '+_fl+' ('+data.length+' dépense'+(data.length>1?'s':'')+')'
+                     : totalDepenses.toLocaleString()+' GNF';
+  }
 }
 
 function modifierDepense(idx){
@@ -9820,6 +9849,7 @@ var _renduT=null, _rendus=[];
 function surChangement(fn){ _rendus.push(fn); }
 function planifierRendu(){ clearTimeout(_renduT); _renduT=setTimeout(function(){ _rendus.forEach(function(f){ try{ f(); }catch(e){ console.warn('AX rendu',e); } }); },60); }
 AX.planifierRendu=planifierRendu;
+AX.surChangement=surChangement;   // [AGP-X6] la situation de caisse se rafraichit si le Fondateur change son reglage
 function estRefus(e){ return /permission|denied|refus/i.test(String((e&&(e.code||e.message))||e||'')); }
 function avecDelai(pr, ms){ return Promise.race([pr, new Promise(function(_,rej){ setTimeout(function(){ rej(new Error('délai dépassé')); }, ms); })]); }
 /* 1) A la connexion : LECTURE SEULE des emplacements possibles.
@@ -12440,6 +12470,7 @@ function rendreParametres(){
   el('axq_def').onclick=function(){ el('axq_mta').value=DEF.attestations.modeleAtt; el('axq_mts').value=DEF.attestations.modeleSat; toast('Modèles par défaut replacés — cliquez Enregistrer.','warn'); };
   el('axq_rsave').onclick=function(){ majCfg('recus',{copie1:val('axq_r1')||DEF.recus.copie1, copie2:val('axq_r2')||DEF.recus.copie2, note:val('axq_rn')}).then(function(){ toast('Réglages des reçus enregistrés ✓'); }); };
   try{ if(AX.parametresDecodage) AX.parametresDecodage(z); }catch(e){}
+  try{ if(AX.parametresCaisse) AX.parametresCaisse(z); }catch(e){}
   el('axq_fsave').onclick=function(){ majCfg('factures',{ prefixe:val('axq_fp')||'FC', prefixeContrat:val('axq_kp')||'CT', prefixeRapport:val('axq_rp')||'RF', tva:nb(val('axq_tva')), nif:val('axq_nif'), rccm:val('axq_rccm'), piedPage:val('axq_pied'),
     conditions:el('axq_cond').value, banque:el('axq_bq').value, mentions:el('axq_ml').value }).then(function(){ toast('Réglages des factures enregistrés ✓'); }); };
 }
@@ -12449,13 +12480,20 @@ AX.rendreParametres=rendreParametres;
    8) RAPPORTS EXISTANTS : ajout de la section "Formations sur
       contrat" (+ signatures si cochees pour les rapports)
    ================================================================ */
-function injecterRapport(rootId, matchFn, label){
+function injecterRapport(rootId, matchFn, label, periode){
   var r=el(rootId); if(!r) return;
   var old=r.querySelector('.ax-inj'); if(old) old.remove();
   var h='';
   try{ h=sectionContrats(matchFn,label); }catch(e){}
+  // [AGP-X6] rapports journalier et mensuel : situation de la caisse, puis
+  // « CAISSE ACTUELLE » (chiffres + lettres) juste AVANT la signature du gerant
+  var cx=null;
+  try{ if(periode && AX.caisseRapport) cx=AX.caisseRapport(periode); }catch(e){ console.warn('AX caisse',e); cx=null; }
+  if(cx) h+=cx.journal;
   var blocs=blocsSignature('rapports');
-  if(blocs.length) h+='<div style="margin:16px 0 6px">'+rangeeSignaturesHtml(blocs,{})+'</div>';
+  var sig=blocs.length ? '<div style="margin:16px 0 6px">'+rangeeSignaturesHtml(blocs,{})+'</div>' : '';
+  if(cx) h+='<div class="ax-caisse-fin" style="break-inside:avoid;page-break-inside:avoid">'+cx.cloture+(sig||cx.signatureDefaut)+'</div>';
+  else h+=sig;
   if(!h) return;
   var d=document.createElement('div'); d.className='ax-inj'; d.innerHTML=h;
   var pied=r.lastElementChild;
@@ -12464,9 +12502,9 @@ function injecterRapport(rootId, matchFn, label){
 function apresRapport(){
   try{
     var mode=(typeof _rapportMode!=='undefined')?_rapportMode:'mensuel';
-    if(mode==='mensuel'){ var m=parseInt(val('rapportMois'))||(new Date().getMonth()+1), a=parseInt(val('rapportAnnee'))||new Date().getFullYear(); injecterRapport('rapportPrintable', _matchMois(a,m), (typeof _moisLabel==='function'?_moisLabel(m):m)+' '+a); }
+    if(mode==='mensuel'){ var m=parseInt(val('rapportMois'))||(new Date().getMonth()+1), a=parseInt(val('rapportAnnee'))||new Date().getFullYear(); injecterRapport('rapportPrintable', _matchMois(a,m), (typeof _moisLabel==='function'?_moisLabel(m):m)+' '+a, {type:'mois', annee:a, mois:m}); }
     else if(mode==='annuel'){ var an=parseInt(val('rapportAnneeAnnuel'))||new Date().getFullYear(); injecterRapport('rapportPrintable', function(d){ return d.getFullYear()===an; }, 'Année '+an); }
-    else { var p=val('rapportJour').split('-'); if(p.length===3) injecterRapport('rapportPrintable', _matchJour(+p[0],+p[1],+p[2]), frDe(val('rapportJour'))); }
+    else { var p=val('rapportJour').split('-'); if(p.length===3) injecterRapport('rapportPrintable', _matchJour(+p[0],+p[1],+p[2]), frDe(val('rapportJour')), {type:'jour', annee:+p[0], mois:+p[1], jour:+p[2]}); }
   }catch(e){ console.warn('AX rapport',e); }
 }
 function apresDbm(){
@@ -12474,8 +12512,8 @@ function apresDbm(){
 }
 function apresRJ(){
   try{
-    if((val('rjType')||'jour')==='jour'){ var p=val('rjDate').split('-'); if(p.length===3) injecterRapport('rjPrintable', _matchJour(+p[0],+p[1],+p[2]), frDe(val('rjDate'))); }
-    else { var m=parseInt(val('rjMois'))||(new Date().getMonth()+1), a=parseInt(val('rjAnnee'))||new Date().getFullYear(); injecterRapport('rjPrintable', _matchMois(a,m), m+'/'+a); }
+    if((val('rjType')||'jour')==='jour'){ var p=val('rjDate').split('-'); if(p.length===3) injecterRapport('rjPrintable', _matchJour(+p[0],+p[1],+p[2]), frDe(val('rjDate')), {type:'jour', annee:+p[0], mois:+p[1], jour:+p[2]}); }
+    else { var m=parseInt(val('rjMois'))||(new Date().getMonth()+1), a=parseInt(val('rjAnnee'))||new Date().getFullYear(); injecterRapport('rjPrintable', _matchMois(a,m), m+'/'+a, {type:'mois', annee:a, mois:m}); }
   }catch(e){}
 }
 
@@ -16912,6 +16950,656 @@ AX.rendreEvaluations=rendre;
 /* les attestations du circuit d'evaluation sont proposees puis acceptees : pas de creation automatique en double */
 setTimeout(function(){ try{ if(AX.sectionActive && AX.sectionActive('axEvaluations')) rendre(); }catch(e){} }, 500);
 console.log('[AGP-X5] onglet Évaluations actif');
+})();
+
+</script>
+<script>
+(function(){
+'use strict';
+/* ================================================================
+   AGP-X7 — DEPENSES PROGRAMMEES
+   ----------------------------------------------------------------
+   Une depense qui revient (loyer, transport, electricite...) est
+   programmee une seule fois : motif, categorie, montant, rythme
+   (chaque mois tel jour, ou certains jours de la semaine), date de
+   DEBUT et date de FIN. A chaque echeance, entre le debut et la fin,
+   la depense s'enregistre toute seule dans la liste des depenses,
+   a la date de l'echeance — exactement comme une depense saisie a la
+   main (memes champs : motif, categorie, montant, par, date). Elle
+   compte donc partout : depenses, tableau de bord, rapports, caisse.
+   SANS DOUBLON, meme avec plusieurs appareils :
+     - chaque echeance est reservee sur le serveur par une transaction
+       (un seul appareil l'obtient) ;
+     - la depense creee porte un identifiant fixe (programme + date) :
+       si elle arrivait deux fois, la base n'en garde qu'une.
+   HORS LIGNE : les echeances attendent le retour d'Internet, puis
+   s'enregistrent a leur vraie date.
+   Une depense programmee supprimee de la liste n'est jamais recreee.
+   STOCKAGE : les programmes et les echeances faites sont gardes avec
+   les autres modules ajoutes (<emplacement des modules>/
+   depensesProgrammees et /depensesProgrammeesFaites). Les depenses
+   deja enregistrees ne sont jamais modifiees.
+   ================================================================ */
+var AX = window.AX;
+if(!AX){ console.warn('[AGP-X7] noyau AX absent : depenses programmees inactives'); return; }
+
+var COLL='depensesProgrammees', FAITES='depensesProgrammeesFaites';
+var JOURS=['Dim','Lun','Mar','Mer','Jeu','Ven','Sam'], JOURS_L=['dimanche','lundi','mardi','mercredi','jeudi','vendredi','samedi'];
+function esc(v){ return AX.esc(v); }
+function money(n){ return AX.money(n); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function iso(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function deIso(k){ var p=String(k||'').split('-'); if(p.length!==3) return null; var d=new Date(+p[0], +p[1]-1, +p[2]); return isNaN(d.getTime())?null:d; }
+function frIso(k){ var d=deIso(k); return d ? pad2(d.getDate())+'/'+pad2(d.getMonth()+1)+'/'+d.getFullYear() : ''; }
+function estIso(k){ return /^\d{4}-\d{2}-\d{2}$/.test(String(k||'')) && !!deIso(k); }
+function num(v){ try{ return agpNombre(v); }catch(e){ var n=parseFloat(v); return isFinite(n)?n:0; } }
+function role(){ try{ return currentRole||''; }catch(e){ return ''; } }
+function nomCourant(){ try{ return currentUser||''; }catch(e){ return ''; } }
+function lesDepenses(){ try{ return Array.isArray(depenses)?depenses:null; }catch(e){ return null; } }
+function aujourdhui(){ return iso(new Date()); }
+function peutGerer(){ try{ return role()==='FONDATEUR' || !!peutModifier(); }catch(e){ return role()==='FONDATEUR'; } }
+function peutSupp(){ try{ return role()==='FONDATEUR' || !!peutSupprimer(); }catch(e){ return role()==='FONDATEUR'; } }
+function connecte(){ try{ return !!(window.agpBaseLocale && window.agpBaseLocale.estConnecte()); }catch(e){ return navigator.onLine!==false; } }
+function nouvelId(){ return 'dp'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
+function idDepense(pid, k){ return 'dprog_'+pid+'_'+String(k).replace(/-/g,''); }
+var APP=(function(){ try{ var k='agp_dprog_appareil', v=localStorage.getItem(k); if(!v){ v='ap'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); localStorage.setItem(k,v); } return v; }catch(e){ return 'ap-inconnu'; } })();
+
+function programmes(){ return AX.coll(COLL).filter(function(p){ return p && p.motif; }).sort(function(a,b){ return String(a.motif).localeCompare(String(b.motif)); }); }
+function faites(pid){ var o=(AX.EXT && AX.EXT.d && AX.EXT.d[FAITES]) || {}; return o[pid] || {}; }
+
+/* ---------------- echeances d'un programme ----------------
+   'mois'  : chaque mois, le jour choisi (31 -> dernier jour des mois courts)
+   'jours' : les jours de la semaine coches (tous = chaque jour, un seul = chaque semaine) */
+function echeances(pr, jusqua){
+  var out=[];
+  if(!pr || !estIso(pr.debut)) return out;
+  var lim=pr.fin && estIso(pr.fin) ? pr.fin : jusqua;
+  if(jusqua && jusqua<lim) lim=jusqua;
+  if(lim<pr.debut) return out;
+  var d0=deIso(pr.debut), i, k;
+  if(pr.frequence==='mois'){
+    var jm=Math.min(31, Math.max(1, parseInt(pr.jourMois,10)||1)), y=d0.getFullYear(), m=d0.getMonth();
+    for(i=0; i<1200; i++){
+      var dim=new Date(y, m+1, 0).getDate();
+      k=iso(new Date(y, m, Math.min(jm, dim)));
+      if(k>lim) break;
+      if(k>=pr.debut) out.push(k);
+      m++; if(m>11){ m=0; y++; }
+    }
+  } else {
+    var js=(Array.isArray(pr.jours)?pr.jours:Object.keys(pr.jours||{}).map(function(x){ return pr.jours[x]; })).map(Number);
+    if(!js.length) return out;
+    var d=new Date(d0);
+    for(i=0; i<20000; i++){
+      k=iso(d);
+      if(k>lim) break;
+      if(js.indexOf(d.getDay())>=0) out.push(k);
+      d.setDate(d.getDate()+1);
+    }
+  }
+  return out;
+}
+function rythme(pr){
+  if(pr.frequence==='mois') return 'Chaque mois, le '+(parseInt(pr.jourMois,10)===1?'1er':(parseInt(pr.jourMois,10)||1))+(parseInt(pr.jourMois,10)>28?' (ou le dernier jour du mois)':'');
+  var js=(Array.isArray(pr.jours)?pr.jours:[]).map(Number).sort(function(a,b){ return ((a+6)%7)-((b+6)%7); });
+  if(js.length===7) return 'Chaque jour';
+  if(js.length===6 && js.indexOf(0)<0) return 'Du lundi au samedi';
+  if(js.length===5 && js.indexOf(0)<0 && js.indexOf(6)<0) return 'Du lundi au vendredi';
+  if(js.length===1) return 'Chaque '+JOURS_L[js[0]];
+  return js.map(function(j){ return JOURS[j]; }).join(', ');
+}
+
+/* ---------------- enregistrement automatique des echeances ---------------- */
+var _enCours=false;
+function pret(){
+  return !!(window._AGP_MODE && window._AGP_READY && role() && lesDepenses() && AX.EXT && AX.EXT.pret
+    && AX.EXT.etat==='ok' && AX.EXT.racine && window._agpTx && window._agpRef && window._agpDb);
+}
+function avecDelai(pr, ms){ return Promise.race([pr, new Promise(function(_, rej){ setTimeout(function(){ rej(new Error('délai')); }, ms); })]); }
+/* reservation d'une echeance sur le serveur : un seul appareil l'obtient */
+function reserver(pid, k){
+  var ch=AX.EXT.racine+'/'+FAITES+'/'+pid+'/'+k, qui=nomCourant()||role();
+  return avecDelai(window._agpTx(window._agpRef(window._agpDb, ch), function(cur){
+    if(cur) return;                                   /* deja prise : on abandonne */
+    return { etat:'reserve', id:idDepense(pid, k), par:qui, appareil:APP, le:Date.now() };
+  }), 15000).then(function(r){ return !!(r && r.committed); }, function(){ return false; });
+}
+function creer(pr, k){
+  var L=lesDepenses(); if(!L) return false;
+  var id=idDepense(pr.id, k);
+  if(L.some(function(d){ return d && d._id===id; })) return false;    /* deja dans la liste */
+  var mt=Math.round(num(pr.montant));
+  L.push({ motif:String(pr.motif||''), categorie:String(pr.categorie||'Divers'), montant:mt,
+           par:(pr.creePar||'Fondateur')+' (programmée)', date:frIso(k), _id:id });
+  totalDepenses+=mt;
+  try{ ajouterHistorique('Dépense programmée: '+pr.motif+'  '+mt.toLocaleString()+' GNF ('+frIso(k)+')'); }catch(e){}
+  return true;
+}
+function executer(){
+  if(_enCours || !pret() || !connecte()) return Promise.resolve(0);
+  _enCours=true;
+  var auj=aujourdhui(), L=lesDepenses(), aReserver=[], aReprendre=[];
+  programmes().forEach(function(pr){
+    if(pr.actif===false) return;
+    var f=faites(pr.id);
+    echeances(pr, auj).forEach(function(k){
+      var x=f[k];
+      if(!x) aReserver.push({ pr:pr, k:k });
+      /* reservee mais pas creee (application fermee entre les deux) : on reprend */
+      else if(x.etat==='reserve' && !L.some(function(d){ return d && d._id===x.id; })
+              && ((x.appareil===APP && Date.now()-(x.le||0)>60000) || Date.now()-(x.le||0)>24*3600e3)) aReprendre.push({ pr:pr, k:k });
+    });
+  });
+  if(!aReserver.length && !aReprendre.length){ _enCours=false; return Promise.resolve(0); }
+  var crees=[], chaine=Promise.resolve();
+  aReprendre.forEach(function(x){ chaine=chaine.then(function(){ if(creer(x.pr, x.k)) crees.push(x); }); });
+  aReserver.slice(0, 400).forEach(function(x){
+    chaine=chaine.then(function(){ return reserver(x.pr.id, x.k).then(function(ok){ if(ok && creer(x.pr, x.k)) crees.push(x); }); });
+  });
+  return chaine.then(function(){
+    if(!crees.length) return 0;
+    try{ sauvegarder(); }catch(e){ console.warn('[AGP-X7] sauvegarde', e); }
+    try{ agpRecalculerTout(); }catch(e){}
+    var marques=crees.map(function(x){
+      var f=faites(x.pr.id)[x.k]||{};
+      return AX.ecrireDiscret(FAITES+'/'+x.pr.id+'/'+x.k, { etat:'fait', id:idDepense(x.pr.id, x.k), par:f.par||nomCourant()||role(), appareil:f.appareil||APP, le:f.le||Date.now(), faitLe:Date.now() });
+    });
+    var tot=crees.reduce(function(s,x){ return s+Math.round(num(x.pr.montant)); },0);
+    AX.toast(crees.length===1 ? 'Dépense programmée enregistrée : '+crees[0].pr.motif+' — '+money(tot)+' ('+frIso(crees[0].k)+')'
+                              : crees.length+' dépenses programmées enregistrées ('+money(tot)+')', 'ok');
+    return Promise.all(marques).then(function(){ return crees.length; });
+  }).then(function(n){ _enCours=false; rendre(); return n; }, function(e){ _enCours=false; console.warn('[AGP-X7]', e); return 0; });
+}
+AX.depProgExecuter=executer;
+
+/* ---------------- panneau dans l'onglet Depenses ---------------- */
+function enAttente(pr, auj){
+  if(pr.actif===false) return 0;
+  var f=faites(pr.id);
+  return echeances(pr, auj).filter(function(k){ return !f[k]; }).length;
+}
+function prochaine(pr, auj){
+  if(pr.actif===false) return '';
+  var f=faites(pr.id), l=echeances(pr, pr.fin||'9999-12-31');
+  for(var i=0; i<l.length; i++) if(l[i]>=auj && !f[l[i]]) return l[i];
+  return '';
+}
+function rendre(){
+  var z=document.getElementById('axDepProg'); if(!z) return;
+  if(!window._AGP_MODE || !role()){ z.innerHTML=''; return; }
+  var ps=programmes(), gere=peutGerer(), auj=aujourdhui();
+  if(!ps.length && !gere){ z.innerHTML=''; return; }
+  var attente=0;
+  var h='<div class="ax-card" style="border:1px solid #fecaca;background:#fffafa">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:6px">'
+    +'<div class="ax-sec" style="margin:0">🔁 Dépenses programmées'+(ps.length?' ('+ps.length+')':'')+'</div>'
+    +(gere?'<button class="ax-btn p sm" onclick="AX.depProgNouvelle()">➕ Programmer une dépense</button>':'')+'</div>'
+    +'<div class="ax-note" style="margin-bottom:8px">Une dépense qui revient (loyer, transport, électricité…) se programme une seule fois, avec une date de début et une date de fin : à chaque échéance, elle s\'enregistre toute seule dans la liste ci-dessous, à sa date.</div>';
+  if(ps.length){
+    h+='<div style="overflow-x:auto"><table class="ax-table" style="width:100%;min-width:680px"><thead><tr><th>Motif</th><th style="text-align:right">Montant</th><th>Rythme</th><th>Début</th><th>Fin</th><th>Prochaine échéance</th><th style="text-align:center">Enregistrées</th><th>État</th>'+(gere?'<th></th>':'')+'</tr></thead><tbody>';
+    ps.forEach(function(pr){
+      var f=faites(pr.id), nf=Object.keys(f).filter(function(k){ return f[k]; }).length, att=enAttente(pr, auj), pc=prochaine(pr, auj);
+      attente+=att;
+      var fini=pr.fin && pr.fin<auj, etat=pr.actif===false ? '<span class="ax-pill gr">⏸️ Suspendue</span>' : (fini ? '<span class="ax-pill gr">Terminée</span>' : '<span class="ax-pill ok">Active</span>');
+      h+='<tr><td><b>'+esc(pr.motif)+'</b>'+(pr.categorie?'<div class="ax-note">'+esc(pr.categorie)+'</div>':'')+'</td>'
+        +'<td style="text-align:right;font-weight:800;color:#dc2626;white-space:nowrap">'+money(pr.montant)+'</td>'
+        +'<td>'+esc(rythme(pr))+'</td><td style="white-space:nowrap">'+esc(frIso(pr.debut))+'</td><td style="white-space:nowrap">'+esc(frIso(pr.fin))+'</td>'
+        +'<td style="white-space:nowrap">'+(att?'<span style="color:#c2410c;font-weight:700">⏳ '+att+' en attente</span>':(pc?esc(frIso(pc)):'—'))+'</td>'
+        +'<td style="text-align:center">'+nf+'</td><td>'+etat+'</td>'
+        +(gere?'<td style="white-space:nowrap"><button class="ax-btn sm w" title="Modifier" onclick="AX.depProgEditer(\''+esc(pr.id)+'\')">✏️</button> '
+          +'<button class="ax-btn sm w" title="'+(pr.actif===false?'Reprendre':'Suspendre')+'" onclick="AX.depProgBasculer(\''+esc(pr.id)+'\')">'+(pr.actif===false?'▶️':'⏸️')+'</button> '
+          +(peutSupp()?'<button class="ax-btn sm w" style="color:#b91c1c" title="Supprimer" onclick="AX.depProgSupprimer(\''+esc(pr.id)+'\')">🗑️</button>':'')+'</td>':'')
+        +'</tr>';
+    });
+    h+='</tbody></table></div>';
+    if(attente) h+='<div class="ax-note" style="margin-top:6px;color:#c2410c">⏳ '+attente+' échéance'+(attente>1?'s':'')+' à enregistrer : '+(connecte()?'enregistrement en cours…':'elles s\'enregistreront à leur date dès le retour d\'Internet.')+'</div>';
+  }
+  h+='</div>';
+  z.innerHTML=h;
+}
+AX.depProgRendre=rendre;
+
+/* ---------------- formulaire ---------------- */
+function formulaire(pr){
+  var nouveau=!pr;
+  if(!peutGerer()){ AX.toast('Seuls le Fondateur et les personnes autorisées à modifier peuvent programmer des dépenses.','warn'); return; }
+  if(!AX.stockageOk || !AX.stockageOk()){ AX.toast('Enregistrement impossible pour le moment : réessayez dans un instant.','warn'); }
+  var auj=aujourdhui(), y=new Date().getFullYear();
+  pr=pr||{ motif:'', categorie:'', montant:'', frequence:'mois', jourMois:new Date().getDate(), jours:[1,2,3,4,5,6], debut:auj, fin:y+'-12-31', actif:true };
+  var js=(Array.isArray(pr.jours)?pr.jours:[1,2,3,4,5,6]).map(Number);
+  var cats={}; (lesDepenses()||[]).forEach(function(d){ if(d&&d.categorie) cats[d.categorie]=1; });
+  var corps='<div class="ax-grid2">'
+    +'<div class="ax-f"><label class="ax-lbl">Motif <span style="color:#dc2626">*</span></label><input class="ax-inp" id="axdp_m" value="'+esc(pr.motif)+'" placeholder="ex. Loyer du local"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Catégorie</label><input class="ax-inp" id="axdp_c" list="axdp_cl" value="'+esc(pr.categorie)+'" placeholder="ex. Loyer"><datalist id="axdp_cl">'+Object.keys(cats).map(function(c){ return '<option value="'+esc(c)+'">'; }).join('')+'</datalist></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Montant (GNF) <span style="color:#dc2626">*</span></label><input class="ax-inp" id="axdp_mt" type="number" min="1" step="1" inputmode="numeric" value="'+esc(pr.montant)+'"></div>'
+    +'<div></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Date de début <span style="color:#dc2626">*</span></label><input class="ax-inp" id="axdp_d0" type="date" value="'+esc(pr.debut)+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Date de fin <span style="color:#dc2626">*</span></label><input class="ax-inp" id="axdp_d1" type="date" value="'+esc(pr.fin)+'"></div>'
+    +'</div>'
+    +'<div class="ax-lbl" style="margin:4px 0">Rythme</div>'
+    +'<label class="ax-chk" style="display:flex;gap:8px;margin:4px 0"><input type="radio" name="axdp_f" value="mois"'+(pr.frequence==='mois'?' checked':'')+'>Chaque mois, le <input class="ax-inp" id="axdp_jm" type="number" min="1" max="31" style="width:70px;padding:4px 8px" value="'+esc(pr.jourMois||1)+'"> du mois</label>'
+    +'<label class="ax-chk" style="display:flex;gap:8px;margin:4px 0;flex-wrap:wrap"><input type="radio" name="axdp_f" value="jours"'+(pr.frequence!=='mois'?' checked':'')+'>Certains jours de la semaine :'
+    +[1,2,3,4,5,6,0].map(function(j){ return '<span style="display:inline-flex;align-items:center;gap:3px;font-weight:600"><input type="checkbox" class="axdp-j" value="'+j+'"'+(js.indexOf(j)>=0?' checked':'')+'>'+JOURS[j]+'</span>'; }).join(' ')
+    +'</label>'
+    +'<div class="ax-note" style="margin:2px 0 8px 26px">Tous les jours cochés = chaque jour ; un seul jour coché = chaque semaine.</div>'
+    +'<div class="ax-info" id="axdp_ap"></div>';
+  var M=AX.modale({ titre:(nouveau?'🔁 Programmer une dépense':'✏️ Modifier la dépense programmée'), corps:corps, boutons:[
+    { txt:'Annuler', cls:'w' },
+    { txt:'💾 Enregistrer', cls:'p', action:function(api, bt){
+      var o=lire(); if(!o) return;
+      bt.disabled=true;
+      var id=pr.id||nouvelId();
+      var rec={ id:id, motif:o.motif, categorie:o.categorie, montant:o.montant, frequence:o.frequence, jourMois:o.jourMois, jours:o.jours,
+                debut:o.debut, fin:o.fin, actif:pr.actif!==false, creePar:pr.creePar||nomCourant()||'Fondateur', creeLe:pr.creeLe||Date.now(), majLe:Date.now(), majPar:nomCourant()||role() };
+      AX.ecrire(COLL+'/'+id, rec).then(function(){
+        api.fermer();
+        AX.toast(nouveau?'Dépense programmée ✓ — '+rec.motif+' : '+rythme(rec).toLowerCase():'Dépense programmée modifiée ✓','ok');
+        rendre();
+        if(!connecte()) AX.toast('Hors ligne : les échéances déjà passées s\'enregistreront au retour d\'Internet.','warn');
+        setTimeout(executer, 300);
+      }).catch(function(){ bt.disabled=false; });
+    } } ] });
+  function lire(){
+    var motif=String(M.q('#axdp_m').value||'').trim(), categorie=String(M.q('#axdp_c').value||'').trim()||'Divers';
+    var montant=Math.round(num(M.q('#axdp_mt').value)), debut=M.q('#axdp_d0').value, fin=M.q('#axdp_d1').value;
+    var fr=(M.q('input[name=axdp_f]:checked')||{}).value||'mois', jm=parseInt(M.q('#axdp_jm').value,10);
+    var jours=M.qa('.axdp-j').filter(function(c){ return c.checked; }).map(function(c){ return +c.value; });
+    if(!motif){ AX.toast('Indiquez le motif de la dépense.','warn'); return null; }
+    if(!(montant>0)){ AX.toast('Indiquez un montant supérieur à zéro.','warn'); return null; }
+    if(!estIso(debut)){ AX.toast('Choisissez la date de début.','warn'); return null; }
+    if(!estIso(fin)){ AX.toast('Choisissez la date de fin.','warn'); return null; }
+    if(fin<debut){ AX.toast('La date de fin doit être après la date de début.','warn'); return null; }
+    if(fr==='mois' && !(jm>=1 && jm<=31)){ AX.toast('Le jour du mois doit être entre 1 et 31.','warn'); return null; }
+    if(fr==='jours' && !jours.length){ AX.toast('Cochez au moins un jour de la semaine.','warn'); return null; }
+    return { motif:motif, categorie:categorie, montant:montant, debut:debut, fin:fin, frequence:fr, jourMois:fr==='mois'?jm:null, jours:fr==='jours'?jours:null };
+  }
+  function apercu(){
+    var z=M.q('#axdp_ap'), mt=Math.round(num(M.q('#axdp_mt').value)), debut=M.q('#axdp_d0').value, fin=M.q('#axdp_d1').value;
+    var fr=(M.q('input[name=axdp_f]:checked')||{}).value||'mois';
+    var t={ id:pr.id, frequence:fr, jourMois:parseInt(M.q('#axdp_jm').value,10)||1, jours:M.qa('.axdp-j').filter(function(c){ return c.checked; }).map(function(c){ return +c.value; }), debut:debut, fin:fin };
+    if(!estIso(debut)||!estIso(fin)||fin<debut){ z.innerHTML='Choisissez une date de début et une date de fin.'; return; }
+    var f=pr.id?faites(pr.id):{}, toutes=echeances(t, fin), passees=echeances(t, aujourdhui()).filter(function(k){ return !f[k]; });
+    var proch=toutes.filter(function(k){ return k>aujourdhui(); })[0];
+    z.innerHTML='<b>'+toutes.length+' échéance'+(toutes.length>1?'s':'')+'</b> du '+esc(frIso(debut))+' au '+esc(frIso(fin))+(mt>0?' — '+money(mt*toutes.length)+' au total':'')+'.'
+      +(passees.length?'<br>⚠️ <b>'+passees.length+'</b> échéance'+(passees.length>1?'s sont déjà passées ou tombent':' est déjà passée ou tombe')+' aujourd\'hui : '+(passees.length>1?'elles seront enregistrées':'elle sera enregistrée')+' dès l\'enregistrement, à '+(passees.length>1?'leur':'sa')+' date'+(mt>0?' ('+money(mt*passees.length)+')':'')+'.':'')
+      +(proch?'<br>Prochaine échéance : <b>'+esc(frIso(proch))+'</b>.':'');
+  }
+  M.qa('input,select').forEach(function(e){ e.addEventListener('input', apercu); e.addEventListener('change', apercu); });
+  apercu();
+}
+AX.depProgNouvelle=function(){ formulaire(null); };
+AX.depProgEditer=function(id){ var pr=AX.item(COLL, id); if(pr){ pr=JSON.parse(JSON.stringify(pr)); pr.id=pr.id||id; formulaire(pr); } };
+AX.depProgBasculer=function(id){
+  if(!peutGerer()) return;
+  var pr=AX.item(COLL, id); if(!pr) return;
+  var o=JSON.parse(JSON.stringify(pr)); o.id=o.id||id; o.actif=(pr.actif===false); o.majLe=Date.now(); o.majPar=nomCourant()||role();
+  AX.ecrire(COLL+'/'+id, o).then(function(){ AX.toast(o.actif?'Dépense programmée reprise ✓':'Dépense programmée suspendue — plus aucune échéance ne sera enregistrée','ok'); rendre(); if(o.actif) setTimeout(executer, 300); });
+};
+AX.depProgSupprimer=function(id){
+  if(!peutSupp()) return;
+  var pr=AX.item(COLL, id); if(!pr) return;
+  if(!window.confirm('Supprimer la dépense programmée « '+pr.motif+' » ?\nPlus aucune échéance ne sera enregistrée. Les dépenses déjà enregistrées restent dans la liste.')) return;
+  AX.effacer(COLL+'/'+id).then(function(){ AX.toast('Dépense programmée supprimée','ok'); rendre(); });
+};
+
+/* ---------------- branchements ---------------- */
+function brancherRendu(){
+  var f=window.renderDepenses;
+  if(typeof f!=='function' || f._axdp) return;
+  var w=function(){ var r=f.apply(this, arguments); try{ rendre(); }catch(e){} return r; };
+  w._axdp=true; if(f._ax) w._ax=f._ax;
+  window.renderDepenses=w;
+}
+brancherRendu();
+setInterval(brancherRendu, 2000);
+if(typeof AX.surChangement==='function') AX.surChangement(function(){ rendre(); setTimeout(executer, 500); });
+window.addEventListener('agp-connexion', function(e){ if(e && e.detail && e.detail.connecte) setTimeout(executer, 3000); });
+setInterval(function(){ executer(); }, 60000);
+})();
+
+</script>
+<script>
+(function(){
+'use strict';
+/* ================================================================
+   AGP-X6 — SITUATION DE LA CAISSE DANS LES RAPPORTS
+   ----------------------------------------------------------------
+   Rapports concernes : rapport JOURNALIER et rapport MENSUEL
+   (onglet « Rapports » et onglet « Rapport Journalier »).
+   A la fin du rapport, avant la signature du gerant (AGP-X6 / X6b) :
+     1. Journal de caisse : chaque recette, puis chaque depense
+        deduite une a une, avec le montant restant en caisse apres
+        chaque deduction.
+     2. Situation de la caisse : fonds de depart + entrees - depenses.
+     3. « CAISSE ACTUELLE » : montant exact restant en caisse apres
+        deduction de toutes les depenses, en chiffres et en lettres.
+     3b. « CAISSE DU MOIS EN COURS » (du 1er du mois a la date du rapport)
+         puis, en bas, « CAISSE GLOBALE » de l'annee (du 1er janvier a la
+         date du rapport) : entrees - depenses, en chiffres et en lettres.
+         Rapport mensuel « chaque rapport part de zero » : la caisse
+         actuelle EST la caisse du mois (un seul encadre, sans doublon).
+     4. Signature du gerant (celles de l'onglet Signatures & Cachets
+        si elles sont cochees pour les rapports, sinon un emplacement
+        « Le Gerant » a signer).
+   LES CHIFFRES viennent des memes fonctions que le rapport
+   (_montantInitialInscrit, versements, services, depenses) : la
+   caisse d'une periode est donc toujours egale a « entrees - depenses »
+   affichees dans le rapport.
+   POINT DE DEPART (reglage du Fondateur, Parametres) :
+     - « chaque rapport part de zero » (par defaut) ;
+     - « caisse continue » : a partir d'un comptage de caisse (montant
+       + date), le solde est reporte d'une periode a l'autre.
+   Le reglage est garde avec les autres modules ajoutes
+   (<emplacement des modules>/config/caisse). Aucune donnee de la
+   prestation n'est modifiee : ce module ne fait que LIRE.
+   ================================================================ */
+var AX = window.AX;
+if(!AX){ console.warn('[AGP-X6] noyau AX absent : situation de caisse inactive'); return; }
+
+var MOIS = ['','Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+function esc(v){ return AX.esc(v); }
+function money(n){ return AX.money(n); }
+function pad2(n){ return String(n).padStart(2,'0'); }
+function iso(d){ return d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate()); }
+function frD(d){ return pad2(d.getDate())+'/'+pad2(d.getMonth()+1)+'/'+d.getFullYear(); }
+function deIso(k){ var p=String(k||'').split('-'); return p.length===3 ? new Date(+p[0], +p[1]-1, +p[2]) : null; }
+function frIso(k){ var d=deIso(k); return d ? frD(d) : ''; }
+function veille(k){ var d=deIso(k); d.setDate(d.getDate()-1); return iso(d); }
+function num(v){ try{ return agpNombre(v); }catch(e){ var n=parseFloat(v); return isFinite(n)?n:0; } }
+function pd(s){ try{ return parseDateFR(s); }catch(e){ return null; } }
+function role(){ try{ return currentRole||''; }catch(e){ return ''; } }
+function nomCourant(){ try{ return currentUser||''; }catch(e){ return ''; } }
+function lesInscrits(){ try{ return Array.isArray(inscrits)?inscrits:[]; }catch(e){ return []; } }
+function lesServices(){ try{ return Array.isArray(servicesList)?servicesList:[]; }catch(e){ return []; } }
+function lesDepenses(){ try{ return Array.isArray(depenses)?depenses:[]; }catch(e){ return []; } }
+function maj1(t){ t=String(t||''); return t ? t.charAt(0).toUpperCase()+t.slice(1) : ''; }
+function lettres(n){
+  n=Math.round(Math.abs(n));
+  if(n===0) return 'zéro franc guinéen';
+  if(n===1) return 'un franc guinéen';
+  return AX.enLettresGNF(n);
+}
+
+/* ---------------- reglage du Fondateur ---------------- */
+function brut(){ try{ return AX.cfg('caisse')||{}; }catch(e){ return {}; } }
+function reglage(){
+  var c=brut();
+  var date=/^\d{4}-\d{2}-\d{2}$/.test(String(c.date||'')) ? String(c.date) : '';
+  var demande=(c.mode==='continue') ? 'continue' : 'periode';
+  return { demande:demande, mode:(demande==='continue'&&date)?'continue':'periode',
+           montant:Math.max(0, Math.round(num(c.montant))), date:date };
+}
+
+/* ---------------- mouvements de caisse, regroupes par jour ----------------
+   Memes regles que les rapports :
+     entree  = part encaissee a l'inscription (jour de l'inscription)
+             + versements (jour du versement) + services (jour du service)
+     sortie  = depenses (jour de la depense, dans l'ordre d'enregistrement) */
+function mouvements(){
+  var J={};
+  function jour(d){ var k=iso(d); return J[k]||(J[k]={ ins:0, nIns:0, vers:0, nVers:0, svc:0, nSvc:0, deps:[] }); }
+  lesInscrits().forEach(function(i){
+    if(!i||typeof i!=='object') return;
+    var d=pd(i.date);
+    if(d){ var b=jour(d); b.ins+=num(_montantInitialInscrit(i)); b.nIns++; }
+    _versementsDe(i).forEach(function(v){
+      var dv=_dateVersement(v); if(!dv) return;
+      var b2=jour(dv); b2.vers+=_montantVersement(v); b2.nVers++;
+    });
+  });
+  lesServices().forEach(function(s){
+    if(!s) return; var d=pd(s.date); if(!d) return;
+    var b=jour(d); b.svc+=num(s.montant); b.nSvc++;
+  });
+  lesDepenses().forEach(function(x){
+    if(!x) return; var d=pd(x.date); if(!d) return;
+    jour(d).deps.push({ motif:x.motif||'', categorie:x.categorie||'', montant:num(x.montant), par:x.par||'' });
+  });
+  return J;
+}
+function entree(b){ return b.ins+b.vers+b.svc; }
+function sortie(b){ return b.deps.reduce(function(s,x){ return s+x.montant; },0); }
+
+/* ---------------- construction de la situation de caisse ----------------
+   p = { type:'jour', annee, mois, jour }  ou  { type:'mois', annee, mois } */
+var _vu=null;   // reglage utilise au dernier rendu (pour rafraichir s'il change)
+function calculer(p){
+  var parJour=(p.type==='jour');
+  var deb=parJour ? new Date(p.annee, p.mois-1, p.jour) : new Date(p.annee, p.mois-1, 1);
+  var fin=parJour ? new Date(p.annee, p.mois-1, p.jour) : new Date(p.annee, p.mois, 0);
+  if(isNaN(deb.getTime())||isNaN(fin.getTime())) return null;
+  var kDeb=iso(deb), kFin=iso(fin);
+  var R=reglage(), J=mouvements(), cles=Object.keys(J).sort();
+  var ouv=0, depuis=kDeb, libOuv='', detOuv='', note='';
+  if(R.mode==='continue' && R.date<=kDeb){
+    ouv=R.montant;
+    cles.forEach(function(k){ if(k>=R.date && k<kDeb) ouv+=entree(J[k])-sortie(J[k]); });
+    libOuv='Fonds en caisse au début '+(parJour?'de la journée':'du mois')+' (report)';
+    detOuv='Comptage de caisse du '+frIso(R.date)+' : '+money(R.montant)+(R.date<kDeb?', plus les entrées et moins les dépenses enregistrées depuis':'');
+  } else if(R.mode==='continue' && R.date<=kFin){
+    ouv=R.montant; depuis=R.date;
+    libOuv='Montant compté dans la caisse le '+frIso(R.date);
+    detOuv='Comptage de caisse enregistré par le Fondateur';
+    note='Les opérations du '+frD(deb)+' au '+frIso(veille(R.date))+' précèdent le comptage de caisse du '+frIso(R.date)
+      +' : elles figurent dans le rapport ci-dessus mais ne sont pas reprises dans la caisse.';
+  } else if(R.mode==='continue'){
+    libOuv='Fonds de départ';
+    note='Cette période précède le comptage de caisse du '+frIso(R.date)+' : la caisse est calculée sur la seule période, en partant de zéro.';
+  } else {
+    libOuv='Fonds de départ';
+    detOuv='Chaque rapport part de zéro (réglage du Fondateur)';
+  }
+
+  var lignes=[], solde=ouv, totE=0, totS=0, negatif=false, n=0;
+  cles.forEach(function(k){
+    if(k<depuis || k>kFin) return;
+    var b=J[k], dLib=frIso(k);
+    if(parJour){
+      [['Encaissé — nouvelles inscriptions', b.ins, b.nIns], ['Versements reçus', b.vers, b.nVers], ['Services', b.svc, b.nSvc]].forEach(function(x){
+        if(!x[1]) return;
+        solde+=x[1]; totE+=x[1];
+        lignes.push({ t:'e', date:dLib, lib:x[0]+' ('+x[2]+')', e:x[1], solde:solde });
+      });
+    } else {
+      var e=entree(b);
+      if(e){
+        solde+=e; totE+=e;
+        var det=[]; if(b.ins) det.push('Inscriptions '+money(b.ins)); if(b.vers) det.push('Versements '+money(b.vers)); if(b.svc) det.push('Services '+money(b.svc));
+        lignes.push({ t:'e', date:dLib, lib:'Recettes du jour', det:det.join(' · '), e:e, solde:solde });
+      }
+    }
+    b.deps.forEach(function(x){
+      solde-=x.montant; totS+=x.montant; n++;
+      if(solde<0) negatif=true;
+      lignes.push({ t:'s', n:n, date:dLib, lib:x.motif||'Dépense', det:[x.categorie, x.par?('saisie par '+x.par):''].filter(Boolean).join(' · '), s:x.montant, solde:solde });
+    });
+  });
+  /* situation du mois et situation globale de l'annee (entrees - depenses),
+     arretees a la fin de la periode du rapport */
+  var kM0=iso(new Date(fin.getFullYear(), fin.getMonth(), 1)), kA0=fin.getFullYear()+'-01-01';
+  var mois={ e:0, s:0 }, an={ e:0, s:0 };
+  cles.forEach(function(k){
+    if(k>kFin || k<kA0) return;
+    var e2=entree(J[k]), s2=sortie(J[k]);
+    an.e+=e2; an.s+=s2;
+    if(k>=kM0){ mois.e+=e2; mois.s+=s2; }
+  });
+  var maintenant=new Date(), kT=iso(maintenant), enCours=(kT>=kDeb && kT<=kFin);
+  var quand = enCours ? ('à ce jour, '+frD(maintenant)+' à '+pad2(maintenant.getHours())+'h'+pad2(maintenant.getMinutes()))
+            : (kT>kFin ? 'à la clôture du '+frD(fin) : 'au '+frD(fin));
+  return { parJour:parJour, deb:deb, fin:fin, label:parJour ? maj1(deb.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'})) : MOIS[p.mois]+' '+p.annee,
+           reglage:R, ouverture:ouv, dateOuv:depuis, libOuv:libOuv, detOuv:detOuv, note:note, lignes:lignes,
+           entrees:totE, depenses:totS, caisse:ouv+totE-totS, negatif:negatif, quand:quand, enCours:enCours,
+           mois:{ e:mois.e, s:mois.s, c:mois.e-mois.s, deb:kM0, fin:(kT>=kM0&&kT<=kFin)?kT:kFin, nom:MOIS[fin.getMonth()+1]+' '+fin.getFullYear(),
+                  courant:(kT.slice(0,7)===kFin.slice(0,7)), aCeJour:(kT>=kM0&&kT<=kFin) },
+           annee:{ e:an.e, s:an.s, c:an.e-an.s, deb:kA0, fin:(kT>=kA0&&kT<=kFin)?kT:kFin, nom:String(fin.getFullYear()), aCeJour:(kT>=kA0&&kT<=kFin) },
+           moisFusionne:(!parJour && R.mode==='periode') };
+}
+
+function journalHtml(C){
+  var TH='padding:6px 8px;font-weight:800', TD='padding:5px 8px;vertical-align:top';
+  var h='<div class="ax-caisse" style="margin:18px 0 6px">'
+    +'<h3 style="font-size:14px;font-weight:bold;color:#172554;border-bottom:2px solid #e2e8f0;padding-bottom:6px;margin-bottom:10px">💰 Situation de la caisse — '+esc(C.label)+'</h3>'
+    +'<div style="font-size:11px;color:#475569;margin-bottom:8px">Chaque dépense est déduite de la caisse : la dernière colonne donne le montant exact restant en caisse après chaque opération.</div>'
+    +'<div style="overflow-x:auto;margin-bottom:8px"><table class="axc-j" style="width:100%;min-width:480px;border-collapse:collapse;font-size:11px"><thead><tr style="background:#0f172a;color:#fff">'
+    +'<th style="'+TH+';text-align:left;width:'+(C.parJour?'34px':'74px')+'">'+(C.parJour?'N°':'Date')+'</th>'
+    +'<th style="'+TH+';text-align:left">Opération</th>'
+    +'<th style="'+TH+';text-align:right">Entrée</th>'
+    +'<th style="'+TH+';text-align:right">Dépense</th>'
+    +'<th style="'+TH+';text-align:right">Caisse après opération</th></tr></thead><tbody>';
+  h+='<tr style="background:#eff6ff;font-weight:800"><td style="'+TD+'">'+(C.parJour?'—':esc(frIso(C.dateOuv)))+'</td>'
+    +'<td style="'+TD+'">'+esc(C.libOuv)+(C.detOuv?'<div style="font-weight:500;font-size:9.5px;color:#64748b">'+esc(C.detOuv)+'</div>':'')+'</td>'
+    +'<td style="'+TD+'"></td><td style="'+TD+'"></td>'
+    +'<td style="'+TD+';text-align:right;color:'+(C.ouverture<0?'#dc2626':'#172554')+'">'+money(C.ouverture)+'</td></tr>';
+  if(!C.lignes.length){
+    h+='<tr><td colspan="5" style="'+TD+';color:#94a3b8;font-style:italic">Aucune opération de caisse sur la période.</td></tr>';
+  }
+  C.lignes.forEach(function(l, i){
+    var neg=l.solde<0;
+    if(l.t==='e'){
+      h+='<tr style="background:#f0fdf4"><td style="'+TD+';color:#64748b">'+(C.parJour?'':esc(l.date))+'</td>'
+        +'<td style="'+TD+';font-weight:700;color:#166534">'+esc(l.lib)+(l.det?'<div style="font-weight:500;font-size:9.5px;color:#64748b">'+esc(l.det)+'</div>':'')+'</td>'
+        +'<td style="'+TD+';text-align:right;color:#15803d;font-weight:800;white-space:nowrap">+ '+money(l.e)+'</td><td style="'+TD+'"></td>'
+        +'<td style="'+TD+';text-align:right;font-weight:800;white-space:nowrap;color:'+(neg?'#dc2626':'#172554')+'">'+money(l.solde)+'</td></tr>';
+    } else {
+      h+='<tr style="background:'+(i%2?'#fff':'#fef2f2')+'"><td style="'+TD+';color:#64748b">'+(C.parJour?l.n:esc(l.date))+'</td>'
+        +'<td style="'+TD+'">'+esc(l.lib)+(l.det?'<div style="font-size:9.5px;color:#64748b">'+esc(l.det)+'</div>':'')+'</td>'
+        +'<td style="'+TD+'"></td><td style="'+TD+';text-align:right;color:#dc2626;font-weight:800;white-space:nowrap">− '+money(l.s)+'</td>'
+        +'<td style="'+TD+';text-align:right;font-weight:800;white-space:nowrap;color:'+(neg?'#dc2626':'#172554')+'">'+money(l.solde)+(neg?' ⚠️':'')+'</td></tr>';
+    }
+  });
+  h+='<tr style="background:#172554;color:#fff;font-weight:900"><td colspan="2" style="padding:7px 8px">TOTAUX — CAISSE ACTUELLE</td>'
+    +'<td style="padding:7px 8px;text-align:right;white-space:nowrap">+ '+money(C.entrees)+'</td>'
+    +'<td style="padding:7px 8px;text-align:right;white-space:nowrap">− '+money(C.depenses)+'</td>'
+    +'<td style="padding:7px 8px;text-align:right;white-space:nowrap">'+money(C.caisse)+'</td></tr></tbody></table></div>';
+  if(C.note) h+='<div style="font-size:10.5px;color:#475569;background:#f8fafc;border-left:3px solid #94a3b8;padding:5px 8px;margin-bottom:6px">ℹ️ '+esc(C.note)+'</div>';
+  if(C.negatif) h+='<div style="font-size:10.5px;color:#9a3412;background:#fff7ed;border-left:3px solid #f97316;padding:5px 8px;margin-bottom:6px">⚠️ La caisse devient négative après certaines dépenses : l\'argent dépensé ne figurait pas dans la caisse de la période. Vérifiez les montants saisis'
+    +(C.reglage.mode==='continue'?' ou le comptage de caisse (Paramètres).':' ; si cet argent restait d\'une période précédente, le Fondateur peut choisir la « caisse continue » dans les Paramètres.')+'</div>';
+  /* situation resumee */
+  var L='padding:4px 10px', V='padding:4px 10px;text-align:right;font-weight:800;white-space:nowrap';
+  h+='<table class="axc-s" style="width:auto;min-width:58%;margin:8px 0 0 auto;border-collapse:collapse;font-size:12px;border:1px solid #cbd5e1">'
+    +'<tr style="background:#f8fafc"><td colspan="2" style="padding:5px 10px;font-weight:900;color:#172554;border-bottom:1px solid #cbd5e1">SITUATION DE LA CAISSE</td></tr>'
+    +'<tr><td style="'+L+'">'+esc(C.libOuv)+'</td><td style="'+V+'">'+money(C.ouverture)+'</td></tr>'
+    +'<tr><td style="'+L+'">+ Total des entrées</td><td style="'+V+';color:#15803d">'+money(C.entrees)+'</td></tr>'
+    +'<tr><td style="'+L+'">− Total des dépenses</td><td style="'+V+';color:#dc2626">'+money(C.depenses)+'</td></tr>'
+    +'<tr style="border-top:2px solid #172554;background:#eff6ff"><td style="'+L+';font-weight:900;color:#172554">= Caisse actuelle</td><td style="'+V+';font-size:13px;color:'+(C.caisse<0?'#dc2626':'#172554')+'">'+money(C.caisse)+'</td></tr>'
+    +'</table></div>';
+  return h;
+}
+
+function clotureHtml(C){
+  var def=C.caisse<0, mt=money(def?-C.caisse:C.caisse);
+  var ou=C.enCours ? 'se trouvant actuellement en caisse' : 'se trouvant en caisse '+C.quand;
+  return '<div class="ax-caisse-actuelle" style="border:2px solid '+(def?'#dc2626':'#172554')+';border-radius:12px;padding:12px 16px;margin:16px 0 12px;background:'+(def?'#fef2f2':'#f8fafc')+'">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    +'<div><div style="font-size:14px;font-weight:900;color:#172554;letter-spacing:.05em">'+(def?'CAISSE ACTUELLE — DÉFICIT':'CAISSE ACTUELLE')
+    +(C.moisFusionne?' — CAISSE DU MOIS'+(C.mois.courant?' EN COURS':'')+' ('+esc(C.mois.nom.toUpperCase())+')':'')+'</div>'
+    +'<div style="font-size:10.5px;color:#64748b">Après déduction de toutes les dépenses — '+esc(C.quand)+'</div></div>'
+    +'<div style="font-size:24px;font-weight:900;white-space:nowrap;color:'+(def?'#dc2626':'#15803d')+'">'+money(C.caisse)+'</div></div>'
+    +'<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;font-size:12px;line-height:1.55;color:#0f172a">'
+    +(def
+      ? 'Arrêté le présent rapport, après déduction de toutes les dépenses, à un <b>déficit de caisse</b> de : <b>'+esc(maj1(lettres(C.caisse)))+'</b> (<b>'+mt+'</b>) : les dépenses dépassent l\'argent disponible en caisse.'
+      : 'Arrêté le présent rapport, après déduction de toutes les dépenses, à la somme de : <b>'+esc(maj1(lettres(C.caisse)))+'</b> (<b>'+mt+'</b>), montant exact '+esc(ou)+'.')
+    +'</div></div>'
+    +(C.moisFusionne ? '' : ligneCaisse('mois', 'CAISSE DU MOIS'+(C.mois.courant?' EN COURS':'')+' — '+C.mois.nom.toUpperCase(), C.mois, '#0f766e', '#f0fdfa', '#134e4a'))
+    +ligneCaisse('annee', 'CAISSE GLOBALE — ANNÉE '+C.annee.nom, C.annee, '#1e3a8a', '#eef2ff', '#1e3a8a');
+}
+/* une situation (mois ou annee) : montant en chiffres et en lettres */
+function ligneCaisse(cle, titre, S, bord, fond, encre){
+  var def=S.c<0, mt=money(def?-S.c:S.c);
+  return '<div class="ax-caisse-'+cle+'" style="border:1.5px solid '+(def?'#dc2626':bord)+';border-radius:10px;padding:9px 14px;margin:0 0 10px;background:'+(def?'#fef2f2':fond)+'">'
+    +'<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">'
+    +'<div><div style="font-size:12.5px;font-weight:900;letter-spacing:.04em;color:'+encre+'">'+esc(titre)+(def?' — DÉFICIT':'')+'</div>'
+    +'<div style="font-size:10px;color:#64748b">Du '+esc(frIso(S.deb))+(S.aCeJour?' à ce jour ('+esc(frIso(S.fin))+')':' au '+esc(frIso(S.fin)))
+    +' · Entrées '+money(S.e)+' − Dépenses '+money(S.s)+'</div></div>'
+    +'<div style="font-size:19px;font-weight:900;white-space:nowrap;color:'+(def?'#dc2626':encre)+'">'+money(S.c)+'</div></div>'
+    +'<div style="margin-top:5px;padding-top:5px;border-top:1px dashed #cbd5e1;font-size:11.5px;color:#0f172a">'
+    +(def?'Déficit de : ':'En lettres : ')+'<b>'+esc(maj1(lettres(S.c)))+'</b> ('+mt+')</div></div>';
+}
+
+function signatureDefaut(){
+  var nom=(role()!=='FONDATEUR') ? nomCourant() : '';
+  return '<div class="ax-caisse-sig" style="display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-top:6px;font-size:11px">'
+    +'<div style="color:#475569">Fait le '+frD(new Date())+'</div>'
+    +'<div style="width:64mm;text-align:center">'
+    +'<div style="font-weight:800;color:#172554">Le Gérant</div>'
+    +'<div style="height:20mm"></div>'
+    +'<div style="border-top:1px solid #334155;padding-top:3px;color:#334155">'+(nom?esc(nom):'Nom et signature')+'</div>'
+    +'</div></div>';
+}
+
+/* Appele par l'injection des rapports (noyau AX), apres la section
+   « Formations sur contrat » et avant les signatures. */
+AX.caisseRapport=function(p){
+  if(!p) return null;
+  _vu=JSON.stringify(brut());
+  var C=calculer(p);
+  if(!C) return null;
+  return { journal:journalHtml(C), cloture:clotureHtml(C), signatureDefaut:signatureDefaut(), calcul:C };
+};
+AX.caisseCalcul=function(p){ return p ? calculer(p) : null; };
+AX.caisseEnLettres=lettres;
+
+/* ---------------- rafraichir le rapport affiche si le reglage change ---------------- */
+function sectionActive(id){ try{ return typeof agpEstSectionActive==='function' ? agpEstSectionActive(id) : true; }catch(e){ return false; } }
+function rafraichir(){
+  try{ if(document.getElementById('rapportPrintable') && sectionActive('rapport') && typeof genererRapport==='function') genererRapport(); }catch(e){}
+  try{ if(document.getElementById('rjPrintable') && sectionActive('rapportJournalier') && typeof renderRapportJournalier==='function') renderRapportJournalier(); }catch(e){}
+}
+if(typeof AX.surChangement==='function'){
+  AX.surChangement(function(){
+    if(_vu===null) return;
+    if(JSON.stringify(brut())!==_vu) rafraichir();
+  });
+}
+
+/* ---------------- reglage dans les Parametres (Fondateur) ---------------- */
+AX.parametresCaisse=function(z){
+  if(!z || role()!=='FONDATEUR') return;
+  var R=reglage(), c=brut();
+  var aujourdhui=iso(new Date());
+  var w=document.createElement('div');
+  var RADIO='display:flex;align-items:flex-start;gap:8px;margin:6px 0;font-weight:500';
+  w.innerHTML='<h3 class="ax-sec" style="font-size:20px">💰 Caisse des rapports</h3>'
+    +'<div class="ax-card" style="margin-bottom:16px">'
+    +'<div class="ax-info" style="margin-bottom:10px">Les rapports journaliers et mensuels affichent la situation de la caisse : le montant restant après chaque dépense, puis la <b>caisse actuelle</b> en chiffres et en lettres, juste avant la signature du gérant.</div>'
+    +'<div class="ax-lbl" style="margin-bottom:2px">Point de départ de la caisse</div>'
+    +'<label class="ax-chk" style="'+RADIO+'"><input type="radio" name="axcs_mode" value="periode"'+(R.demande!=='continue'?' checked':'')+' style="margin-top:3px">'
+    +'<span><b>Chaque rapport part de zéro</b><br><span style="color:#64748b">Caisse actuelle = entrées de la période − dépenses de la période. À choisir si la recette est remise au Fondateur à chaque clôture.</span></span></label>'
+    +'<label class="ax-chk" style="'+RADIO+'"><input type="radio" name="axcs_mode" value="continue"'+(R.demande==='continue'?' checked':'')+' style="margin-top:3px">'
+    +'<span><b>Caisse continue</b><br><span style="color:#64748b">L\'argent qui reste en caisse est reporté d\'un jour à l\'autre et d\'un mois à l\'autre, à partir d\'un comptage de caisse.</span></span></label>'
+    +'<div id="axcs_cont" style="margin:8px 0 0 26px">'
+    +'<div class="ax-grid2">'
+    +'<div class="ax-f"><label class="ax-lbl">Montant compté dans la caisse (GNF)</label><input class="ax-inp" id="axcs_mt" type="number" min="0" step="1" inputmode="numeric" placeholder="ex. 250000" value="'+((c.montant!==undefined&&c.montant!==null&&c.montant!=='')?esc(Math.round(num(c.montant))):'')+'"></div>'
+    +'<div class="ax-f"><label class="ax-lbl">Date du comptage</label><input class="ax-inp" id="axcs_dt" type="date" value="'+esc(R.date||aujourdhui)+'"></div>'
+    +'</div>'
+    +'<div class="ax-note">C\'est l\'argent présent dans la caisse au début de cette journée, avant toute opération. Recomptez la caisse et mettez ce montant à jour après chaque retrait d\'argent qui n\'est pas enregistré comme dépense (remise au Fondateur, dépôt en banque).</div>'
+    +'</div>'
+    +'<button class="ax-btn p" id="axcs_save" style="margin-top:12px">💾 Enregistrer</button></div>';
+  var fac=null; z.querySelectorAll('h3.ax-sec').forEach(function(h){ if(!fac && /Factures/.test(h.textContent)) fac=h; });
+  if(fac) z.insertBefore(w, fac); else z.appendChild(w);
+  function modeChoisi(){ var r=w.querySelector('input[name=axcs_mode]:checked'); return r ? r.value : 'periode'; }
+  function majVue(){ w.querySelector('#axcs_cont').style.display = modeChoisi()==='continue' ? '' : 'none'; }
+  w.querySelectorAll('input[name=axcs_mode]').forEach(function(r){ r.onchange=majVue; });
+  majVue();
+  w.querySelector('#axcs_save').onclick=function(){
+    var mode=modeChoisi(), bt=this, o={ mode:mode, majLe:new Date().toISOString(), par:nomCourant()||'Fondateur' };
+    if(mode==='continue'){
+      var ts=String(w.querySelector('#axcs_mt').value||'').trim(), dt=String(w.querySelector('#axcs_dt').value||'').trim();
+      if(ts===''){ AX.toast('Indiquez le montant compté dans la caisse (0 si elle est vide).','warn'); return; }
+      var mt=Math.round(num(ts));
+      if(mt<0){ AX.toast('Le montant compté ne peut pas être négatif.','warn'); return; }
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(dt)){ AX.toast('Choisissez la date du comptage de caisse.','warn'); return; }
+      if(dt>aujourdhui){ AX.toast('La date du comptage ne peut pas être dans le futur.','warn'); return; }
+      o.montant=mt; o.date=dt;
+    }
+    bt.disabled=true;
+    AX.majCfg('caisse', o).then(function(){
+      AX.toast(mode==='continue' ? 'Caisse continue enregistrée ✓ — départ : '+money(o.montant)+' le '+frIso(o.date) : 'Réglage enregistré ✓ — chaque rapport part de zéro','ok');
+      bt.disabled=false; rafraichir();
+    }).catch(function(){ bt.disabled=false; });
+  };
+};
 })();
 
 </script>
