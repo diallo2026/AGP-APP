@@ -9,7 +9,7 @@
    - base de donnees Firebase : jamais interceptee.
    A placer a cote d'index.html. Changer VERSION a chaque livraison.
    ============================================================================= */
-var VERSION = 'agp-v57-20261126-code-creation';
+var VERSION = 'agp-v58-20261127-regles-securite';
 var COQUILLE = ['./', './index.html', './manifest.json'];
 var EXTERNES = [
   'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js',

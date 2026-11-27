@@ -1483,7 +1483,7 @@ function agpRegister(){
   var db=window._agpDb,r=window._agpRef,s=window._agpSet,g=window._agpGet;
   if(!db){agpRegMsg('Firebase non disponible',false);if(btn){btn.disabled=false;btn.textContent='Creer ma prestation';}return;}
   var code=agpGenCode();
-  var uid='agp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5);
+  var uid=(window.agpCodeCreation&&window.agpCodeCreation.uidPrevu&&window.agpCodeCreation.uidPrevu())||('agp_'+Date.now()+'_'+Math.random().toString(36).substr(2,5));
   // Verifier unicite du code
   g(r(db,'agp_codes/'+code)).then(function(snap){
     if(snap.val()) code=agpGenCode(); // regenerer si collision
@@ -17273,30 +17273,36 @@ setInterval(function(){ executer(); }, 60000);
 (function(){
 'use strict';
 /* ================================================================
-   AGP-X8 — CODE DE CREATION (accord du concepteur)
+   AGP-X8 — CODE DE CREATION (accord du concepteur) — v2 : verrou serveur
    ----------------------------------------------------------------
-   Une nouvelle prestation ne peut plus etre creee librement :
-     - le concepteur genere un CODE DE CREATION dans son espace
-       (onglet « Codes de creation ») et l'envoie a la personne ;
-     - « Creer ma prestation » exige ce code ; tant qu'il n'est pas
-       fourni, ou s'il est faux, expire, annule ou deja utilise, la
-       creation est REFUSEE ;
-     - avec le bon code, la creation se fait comme avant et la
-       prestation s'ouvre.
-   UN CODE = UNE PRESTATION : il est reserve sur le serveur par une
-   transaction (deux personnes ne peuvent pas l'utiliser en meme
-   temps), puis marque « utilise » avec la prestation creee.
-   SECURITE : la base ne contient jamais le code lui-meme, seulement
-   son empreinte (SHA-256). Lire la base ne permet donc pas de
-   recuperer un code. Le code en clair n'est garde que sur l'appareil
-   du concepteur qui l'a genere (pour le recopier ou le renvoyer).
-   EMPLACEMENT : agp_platform/codesCreation/<empreinte> (noeud du
-   concepteur, a cote des tarifs et des factures). Les prestations
-   existantes, leurs donnees et la structure de la base ne sont pas
-   touchees ; les prestations deja creees s'ouvrent sans code.
+   Une nouvelle prestation ne peut etre creee qu'avec un CODE DE
+   CREATION genere par le concepteur (onglet « Codes de creation »).
+   v2 : la regle est aussi appliquee PAR LE SERVEUR (regles Firebase
+   generees dans l'espace concepteur, avec la cle secrete du
+   concepteur) : meme en contournant l'application, il est impossible
+   de creer une prestation sans code valable.
+   CIRCUIT D'UNE CREATION
+     1. le code saisi est verifie (existe, disponible, non expire,
+        non utilise) ;
+     2. une AUTORISATION est inscrite pour la future prestation :
+        agp_platform/creationsAutorisees/<uid> = { hash }  (une fois) ;
+     3. le code devient « utilise » par cette prestation :
+        agp_platform/codesUtilises/<empreinte> = { uid }  (une fois) ;
+     4. la prestation est creee comme avant (info, code d'acces,
+        donnees) : le serveur ne l'accepte que si 2 et 3 concordent.
+   ESPACE DU CONCEPTEUR : agp_platform/concepteur/<cle>/codes/<empreinte>
+   (lisible et modifiable seulement avec la cle). Les definitions
+   publiques agp_platform/codesCreation/<empreinte> ne se lisent qu'en
+   connaissant le code (pas de liste) et ne se modifient qu'avec la cle.
+   SECURITE : la base ne contient jamais un code en clair (empreinte
+   SHA-256). Les prestations existantes, leurs donnees et la structure
+   de la base ne sont pas touchees ; elles s'ouvrent sans code.
    ================================================================ */
 var NOEUD = 'agp_platform/codesCreation';
-var LOCAL_CODES = 'agp_cc_codes', LOCAL_ATTENTE = 'agp_cc_attente';
+var N_UTIL = 'agp_platform/codesUtilises', N_AUT = 'agp_platform/creationsAutorisees', N_CONC = 'agp_platform/concepteur';
+var LOCAL_CODES = 'agp_cc_codes', LOCAL_CLE = 'agp_cc_cle';
+var TS = { '.sv': 'timestamp' };          /* heure du serveur (verifiee par les regles) */
+var MODELE_REGLES = {"rules": {"agp_codes": {".read": true, "$code": {".write": "newData.isString() && (root.child('agp_prest/' + newData.val() + '/info/codeAcces').val() === $code || root.child('agp_platform/codesUtilises/' + root.child('agp_platform/creationsAutorisees/' + newData.val() + '/hash').val() + '/uid').val() === newData.val())"}}, "agp_prest": {".read": true, "$uid": {".write": "data.exists() || root.child('agp_platform/codesUtilises/' + root.child('agp_platform/creationsAutorisees/' + $uid + '/hash').val() + '/uid').val() === $uid"}}, "agp_ext": {".read": true, ".write": true}, "agp_platform": {"concepteur": {"$cle": {".read": "$cle === '__CLE__'", ".write": "$cle === '__CLE__'"}}, "codesCreation": {"$hash": {".read": true, ".write": "newData.parent().parent().child('concepteur/__CLE__/codes/' + $hash + '/majLe').val() === now"}}, "creationsAutorisees": {"$uid": {".read": true, ".write": "!data.exists() && !root.child('agp_prest/' + $uid).exists() && newData.child('hash').isString() && newData.child('hash').val().length === 64 && newData.child('hash').val().matches(/^[0-9a-f]+$/) && root.child('agp_platform/concepteur/__CLE__/codes/' + newData.child('hash').val()).exists() && root.child('agp_platform/codesCreation/' + newData.child('hash').val() + '/statut').val() === 'disponible' && (!root.child('agp_platform/codesCreation/' + newData.child('hash').val() + '/expireMs').exists() || root.child('agp_platform/codesCreation/' + newData.child('hash').val() + '/expireMs').val() >= now) && !root.child('agp_platform/codesUtilises/' + newData.child('hash').val()).exists()"}}, "codesUtilises": {"$hash": {".read": true, ".write": "!data.exists() && newData.child('uid').isString() && root.child('agp_platform/creationsAutorisees/' + newData.child('uid').val() + '/hash').val() === $hash"}}, "$autre": {".read": true, ".write": true}}, "$autre": {".read": true, ".write": true}}};
 var ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';           /* sans I, O, 0, 1 (confusions) */
 var RESERVATION_MS = 15 * 60 * 1000;
 var SESSION = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -17363,151 +17369,222 @@ function nouveauCode(){
   for(var i = 0; i < 8; i++) s += ALPHA.charAt(t[i] % ALPHA.length);
   return 'CR-' + s.slice(0, 4) + '-' + s.slice(4);
 }
-function expire(rec){ return !!(rec && rec.expireLe && String(rec.expireLe).slice(0, 10) < isoJour()); }
-function etat(rec){
-  if(!rec) return 'inconnu';
-  if(rec.statut === 'utilise') return 'utilise';
-  if(rec.statut === 'annule') return 'annule';
-  if(expire(rec)) return 'expire';
-  if(rec.statut === 'reserve' && Date.now() - (rec.reserveLe || 0) < RESERVATION_MS) return 'reserve';
+function expire(rec){
+  if(!rec) return false;
+  if(typeof rec.expireMs === 'number') return rec.expireMs < Date.now();
+  return !!(rec.expireLe && String(rec.expireLe).slice(0, 10) < isoJour());
+}
+function finJourMs(iso){ var p = String(iso || '').split('-'); return p.length === 3 ? new Date(+p[0], +p[1] - 1, +p[2], 23, 59, 59, 999).getTime() : null; }
+function etatCode(def, util){
+  if(util) return 'utilise';
+  if(!def) return 'inconnu';
+  if(def.statut === 'utilise') return 'utilise';          /* codes de la version precedente */
+  if(def.statut === 'annule') return 'annule';
+  if(expire(def)) return 'expire';
   return 'disponible';
 }
+function lire(ch){ var f = fb(); return avecDelai(f.get(f.ref(f.db, ch)), 20000).then(function(s){ return s.val(); }); }
+function poser(ch, v){ var f = fb(); return avecDelai(f.set(f.ref(f.db, ch), v), 20000); }
+function majPlateforme(obj){ var f = fb(); return avecDelai(f.up(f.ref(f.db, 'agp_platform'), obj), 20000); }
+function estRefus(e){ return /permission|denied|refus/i.test(String((e && (e.code || e.message)) || e || '')); }
+function Raison(r, d){ this.r = r; this.d = d; }
 
 /* ================================================================
    1. CREATION D'UNE PRESTATION : le code est exige
    ================================================================ */
-var jeton = null;          /* { h, n } : code reserve pour CETTE creation */
+var jeton = null;          /* { h, n, uid, pret } : code accepte pour CETTE creation */
 function msg(t, ok){
   try{ agpRegMsg(t, ok); }catch(e){ alert(t); return; }
   /* sur telephone, le bouton est en bas : on remonte jusqu'au message */
   try{ var m = el('agp-reg-msg'); if(m && m.scrollIntoView) m.scrollIntoView({ block: 'center', behavior: 'smooth' }); }catch(e){}
 }
-function bouton(txt, actif){
-  var b = el('agp-r-btn'); if(!b) return;
-  b.disabled = !actif; b.textContent = txt;
-}
+function bouton(txt, actif){ var b = el('agp-r-btn'); if(!b) return; b.disabled = !actif; b.textContent = txt; }
 function saisi(){ var i = el('agp-r-code-creation'); return i ? i.value : ''; }
 
-/* appele par agpRegister, apres la verification des champs */
-function autorise(){ return !!(jeton && jeton.n === normaliser(saisi())); }
+/* appeles par agpRegister, apres la verification des champs */
+function autorise(){ return !!(jeton && jeton.pret && jeton.n === normaliser(saisi())); }
+function uidPrevu(){ return autorise() ? jeton.uid : null; }
 function demander(){
-  var brut = saisi(), n = normaliser(brut);
-  var champ = el('agp-r-code-creation');
-  if(!n){
-    msg('Saisissez le code de création fourni par le concepteur. Sans ce code, la création d\'une prestation est refusée.', false);
-    if(champ){ champ.focus(); champ.style.borderColor = '#ef4444'; }
-    return;
-  }
-  if(!/^CR[A-Z0-9]{8}$/.test(n)){
-    msg('Code de création invalide. Vérifiez le code reçu du concepteur (forme : CR-XXXX-XXXX).', false);
-    if(champ){ champ.focus(); champ.style.borderColor = '#ef4444'; }
-    return;
-  }
+  var n = normaliser(saisi()), champ = el('agp-r-code-creation');
+  function rouge(){ if(champ){ champ.focus(); champ.style.borderColor = '#ef4444'; } }
+  if(!n){ msg('Saisissez le code de création fourni par le concepteur. Sans ce code, la création d\'une prestation est refusée.', false); rouge(); return; }
+  if(!/^CR[A-Z0-9]{8}$/.test(n)){ msg('Code de création invalide. Vérifiez le code reçu du concepteur (forme : CR-XXXX-XXXX).', false); rouge(); return; }
   var f = fb();
-  if(!f.db || !f.ref || !f.tx){ msg('Création momentanément indisponible. Réessayez dans un instant.', false); return; }
+  if(!f.db || !f.ref || !f.get || !f.set || !f.tx){ msg('Création momentanément indisponible. Réessayez dans un instant.', false); return; }
   if(!connecte()){ msg('Création impossible sans connexion Internet : connectez-vous puis réessayez.', false); return; }
   var h = empreinte(n);
+  if(!jeton || jeton.n !== n) jeton = { h: h, n: n, uid: 'agp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5), pret: false };
+  var J = jeton;
   bouton('Vérification du code…', false);
-  avecDelai(f.tx(f.ref(f.db, NOEUD + '/' + h), function(cur){
-    if(cur === null) return null;                         /* inconnu ici : le serveur tranche */
-    var e = etat(cur);
-    if(e === 'disponible' || (e === 'reserve' && cur.session === SESSION)){
-      var o = {}; for(var x in cur) o[x] = cur[x];
-      o.statut = 'reserve'; o.reserveLe = Date.now(); o.session = SESSION;
-      return o;
-    }
-    return;                                               /* refus : rien n'est change */
-  }), 20000).then(function(r){
-    var v = r && r.snapshot ? r.snapshot.val() : null;
-    if(r && r.committed && v && v.statut === 'reserve' && v.session === SESSION){
-      jeton = { h: h, n: n };
-      if(champ) champ.style.borderColor = '#22c55e';
-      msg('Code de création accepté ✓ — création de la prestation…', true);
-      bouton('Creer ma prestation', true);
-      setTimeout(function(){ try{ window.agpRegister(); }catch(e){ msg('Erreur : ' + e.message, false); } }, 50);
-      return;
-    }
+  Promise.all([lire(NOEUD + '/' + h), lire(N_UTIL + '/' + h)]).then(function(r){
+    var def = r[0], util = r[1];
+    if(util && util.uid === J.uid) return;                 /* deja accepte pour cette creation (nouvel essai) */
+    var e = etatCode(def, util);
+    if(e !== 'disponible') throw new Raison(e, def);
+    /* 1) autorisation pour CETTE future prestation (une seule fois) */
+    return lire(N_AUT + '/' + J.uid).then(function(a){
+      if(a && a.hash === h) return;
+      return poser(N_AUT + '/' + J.uid, { hash: h, le: Date.now() }).catch(function(err){ throw new Raison(estRefus(err) ? 'refuse' : 'reseau'); });
+    }).then(function(){
+      /* 2) le code devient « utilise » par cette prestation (une seule fois, meme a plusieurs) */
+      return avecDelai(f.tx(f.ref(f.db, N_UTIL + '/' + h), function(cur){
+        if(cur === null) return { uid: J.uid, le: Date.now() };
+        return;                                            /* deja pris : on ne touche a rien */
+      }), 20000).then(function(res){
+        var v = res && res.snapshot ? res.snapshot.val() : null;
+        if(v && v.uid === J.uid) return;
+        throw new Raison('utilise');
+      }, function(err){
+        if(err instanceof Raison) throw err;
+        return lire(N_UTIL + '/' + h).then(function(u){
+          if(u && u.uid === J.uid) return;
+          throw new Raison(u ? 'utilise' : (estRefus(err) ? 'refuse' : 'reseau'));
+        });
+      });
+    });
+  }).then(function(){
+    J.pret = true;
+    if(champ) champ.style.borderColor = '#22c55e';
+    msg('Code de création accepté ✓ — création de la prestation…', true);
     bouton('Creer ma prestation', true);
-    if(champ) champ.style.borderColor = '#ef4444';
-    var e = etat(v);
-    if(!v) msg('Code de création invalide : ce code n\'existe pas. Demandez un code au concepteur (' + CONTACT + ').', false);
-    else if(e === 'utilise') msg('Ce code de création a déjà servi à créer une prestation : un code ne sert qu\'une seule fois. Demandez un nouveau code au concepteur.', false);
-    else if(e === 'annule') msg('Ce code de création a été annulé par le concepteur. Demandez un nouveau code.', false);
-    else if(e === 'expire') msg('Ce code de création a expiré le ' + frIso(v.expireLe) + '. Demandez un nouveau code au concepteur.', false);
-    else if(e === 'reserve') msg('Ce code est en cours d\'utilisation sur un autre appareil. Réessayez dans quelques minutes.', false);
-    else msg('Code de création refusé. Demandez un code au concepteur.', false);
-  }).catch(function(){
+    setTimeout(function(){ try{ window.agpRegister(); }catch(e){ msg('Erreur : ' + e.message, false); } }, 50);
+  }).catch(function(e){
     bouton('Creer ma prestation', true);
-    msg('Vérification du code impossible : la connexion ne répond pas. Réessayez.', false);
-  });
-}
-
-/* la prestation est creee : le code devient « utilise » (avec la prestation) */
-function finaliser(item){
-  var f = fb();
-  if(!f.db || !f.tx || !connecte()) return Promise.resolve(false);
-  return avecDelai(f.tx(f.ref(f.db, NOEUD + '/' + item.h), function(cur){
-    if(cur === null) return null;
-    if(cur.statut === 'utilise' && cur.prestation && cur.prestation.uid === item.prestation.uid) return;
-    if(cur.session !== item.session) return;
-    var o = {}; for(var x in cur) o[x] = cur[x];
-    o.statut = 'utilise'; o.utiliseLe = item.le; o.prestation = item.prestation;
-    delete o.session; delete o.reserveLe;
-    return o;
-  }), 20000).then(function(){ return true; }, function(){ return false; });
-}
-function traiterAttente(){
-  var a = lireLocal(LOCAL_ATTENTE), cles = Object.keys(a);
-  if(!cles.length || !connecte()) return;
-  cles.forEach(function(k){
-    finaliser(a[k]).then(function(ok){ if(ok){ var b = lireLocal(LOCAL_ATTENTE); delete b[k]; ecrireLocal(LOCAL_ATTENTE, b); } });
+    rouge();
+    var r = (e instanceof Raison) ? e.r : (estRefus(e) ? 'refuse' : 'reseau'), d = e && e.d;
+    if(r === 'inconnu') msg('Code de création invalide : ce code n\'existe pas. Demandez un code au concepteur (' + CONTACT + ').', false);
+    else if(r === 'utilise') msg('Ce code de création a déjà servi à créer une prestation : un code ne sert qu\'une seule fois. Demandez un nouveau code au concepteur.', false);
+    else if(r === 'annule') msg('Ce code de création a été annulé par le concepteur. Demandez un nouveau code.', false);
+    else if(r === 'expire') msg('Ce code de création a expiré' + (d && d.expireLe ? ' le ' + frIso(d.expireLe) : '') + '. Demandez un nouveau code au concepteur.', false);
+    else if(r === 'refuse') msg('Code de création refusé : il n\'est pas (ou plus) valable. Demandez un nouveau code au concepteur (' + CONTACT + ').', false);
+    else msg('Vérification du code impossible : la connexion ne répond pas. Réessayez.', false);
   });
 }
 function brancherSucces(){
   var f = window.agpShowSuccess;
   if(typeof f !== 'function' || f._axcc) return;
-  var w = function(prest, code){
-    try{
-      if(jeton && prest && prest.uid){
-        var item = { h: jeton.h, session: SESSION, le: Date.now(),
-          prestation: { uid: prest.uid, codeAcces: code || prest.codeAcces || '', centreNom: prest.centreNom || '', nom: prest.nom || '', tel: prest.tel || '', email: prest.email || '', ville: prest.ville || '' } };
-        var a = lireLocal(LOCAL_ATTENTE); a[jeton.h] = item; ecrireLocal(LOCAL_ATTENTE, a);
-        jeton = null;
-        setTimeout(traiterAttente, 1500);
-      }
-    }catch(e){}
-    return f.apply(this, arguments);
-  };
+  var w = function(){ jeton = null; return f.apply(this, arguments); };
   w._axcc = true;
   window.agpShowSuccess = w;
 }
-
-window.agpCodeCreation = { autorise: autorise, demander: demander, empreinte: empreinte, normaliser: normaliser };
+window.agpCodeCreation = { autorise: autorise, demander: demander, uidPrevu: uidPrevu, empreinte: empreinte, normaliser: normaliser };
 
 /* ================================================================
-   2. ESPACE CONCEPTEUR : onglet « Codes de creation »
+   2. ESPACE CONCEPTEUR : cle, regles de securite, codes de creation
    ================================================================ */
-var codes = {}, filtreC = 'tous', dernier = null;
+var codes = [], filtreC = 'tous';
+function cle(){ try{ return localStorage.getItem(LOCAL_CLE) || ''; }catch(e){ return ''; } }
 function codesLocaux(){ return lireLocal(LOCAL_CODES); }
+function nouvelleCle(){
+  var A = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789', t = new Uint32Array(32), s = '';
+  try{ window.crypto.getRandomValues(t); }catch(e){ for(var x = 0; x < 32; x++) t[x] = Math.floor(Math.random() * 4294967296); }
+  for(var i = 0; i < 32; i++) s += A.charAt(t[i] % A.length);
+  return s;
+}
+function texteRegles(k){ return JSON.stringify(MODELE_REGLES, null, 2).split('__CLE__').join(k); }
+function cheminCodes(){ return N_CONC + '/' + cle() + '/codes'; }
+
+function vueSecurite(){
+  var k = cle();
+  if(!k){
+    return '<div style="border:1px solid rgba(251,191,36,0.4);background:rgba(251,191,36,0.07);border-radius:12px;padding:14px;margin-bottom:12px">'
+      + '<div class="apc-sec">🔒 Sécuriser la création des prestations</div>'
+      + '<div class="apc-note" style="margin-bottom:10px">Pour que personne ne puisse créer une prestation sans votre code, même en contournant l\'application, la base doit appliquer des règles de sécurité liées à <b>votre clé secrète</b>. '
+      + 'Générez votre clé ici (une seule fois), puis publiez les règles dans la console Firebase.</div>'
+      + '<button class="apc-btn" style="background:#b45309;color:#fff;border-color:#b45309" onclick="agpCcNouvelleCle()">🔑 Générer ma clé et mes règles</button>'
+      + '<div class="apc-note" style="margin:12px 0 4px">Vous avez déjà une clé (générée sur un autre appareil) ?</div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap"><input id="apcc-cle-saisie" class="apc-field" style="margin:0;flex:1;min-width:220px;font-family:monospace" placeholder="Votre clé concepteur" autocomplete="off">'
+      + '<button class="apc-btn" onclick="agpCcEnregistrerCle()">Enregistrer la clé</button></div></div>';
+  }
+  return '<details id="apcc-secu" style="border:1px solid rgba(37,99,235,0.3);background:rgba(37,99,235,0.06);border-radius:12px;padding:10px 14px;margin-bottom:12px">'
+    + '<summary style="cursor:pointer;font-weight:700;color:#e2e8f0">🔒 Règles de sécurité de la base <span id="apcc-etat-regles" class="apc-note" style="font-weight:400"></span></summary>'
+    + '<ol class="apc-note" style="margin:10px 0 8px 18px;padding:0">'
+    + '<li>Touchez « Copier les règles ».</li>'
+    + '<li>Ouvrez <b>console.firebase.google.com</b> → projet de l\'application → <b>Realtime Database</b> → onglet <b>Règles</b>.</li>'
+    + '<li>Effacez tout le texte, collez les règles, puis touchez <b>Publier</b>.</li>'
+    + '<li>Revenez ici et touchez « Vérifier les règles ».</li></ol>'
+    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">'
+    + '<button class="apc-btn" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="agpCcCopierRegles()">📋 Copier les règles</button>'
+    + '<button class="apc-btn" onclick="agpCcVerifier()">✅ Vérifier les règles</button>'
+    + '<button class="apc-btn" onclick="agpCcVoirCle()">Afficher ma clé</button>'
+    + '<button class="apc-btn" style="color:#f87171" onclick="agpCcOublierCle()">Retirer la clé de cet appareil</button></div>'
+    + '<div id="apcc-verif" class="apc-note" style="min-height:16px"></div>'
+    + '<div id="apcc-cle-vue" class="apc-note"></div>'
+    + '<textarea id="apcc-regles" readonly style="width:100%;height:150px;margin-top:6px;background:#060d24;color:#93c5fd;border:1px solid rgba(37,99,235,0.3);border-radius:8px;font-family:monospace;font-size:10.5px;padding:8px;box-sizing:border-box">' + esc(texteRegles(k)) + '</textarea>'
+    + '<div class="apc-note" style="margin-top:6px">Gardez votre clé en lieu sûr : elle est nécessaire pour générer des codes depuis un autre appareil. Ne la donnez à personne.</div></details>';
+}
 function vueCodes(){
   var d = new Date(); d.setDate(d.getDate() + 30);
+  var k = cle();
   return '<div class="apc-sec" style="font-size:14px">🔑 Codes de création</div>'
     + '<div class="apc-note" style="margin-bottom:10px">Toute nouvelle prestation doit saisir un code de création pour être créée. Générez un code, puis envoyez-le à la personne : '
     + '<b>un code ne sert qu\'une seule fois</b>. Sans code valable, « Créer ma prestation » est refusé. Les prestations déjà créées ne sont pas concernées.</div>'
-    + '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">'
+    + '<div id="apcc-secu-zone">' + vueSecurite() + '</div>'
+    + (k ? '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">'
       + '<div style="flex:1;min-width:170px"><div class="apc-note">Pour (nom ou prestation prévue)</div><input id="apcc-pour" class="apc-field" style="margin:0" placeholder="ex. Centre Kaloum — M. Bah"></div>'
       + '<div style="width:170px"><div class="apc-note">Téléphone WhatsApp</div><input id="apcc-tel" class="apc-field" style="margin:0" inputmode="tel" placeholder="620 00 00 00"></div>'
       + '<div style="width:160px"><div class="apc-note">Valable jusqu\'au</div><input id="apcc-exp" type="date" class="apc-field" style="margin:0" value="' + isoJour(d) + '"></div>'
       + '<button class="apc-btn" id="apcc-gen" style="background:#2563eb;color:#fff;border-color:#2563eb" onclick="agpCcGenerer()">🔑 Générer un code</button>'
-    + '</div>'
-    + '<div id="apcc-nouveau"></div>'
-    + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px" id="apcc-filtres"></div>'
-    + '<div class="apc-wrap"><table class="apc-table"><thead><tr><th>Code</th><th>Pour</th><th>Créé le</th><th>Valable jusqu\'au</th><th>Statut</th><th>Prestation créée</th><th>Actions</th></tr></thead>'
-    + '<tbody id="apcc-corps"><tr><td colspan="7" style="padding:18px;text-align:center;color:#64748b">Chargement…</td></tr></tbody></table></div>'
-    + '<div class="apc-note" style="margin-top:8px">Par sécurité, la base ne garde jamais le code lui-même : le code complet n\'est visible que sur l\'appareil qui l\'a généré. Sur un autre appareil, générez un nouveau code si besoin.</div>';
+      + '</div>'
+      + '<div id="apcc-nouveau"></div>'
+      + '<div style="display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 8px" id="apcc-filtres"></div>'
+      + '<div class="apc-wrap"><table class="apc-table"><thead><tr><th>Code</th><th>Pour</th><th>Créé le</th><th>Valable jusqu\'au</th><th>Statut</th><th>Prestation créée</th><th>Actions</th></tr></thead>'
+      + '<tbody id="apcc-corps"><tr><td colspan="7" style="padding:18px;text-align:center;color:#64748b">Chargement…</td></tr></tbody></table></div>'
+      + '<div class="apc-note" style="margin-top:8px">Par sécurité, la base ne garde jamais le code lui-même : le code complet n\'est visible que sur l\'appareil qui l\'a généré. Sur un autre appareil, générez un nouveau code si besoin.</div>'
+      : '<div class="apc-note" style="color:#fbbf24">Générez ou saisissez d\'abord votre clé concepteur pour créer des codes.</div>');
 }
+function rafraichirVue(){ var v = el('apc-vue-codes'); if(v){ v.innerHTML = vueCodes(); chargerCodes(); } }
+window.agpCcNouvelleCle = function(){
+  if(cle() && !window.confirm('Une clé existe déjà sur cet appareil. La remplacer ?')) return;
+  try{ localStorage.setItem(LOCAL_CLE, nouvelleCle()); }catch(e){ alert('Impossible d\'enregistrer la clé sur cet appareil.'); return; }
+  rafraichirVue();
+  var s = el('apcc-secu'); if(s) s.open = true;
+  var z = el('apcc-verif'); if(z){ z.style.color = '#fbbf24'; z.textContent = 'Clé générée ✓ — copiez maintenant les règles et publiez-les dans la console Firebase.'; }
+};
+window.agpCcEnregistrerCle = function(){
+  var v = String((el('apcc-cle-saisie') || {}).value || '').trim();
+  if(!/^[A-Za-z0-9]{16,64}$/.test(v)){ alert('Clé invalide : lettres et chiffres uniquement (au moins 16).'); return; }
+  try{ localStorage.setItem(LOCAL_CLE, v); }catch(e){}
+  rafraichirVue();
+  window.agpCcVerifier();
+};
+window.agpCcOublierCle = function(){
+  if(!window.confirm('Retirer la clé de cet appareil ?\nVous devrez la ressaisir pour générer des codes ici. Les codes et les règles ne changent pas.')) return;
+  try{ localStorage.removeItem(LOCAL_CLE); }catch(e){}
+  rafraichirVue();
+};
+window.agpCcVoirCle = function(){ var z = el('apcc-cle-vue'); if(z) z.innerHTML = 'Votre clé : <b style="font-family:monospace;color:#fde68a;user-select:all">' + esc(cle()) + '</b>'; };
+function copier(t){
+  try{ navigator.clipboard.writeText(t); }catch(e){}
+  try{ var x = document.createElement('textarea'); x.value = t; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }catch(e){}
+}
+window.agpCcCopierRegles = function(){
+  copier(texteRegles(cle()));
+  var z = el('apcc-verif'); if(z){ z.style.color = '#93c5fd'; z.textContent = 'Règles copiées ✓ — collez-les dans Realtime Database → Règles, puis Publier.'; }
+};
+/* verification : la cle est acceptee, et une ecriture interdite est bien refusee */
+window.agpCcVerifier = function(){
+  var z = el('apcc-verif'), e2 = el('apcc-etat-regles'), k = cle();
+  if(!z || !k) return;
+  if(!connecte()){ z.style.color = '#fbbf24'; z.textContent = 'Connectez-vous à Internet pour vérifier.'; return; }
+  z.style.color = '#93c5fd'; z.textContent = 'Vérification en cours…';
+  var essai = 'verif_' + Date.now().toString(36);
+  var f = fb();
+  poser(N_CONC + '/' + k + '/_verif', TS).then(function(){
+    return poser(N_AUT + '/' + essai, { hash: '0000000000000000000000000000000000000000000000000000000000000000', le: Date.now() }).then(function(){
+      try{ f.set(f.ref(f.db, N_AUT + '/' + essai), null); }catch(x){}
+      return 'ouvert';
+    }, function(err){ return estRefus(err) ? 'actif' : 'reseau'; });
+  }, function(err){ return estRefus(err) ? 'cle' : 'reseau'; }).then(function(r){
+    if(r === 'actif'){ z.style.color = '#4ade80'; z.textContent = '✅ Règles actives : le serveur refuse toute création de prestation sans code valable, et votre clé est reconnue.'; if(e2) e2.textContent = '— actives ✅'; }
+    else if(r === 'ouvert'){ z.style.color = '#fbbf24'; z.textContent = '⚠️ Les règles ne sont pas encore publiées : l\'application refuse déjà la création sans code, mais la base, elle, ne bloque pas encore. Copiez et publiez les règles.'; if(e2) e2.textContent = '— à publier ⚠️'; }
+    else if(r === 'cle'){ z.style.color = '#f87171'; z.textContent = '❌ Cette clé n\'est pas celle des règles publiées. Saisissez la bonne clé, ou recopiez et republiez les règles de cette clé.'; if(e2) e2.textContent = '— clé refusée ❌'; }
+    else { z.style.color = '#f87171'; z.textContent = 'Vérification impossible : la connexion ne répond pas.'; }
+  });
+};
+
 function badge(e){
-  var m = { disponible: ['essai', 'Disponible'], reserve: ['expire', 'En cours d\'utilisation'], utilise: ['actif', 'Utilisé'], expire: ['expire', 'Expiré'], annule: ['bloque', 'Annulé'] }[e] || ['essai', e];
+  var m = { disponible: ['essai', 'Disponible'], utilise: ['actif', 'Utilisé'], expire: ['expire', 'Expiré'], annule: ['bloque', 'Annulé'], inconnu: ['expire', 'Introuvable'] }[e] || ['essai', e];
   return '<span class="apc-badge ' + m[0] + '">' + m[1] + '</span>';
 }
 function numeroWa(t){ var d = String(t || '').replace(/\D/g, ''); if(d.length === 9) d = '224' + d; return d; }
@@ -17516,55 +17593,87 @@ function texteWa(code, rec){
     + (rec && rec.expireLe ? '\nValable jusqu\'au ' + frIso(rec.expireLe) + '.' : '')
     + '\nOuvrez l\'application, touchez « Créer ma prestation » et saisissez ce code dans « Code de création ». Il ne sert qu\'une seule fois.';
 }
+function trouver(h){ for(var i = 0; i < codes.length; i++) if(codes[i].h === h) return codes[i]; return null; }
 function rendreCodes(){
   var corps = el('apcc-corps'); if(!corps) return;
-  var loc = codesLocaux(), liste = Object.keys(codes).map(function(h){ var r = codes[h] || {}; r._h = h; return r; });
-  liste.sort(function(a, b){ return (b.creeLe || 0) - (a.creeLe || 0); });
-  var nb = { tous: liste.length, disponible: 0, utilise: 0, expire: 0, annule: 0, reserve: 0 };
-  liste.forEach(function(r){ nb[etat(r)] = (nb[etat(r)] || 0) + 1; });
+  var loc = codesLocaux();
+  var nb = { tous: codes.length, disponible: 0, utilise: 0, expire: 0, annule: 0 };
+  codes.forEach(function(c){ nb[c.etat] = (nb[c.etat] || 0) + 1; });
   var fz = el('apcc-filtres');
   if(fz) fz.innerHTML = [['tous', 'Tous'], ['disponible', 'Disponibles'], ['utilise', 'Utilisés'], ['expire', 'Expirés'], ['annule', 'Annulés']].map(function(x){
     return '<button class="apc-btn" style="' + (filtreC === x[0] ? 'background:#1e3a8a;color:#fff' : '') + '" onclick="agpCcFiltre(\'' + x[0] + '\')">' + x[1] + ' (' + (nb[x[0]] || 0) + ')</button>';
   }).join('');
-  var l = liste.filter(function(r){ return filtreC === 'tous' || etat(r) === filtreC || (filtreC === 'disponible' && etat(r) === 'reserve'); });
-  if(!l.length){ corps.innerHTML = '<tr><td colspan="7" style="padding:18px;text-align:center;color:#64748b">' + (liste.length ? 'Aucun code dans ce filtre.' : 'Aucun code de création pour le moment. Générez-en un ci-dessus.') + '</td></tr>'; return; }
-  corps.innerHTML = l.map(function(r){
-    var e = etat(r), clair = loc[r._h] || '', p = r.prestation || null;
-    var act = '';
-    if(clair && (e === 'disponible')){
-      act += '<button class="apc-btn" onclick="agpCcCopier(\'' + r._h + '\')">Copier</button> ';
-      act += '<button class="apc-btn" style="color:#22c55e" onclick="agpCcWhatsapp(\'' + r._h + '\')">WhatsApp</button> ';
+  var l = codes.filter(function(c){ return filtreC === 'tous' || c.etat === filtreC; });
+  if(!l.length){ corps.innerHTML = '<tr><td colspan="7" style="padding:18px;text-align:center;color:#64748b">' + (codes.length ? 'Aucun code dans ce filtre.' : 'Aucun code de création pour le moment. Générez-en un ci-dessus.') + '</td></tr>'; return; }
+  corps.innerHTML = l.map(function(c){
+    var m = c.meta || {}, clair = loc[c.h] || '', p = c.prest, act = '';
+    if(clair && c.etat === 'disponible'){
+      act += '<button class="apc-btn" onclick="agpCcCopier(\'' + c.h + '\')">Copier</button> ';
+      act += '<button class="apc-btn" style="color:#22c55e" onclick="agpCcWhatsapp(\'' + c.h + '\')">WhatsApp</button> ';
     }
-    if(e === 'disponible' || e === 'expire') act += '<button class="apc-btn" style="color:#f87171" onclick="agpCcAnnuler(\'' + r._h + '\')">Annuler</button>';
+    if(c.etat === 'disponible' || c.etat === 'expire') act += '<button class="apc-btn" style="color:#f87171" onclick="agpCcAnnuler(\'' + c.h + '\')">Annuler</button>';
     return '<tr><td style="font-family:monospace;font-weight:800;letter-spacing:.08em;color:#93c5fd;white-space:nowrap">' + (clair ? esc(clair) : '<span style="color:#64748b">CR-••••-••••</span>') + '</td>'
-      + '<td>' + esc(r.pour || '—') + (r.tel ? '<div class="apc-note">' + esc(r.tel) + '</div>' : '') + '</td>'
-      + '<td style="white-space:nowrap">' + esc(frTs(r.creeLe)) + '</td>'
-      + '<td style="white-space:nowrap">' + (r.expireLe ? esc(frIso(r.expireLe)) : 'Sans limite') + '</td>'
-      + '<td>' + badge(e) + '</td>'
-      + '<td>' + (p ? '<b>' + esc(p.centreNom || p.nom || '') + '</b><div class="apc-note">' + esc(p.codeAcces || '') + ' · ' + esc(frTs(r.utiliseLe)) + (p.tel ? ' · ' + esc(p.tel) : '') + '</div>' : '—') + '</td>'
+      + '<td>' + esc(m.pour || '—') + (m.tel ? '<div class="apc-note">' + esc(m.tel) + '</div>' : '') + '</td>'
+      + '<td style="white-space:nowrap">' + esc(frTs(m.creeLe || (c.def && c.def.creeLe))) + '</td>'
+      + '<td style="white-space:nowrap">' + ((m.expireLe || (c.def && c.def.expireLe)) ? esc(frIso(m.expireLe || c.def.expireLe)) : 'Sans limite') + '</td>'
+      + '<td>' + badge(c.etat) + '</td>'
+      + '<td>' + (p ? '<b>' + esc(p.centreNom || p.nom || '') + '</b><div class="apc-note">' + esc(p.codeAcces || '') + ' · ' + esc(frTs(c.util && c.util.le)) + (p.tel ? ' · ' + esc(p.tel) : '') + '</div>'
+              : (c.util ? '<span class="apc-note">Prestation non créée (' + esc(frTs(c.util.le)) + ')</span>' : '—')) + '</td>'
       + '<td style="white-space:nowrap">' + (act || '—') + '</td></tr>';
   }).join('');
 }
+/* codes generes par cet appareil avec la version precedente : rattaches a la cle */
+function adopterAnciens(liste){
+  var loc = codesLocaux(), deja = {}, obj = {}, n = 0;
+  liste.forEach(function(h){ deja[h] = 1; });
+  return Promise.all(Object.keys(loc).filter(function(h){ return !deja[h]; }).map(function(h){
+    return lire(NOEUD + '/' + h).then(function(def){
+      if(!def || def.statut === 'utilise' || def.statut === 'annule') return;
+      obj['concepteur/' + cle() + '/codes/' + h] = { pour: def.pour || '', tel: def.tel || '', creeLe: def.creeLe || Date.now(), expireLe: def.expireLe || '', majLe: TS, repris: true };
+      if(def.expireLe) obj['codesCreation/' + h + '/expireMs'] = finJourMs(def.expireLe);
+      n++;
+    }, function(){});
+  })).then(function(){ return n ? majPlateforme(obj).then(function(){ return n; }, function(){ return 0; }) : 0; });
+}
 function chargerCodes(){
-  var f = fb(), corps = el('apcc-corps');
-  if(!f.db || !f.get){ if(corps) corps.innerHTML = '<tr><td colspan="7" style="padding:18px;color:#f87171">Base indisponible.</td></tr>'; return; }
-  avecDelai(f.get(f.ref(f.db, NOEUD)), 15000).then(function(s){ codes = s.val() || {}; rendreCodes(); }).catch(function(e){
-    if(corps) corps.innerHTML = '<tr><td colspan="7" style="padding:18px;color:#f87171">Lecture impossible : ' + esc(e.message || e) + '</td></tr>';
+  var corps = el('apcc-corps'); if(!corps || !cle()) return;
+  if(!connecte()){ corps.innerHTML = '<tr><td colspan="7" style="padding:18px;color:#fbbf24">Connectez-vous à Internet pour voir les codes.</td></tr>'; return; }
+  lire(cheminCodes()).then(function(metas){
+    metas = metas || {};
+    return adopterAnciens(Object.keys(metas)).then(function(n){ return n ? lire(cheminCodes()).then(function(m){ return m || {}; }) : metas; });
+  }).then(function(metas){
+    var hs = Object.keys(metas);
+    return Promise.all(hs.map(function(h){
+      return Promise.all([lire(NOEUD + '/' + h).catch(function(){ return null; }), lire(N_UTIL + '/' + h).catch(function(){ return null; })]).then(function(r){
+        var c = { h: h, meta: metas[h] || {}, def: r[0], util: r[1], prest: null };
+        c.etat = etatCode(c.def, c.util);
+        if(c.util && c.util.uid) return lire('agp_prest/' + c.util.uid + '/info').then(function(i){ c.prest = i; return c; }, function(){ return c; });
+        return c;
+      });
+    }));
+  }).then(function(l){
+    codes = l.sort(function(a, b){ return ((b.meta.creeLe || 0) - (a.meta.creeLe || 0)); });
+    rendreCodes();
+  }).catch(function(e){
+    corps.innerHTML = '<tr><td colspan="7" style="padding:18px;color:#f87171">' + (estRefus(e) ? 'Accès refusé : cette clé n\'est pas celle des règles publiées. Vérifiez votre clé (🔒 Règles de sécurité).' : 'Lecture impossible : ' + esc(e.message || e)) + '</td></tr>';
   });
 }
 window.agpCcFiltre = function(f){ filtreC = f; rendreCodes(); };
 window.agpCcGenerer = function(){
-  var f = fb(), bt = el('apcc-gen');
+  var bt = el('apcc-gen'), k = cle();
   var pour = String((el('apcc-pour') || {}).value || '').trim(), tel = String((el('apcc-tel') || {}).value || '').trim(), exp = String((el('apcc-exp') || {}).value || '').trim();
+  if(!k){ alert('Générez ou saisissez d\'abord votre clé concepteur.'); return; }
   if(exp && exp < isoJour()){ alert('La date de validité ne peut pas être dans le passé.'); return; }
   if(!connecte()){ alert('Connectez-vous à Internet : le code doit être enregistré sur le serveur pour pouvoir être utilisé.'); return; }
-  if(!f.db || !f.set){ alert('Base indisponible.'); return; }
-  var code = nouveauCode(), h = empreinte(code);
-  var rec = { statut: 'disponible', creeLe: Date.now(), creePar: 'Concepteur', pour: pour, tel: tel, expireLe: exp || '' };
+  var code = nouveauCode(), h = empreinte(code), now = Date.now(), obj = {};
+  obj['concepteur/' + k + '/codes/' + h] = { pour: pour, tel: tel, creeLe: now, expireLe: exp || '', majLe: TS };
+  var def = { statut: 'disponible', creeLe: now, expireLe: exp || '' };
+  if(exp) def.expireMs = finJourMs(exp);
+  obj['codesCreation/' + h] = def;
   if(bt){ bt.disabled = true; bt.textContent = 'Enregistrement…'; }
-  avecDelai(f.set(f.ref(f.db, NOEUD + '/' + h), rec), 20000).then(function(){
+  majPlateforme(obj).then(function(){
     var loc = codesLocaux(); loc[h] = code; ecrireLocal(LOCAL_CODES, loc);
-    codes[h] = rec; dernier = h;
+    codes.unshift({ h: h, meta: { pour: pour, tel: tel, creeLe: now, expireLe: exp }, def: def, util: null, prest: null, etat: 'disponible' });
     var z = el('apcc-nouveau');
     if(z) z.innerHTML = '<div style="border:2px solid rgba(37,99,235,0.5);background:rgba(37,99,235,0.1);border-radius:12px;padding:14px;margin-bottom:10px;text-align:center">'
       + '<div class="apc-note">Nouveau code de création' + (pour ? ' — ' + esc(pour) : '') + (exp ? ' — valable jusqu\'au ' + esc(frIso(exp)) : '') + '</div>'
@@ -17573,31 +17682,25 @@ window.agpCcGenerer = function(){
       + '<button class="apc-btn" style="color:#22c55e" onclick="agpCcWhatsapp(\'' + h + '\')">Envoyer par WhatsApp</button></div>';
     ['apcc-pour', 'apcc-tel'].forEach(function(i){ var x = el(i); if(x) x.value = ''; });
     rendreCodes();
-  }).catch(function(e){ alert('Enregistrement du code impossible : ' + (e.message || e)); })
-    .then(function(){ if(bt){ bt.disabled = false; bt.textContent = '🔑 Générer un code'; } });
+  }).catch(function(e){
+    alert(estRefus(e) ? 'Code refusé par la base : votre clé n\'est pas celle des règles publiées. Vérifiez votre clé (🔒 Règles de sécurité).' : 'Enregistrement du code impossible : ' + (e.message || e));
+  }).then(function(){ if(bt){ bt.disabled = false; bt.textContent = '🔑 Générer un code'; } });
 };
-window.agpCcCopier = function(h){
-  var c = codesLocaux()[h]; if(!c) return;
-  try{ navigator.clipboard.writeText(c); }catch(e){}
-  try{ var t = document.createElement('textarea'); t.value = c; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }catch(e){}
-};
+window.agpCcCopier = function(h){ var c = codesLocaux()[h]; if(c) copier(c); };
 window.agpCcWhatsapp = function(h){
-  var c = codesLocaux()[h], r = codes[h] || {}; if(!c) return;
-  var n = numeroWa(r.tel);
-  window.open('https://wa.me/' + (n || '') + '?text=' + encodeURIComponent(texteWa(c, r)), '_blank');
+  var c = codesLocaux()[h], x = trouver(h), m = (x && x.meta) || {}; if(!c) return;
+  window.open('https://wa.me/' + numeroWa(m.tel) + '?text=' + encodeURIComponent(texteWa(c, m)), '_blank');
 };
 window.agpCcAnnuler = function(h){
-  var r = codes[h]; if(!r) return;
-  if(!window.confirm('Annuler ce code de création' + (r.pour ? ' (' + r.pour + ')' : '') + ' ?\nIl ne permettra plus de créer une prestation.')) return;
-  var f = fb();
-  avecDelai(f.tx(f.ref(f.db, NOEUD + '/' + h), function(cur){
-    if(cur === null) return null;
-    if(cur.statut === 'utilise') return;                  /* deja utilise : on ne touche pas */
-    var o = {}; for(var x in cur) o[x] = cur[x];
-    o.statut = 'annule'; o.annuleLe = Date.now(); delete o.session; delete o.reserveLe;
-    return o;
-  }), 20000).then(function(res){ if(res && res.snapshot) codes[h] = res.snapshot.val(); rendreCodes(); })
-    .catch(function(e){ alert('Annulation impossible : ' + (e.message || e)); });
+  var x = trouver(h); if(!x) return;
+  if(!window.confirm('Annuler ce code de création' + (x.meta.pour ? ' (' + x.meta.pour + ')' : '') + ' ?\nIl ne permettra plus de créer une prestation.')) return;
+  var obj = {};
+  obj['concepteur/' + cle() + '/codes/' + h + '/majLe'] = TS;
+  obj['codesCreation/' + h + '/statut'] = 'annule';
+  obj['codesCreation/' + h + '/annuleLe'] = Date.now();
+  majPlateforme(obj).then(function(){
+    if(x.def) x.def.statut = 'annule'; x.etat = etatCode(x.def, x.util); rendreCodes();
+  }).catch(function(e){ alert('Annulation impossible : ' + (e.message || e)); });
 };
 
 /* l'onglet est ajoute au panneau du concepteur des qu'il s'ouvre */
@@ -17614,6 +17717,7 @@ function ajouterOnglet(){
     barre.querySelectorAll('.apc-onglet').forEach(function(x){ x.classList.toggle('on', x === b); });
     ov.querySelectorAll('[id^="apc-vue-"]').forEach(function(v){ v.style.display = (v === vue) ? 'block' : 'none'; });
     chargerCodes();
+    if(cle()) window.agpCcVerifier();
   };
   barre.addEventListener('click', function(e){
     var t = e.target && e.target.closest ? e.target.closest('.apc-onglet') : null;
@@ -17626,11 +17730,8 @@ function demarrer(){
   brancherSucces();
   try{ new MutationObserver(function(){ if(el('apc-ov') && !el('apc-ong-codes')) ajouterOnglet(); }).observe(document.body, { childList: true }); }catch(e){}
   var n = 0, t = setInterval(function(){ brancherSucces(); if(++n > 30) clearInterval(t); }, 1000);
-  setTimeout(traiterAttente, 4000);
-  setInterval(traiterAttente, 30000);
-  window.addEventListener('online', function(){ setTimeout(traiterAttente, 2000); });
   var champ = el('agp-r-code-creation');
-  if(champ) champ.addEventListener('input', function(){ champ.style.borderColor = ''; if(jeton && jeton.n !== normaliser(champ.value)) jeton = null; });
+  if(champ) champ.addEventListener('input', function(){ champ.style.borderColor = ''; });
 }
 if(document.readyState === 'loading') document.addEventListener('DOMContentLoaded', demarrer); else demarrer();
 })();
